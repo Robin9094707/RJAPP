@@ -207,6 +207,16 @@ def load_config(path: Path) -> dict[str, Any]:
     return config
 
 
+class ClosingSQLiteConnection(sqlite3.Connection):
+    """A SQLite connection whose context manager also releases the file handle."""
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> bool:
+        try:
+            return bool(super().__exit__(exc_type, exc_value, traceback))
+        finally:
+            self.close()
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = path
@@ -214,7 +224,12 @@ class Database:
         self.initialize()
 
     def connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=20, isolation_level=None)
+        connection = sqlite3.connect(
+            self.path,
+            timeout=20,
+            isolation_level=None,
+            factory=ClosingSQLiteConnection,
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=20000")

@@ -117,7 +117,10 @@ class RJLoveBackendTests(unittest.TestCase):
                 "POST",
                 {"username": "robin", "password": "wrong-password", "device_id": "test"},
             )
-        self.assertEqual(raised.exception.code, 401)
+        try:
+            self.assertEqual(raised.exception.code, 401)
+        finally:
+            raised.exception.close()
 
 
 if __name__ == "__main__":

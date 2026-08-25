@@ -1,0 +1,297 @@
+import CoreLocation
+import MapKit
+import SwiftUI
+
+struct PartnerMapView: View {
+    @Environment(AppState.self) private var appState
+    @State private var position: MapCameraPosition = .automatic
+    @State private var address = "Standort wird aufgelöst …"
+    @State private var showingPlaceEditor = false
+    @State private var showingPlaces = false
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Map(position: $position) {
+                UserAnnotation()
+                if let coordinate = partnerCoordinate {
+                    Annotation(appState.partner?.displayName ?? "Schatzi", coordinate: coordinate, anchor: .bottom) {
+                        VStack(spacing: 3) {
+                            PartnerAvatar(name: appState.partner?.displayName ?? "Schatzi", size: 58)
+                            Image(systemName: "triangle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(LovePalette.pink)
+                                .rotationEffect(.degrees(180))
+                        }
+                    }
+                }
+                ForEach(appState.geofences) { record in
+                    if let latitude = record.payload.latitude, let longitude = record.payload.longitude {
+                        MapCircle(
+                            center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                            radius: record.payload.radius ?? 100
+                        )
+                        .foregroundStyle(LovePalette.cyan.opacity(0.12))
+                        .stroke(LovePalette.cyan.opacity(0.65), lineWidth: 2)
+                    }
+                }
+            }
+            .mapStyle(.standard(elevation: .realistic))
+            .mapControls {
+                MapCompass()
+                MapPitchToggle()
+                MapUserLocationButton()
+            }
+            .ignoresSafeArea(edges: .bottom)
+
+            partnerSheet
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+        }
+        .navigationTitle("Wo ist Schatzi?")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { showingPlaces = true } label: { Image(systemName: "mappin.and.ellipse") }
+                Button { centerOnPartner() } label: { Image(systemName: "scope") }
+                    .disabled(partnerCoordinate == nil)
+            }
+        }
+        .sheet(isPresented: $showingPlaceEditor) {
+            GeofenceEditorView(initialCoordinate: partnerCoordinate)
+        }
+        .sheet(isPresented: $showingPlaces) {
+            GeofenceListView()
+        }
+        .onAppear {
+            centerOnPartner()
+            resolveAddress()
+        }
+        .onChange(of: appState.partner?.presence?.latitude) { _, _ in
+            resolveAddress()
+        }
+    }
+
+    private var partnerSheet: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            Capsule()
+                .fill(.secondary.opacity(0.5))
+                .frame(width: 46, height: 5)
+                .frame(maxWidth: .infinity)
+            HStack(spacing: 13) {
+                PartnerAvatar(name: appState.partner?.displayName ?? "Schatzi", size: 54)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(appState.partner?.displayName ?? "Schatzi")
+                        .font(.title2.bold())
+                    Text(address)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    if let date = appState.partner?.presence?.locationTimestamp?.rjDate {
+                        Text(date.formatted(.relative(presentation: .named)))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Date.now.timeIntervalSince(date) < 90 ? .green : .orange)
+                    }
+                }
+                Spacer()
+                BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState)
+            }
+
+            HStack(spacing: 11) {
+                mapAction("Route", symbol: "arrow.triangle.turn.up.right.diamond.fill", tint: LovePalette.cyan) {
+                    openRoute()
+                }
+                .disabled(partnerCoordinate == nil)
+                mapAction("Ort merken", symbol: "mappin.and.ellipse", tint: LovePalette.pink) {
+                    showingPlaceEditor = true
+                }
+                .disabled(partnerCoordinate == nil)
+                mapAction("Neu laden", symbol: "arrow.clockwise", tint: LovePalette.violet) {
+                    Task { await appState.syncNow(showErrors: false) }
+                }
+            }
+
+            if let distance {
+                Label(distance.formatted(.measurement(width: .abbreviated, usage: .road)), systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .loveGlass(in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+    }
+
+    private var partnerCoordinate: CLLocationCoordinate2D? {
+        guard appState.partner?.presence?.locationSharing != false,
+              let latitude = appState.partner?.presence?.latitude,
+              let longitude = appState.partner?.presence?.longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+
+    private var distance: Measurement<UnitLength>? {
+        guard let own = appState.location.lastLocation, let partnerCoordinate else { return nil }
+        let meters = own.distance(from: CLLocation(latitude: partnerCoordinate.latitude, longitude: partnerCoordinate.longitude))
+        return Measurement(value: meters, unit: UnitLength.meters)
+    }
+
+    private func centerOnPartner() {
+        guard let coordinate = partnerCoordinate else { return }
+        position = .camera(
+            MapCamera(centerCoordinate: coordinate, distance: 1_100, heading: 0, pitch: 35)
+        )
+    }
+
+    private func resolveAddress() {
+        guard let coordinate = partnerCoordinate else {
+            address = appState.partner?.presence?.locationSharing == false
+                ? "Standortfreigabe ist ausgeschaltet"
+                : "Noch kein Standort verfügbar"
+            return
+        }
+        Task {
+            do {
+                let placemarks = try await CLGeocoder().reverseGeocodeLocation(
+                    CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                )
+                if let place = placemarks.first {
+                    let street = [place.thoroughfare, place.subThoroughfare].compactMap { $0 }.joined(separator: " ")
+                    let city = [place.postalCode, place.locality].compactMap { $0 }.joined(separator: " ")
+                    address = [street, city].filter { !$0.isEmpty }.joined(separator: ", ")
+                }
+            } catch {
+                address = String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
+            }
+        }
+    }
+
+    private func openRoute() {
+        guard let coordinate = partnerCoordinate else { return }
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        item.name = appState.partner?.displayName ?? "Schatzi"
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
+    }
+
+    private func mapAction(_ title: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: symbol).font(.title3).foregroundStyle(tint)
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct GeofenceEditorView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = "Lieblingsort"
+    @State private var latitude: Double
+    @State private var longitude: Double
+    @State private var radius = 100.0
+    @State private var onEnter = true
+    @State private var onExit = true
+    @State private var saving = false
+
+    init(initialCoordinate: CLLocationCoordinate2D?) {
+        _latitude = State(initialValue: initialCoordinate?.latitude ?? 51.0)
+        _longitude = State(initialValue: initialCoordinate?.longitude ?? 6.75)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Gemeinsamer Ort") {
+                    TextField("Name", text: $name)
+                    LabeledContent("Breitengrad") {
+                        TextField("Latitude", value: $latitude, format: .number.precision(.fractionLength(5)))
+                            .keyboardType(.numbersAndPunctuation)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Längengrad") {
+                        TextField("Longitude", value: $longitude, format: .number.precision(.fractionLength(5)))
+                            .keyboardType(.numbersAndPunctuation)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Radius · \(Int(radius)) m")
+                        Slider(value: $radius, in: 50...1000, step: 25)
+                    }
+                }
+                Section("Benachrichtigen") {
+                    Toggle("Beim Betreten", isOn: $onEnter)
+                    Toggle("Beim Verlassen", isOn: $onExit)
+                    Text("Der Ort wird auf dem iPhone von \(appState.partner?.displayName ?? "Schatzi") überwacht, sobald dort „Immer“ für Standort erlaubt wurde.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Ort merken")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Speichern") {
+                        saving = true
+                        Task {
+                            let payload = RecordPayload(
+                                targetID: appState.partner?.id,
+                                name: name,
+                                latitude: latitude,
+                                longitude: longitude,
+                                radius: radius,
+                                notifyOnEnter: onEnter,
+                                notifyOnExit: onExit
+                            )
+                            if await appState.saveRecord(kind: .geofence, payload: payload) != nil { dismiss() }
+                            saving = false
+                        }
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || saving)
+                }
+            }
+        }
+    }
+}
+
+private struct GeofenceListView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+    @State private var deleting: SharedRecord?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if appState.geofences.isEmpty {
+                    ContentUnavailableView("Keine Orte", systemImage: "mappin.slash", description: Text("Lege auf der Karte euren ersten gemeinsamen Ort an."))
+                }
+                ForEach(appState.geofences) { record in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(record.payload.name ?? "Gemeinsamer Ort").font(.headline)
+                        Text("Radius \(Int(record.payload.radius ?? 100)) m · \(record.payload.targetID == appState.me?.id ? "für dich" : "für Schatzi")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button("Löschen", role: .destructive) { deleting = record }
+                    }
+                }
+            }
+            .navigationTitle("Gemeinsame Orte")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { dismiss() } } }
+            .alert("Ort löschen?", isPresented: Binding(
+                get: { deleting != nil },
+                set: { if !$0 { deleting = nil } }
+            )) {
+                Button("Löschen", role: .destructive) {
+                    guard let record = deleting else { return }
+                    Task { _ = await appState.deleteRecord(record); deleting = nil }
+                }
+                Button("Abbrechen", role: .cancel) { deleting = nil }
+            } message: {
+                Text("Die Geofence-Überwachung wird auf beiden Geräten entfernt.")
+            }
+        }
+    }
+}

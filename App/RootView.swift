@@ -1,0 +1,86 @@
+import SwiftUI
+
+struct RootView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        ZStack {
+            LoveBackground()
+            switch appState.phase {
+            case .setup:
+                ServerSetupView()
+            case .restoring:
+                VStack(spacing: 18) {
+                    Image(systemName: "heart.circle.fill")
+                        .font(.system(size: 68))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, LovePalette.pink)
+                    ProgressView()
+                        .controlSize(.large)
+                    Text(appState.connectionMessage)
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(30)
+                .loveGlass(in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+            case .authenticated:
+                if appState.privacyLock.isUnlocked {
+                    MainTabView()
+                } else {
+                    PrivacyLockView()
+                }
+            }
+        }
+        .task {
+            await appState.activate()
+        }
+        .alert(item: Binding(
+            get: { appState.alert },
+            set: { appState.alert = $0 }
+        )) { value in
+            Alert(title: Text(value.title), message: Text(value.message), dismissButton: .default(Text("OK")))
+        }
+    }
+}
+
+private struct PrivacyLockView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "lock.heart.fill")
+                .font(.system(size: 70))
+                .foregroundStyle(LovePalette.pink)
+            Text("RJ Love ist geschützt")
+                .font(.title2.bold())
+            Text("Entsperre eure privaten Inhalte mit Face ID, Touch ID oder deinem Gerätecode.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Button("Entsperren") {
+                Task { _ = await appState.privacyLock.unlock() }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .padding(28)
+        .loveCard()
+        .padding(22)
+    }
+}
+
+struct MainTabView: View {
+    var body: some View {
+        TabView {
+            NavigationStack { HomeView() }
+                .tabItem { Label("Zuhause", systemImage: "heart.fill") }
+            NavigationStack { PartnerMapView() }
+                .tabItem { Label("Karte", systemImage: "location.fill") }
+            NavigationStack { TogetherView() }
+                .tabItem { Label("Gemeinsam", systemImage: "person.2.fill") }
+            NavigationStack { MomentsView() }
+                .tabItem { Label("Momente", systemImage: "photo.stack.fill") }
+            NavigationStack { SettingsView() }
+                .tabItem { Label("Mehr", systemImage: "slider.horizontal.3") }
+        }
+    }
+}

@@ -1,0 +1,298 @@
+import AlarmKit
+import CoreLocation
+import CoreMotion
+import EventKit
+import Intents
+import SwiftUI
+import UserNotifications
+
+struct SettingsView: View {
+    @Environment(AppState.self) private var appState
+    @ObservedObject private var location = LocationService.shared
+    @ObservedObject private var health = HealthService.shared
+    @ObservedObject private var notifications = NotificationCoordinator.shared
+    @ObservedObject private var device = DeviceStatusService.shared
+    @ObservedObject private var calendar = CalendarService.shared
+    @ObservedObject private var privacyLock = PrivacyLockService.shared
+    @State private var logoutConfirmation = false
+
+    var body: some View {
+        @Bindable var state = appState
+
+        Form {
+            Section("Verbindung") {
+                LabeledContent("Server", value: appState.profile?.baseURL ?? "–")
+                    .lineLimit(1)
+                LabeledContent("Benutzer", value: appState.me?.displayName ?? appState.profile?.username ?? "–")
+                LabeledContent("Transport") {
+                    Label(appState.isUsingHTTPS ? "HTTPS" : "HTTP", systemImage: appState.isUsingHTTPS ? "lock.fill" : "exclamationmark.lock.open.fill")
+                        .foregroundStyle(appState.isUsingHTTPS ? .green : .orange)
+                }
+                LabeledContent("Status", value: appState.connectionMessage)
+                Button {
+                    Task { await appState.syncNow() }
+                } label: {
+                    Label("Jetzt synchronisieren", systemImage: "arrow.clockwise")
+                }
+                .disabled(appState.isSyncing)
+            }
+
+            Section("Was ich teile") {
+                Toggle("Live-Standort", isOn: $location.sharingEnabled)
+                Toggle("Health-Zusammenfassung", isOn: $health.sharingEnabled)
+                Toggle("WLAN-Name, wenn verfügbar", isOn: $state.shareWiFiName)
+                Toggle("Fokus aktiv / nicht aktiv", isOn: $state.shareFocus)
+                TextField("Mein Status", text: $state.statusMessage, axis: .vertical)
+                    .lineLimit(2...4)
+                Button("Status jetzt übertragen") { appState.queuePresenceUpload(force: true) }
+            } footer: {
+                Text("Health teilt nur Schritte, Schlafdauer und die von RJ Love berechnete Schlafbalance – keine Rohdaten. iOS gibt Apps keinen Namen des aktiven Fokus frei.")
+            }
+
+            Section("Berechtigungen") {
+                PermissionRow(
+                    title: "Standort beim Verwenden",
+                    status: locationStatus,
+                    symbol: "location.fill",
+                    tint: location.authorizationStatus == .denied ? .red : LovePalette.cyan,
+                    actionTitle: location.authorizationStatus == .notDetermined ? "Erlauben" : nil
+                ) { location.requestWhenInUse() }
+
+                PermissionRow(
+                    title: "Standort immer",
+                    status: location.authorizationStatus == .authorizedAlways ? "Erlaubt" : "Für Hintergrund & Orte nötig",
+                    symbol: "location.circle.fill",
+                    tint: location.authorizationStatus == .authorizedAlways ? .green : .orange,
+                    actionTitle: location.authorizationStatus == .authorizedAlways ? nil : "Anfragen"
+                ) { location.requestAlways() }
+
+                if location.authorizationStatus == .authorizedAlways || location.authorizationStatus == .authorizedWhenInUse {
+                    PermissionRow(
+                        title: "Genauer Standort",
+                        status: location.accuracyAuthorization == .fullAccuracy ? "Genau" : "Reduziert",
+                        symbol: "scope",
+                        tint: location.accuracyAuthorization == .fullAccuracy ? .green : .orange,
+                        actionTitle: location.accuracyAuthorization == .fullAccuracy ? nil : "Temporär genau"
+                    ) { location.requestTemporaryPrecision() }
+                }
+
+                PermissionRow(
+                    title: "Mitteilungen & Push",
+                    status: notificationStatus,
+                    symbol: "bell.badge.fill",
+                    tint: notifications.authorizationStatus == .authorized ? .green : .orange,
+                    actionTitle: notifications.authorizationStatus == .authorized ? nil : "Erlauben"
+                ) { Task { _ = await notifications.requestAuthorization() } }
+
+                PermissionRow(
+                    title: "AlarmKit",
+                    status: alarmStatus,
+                    symbol: "alarm.waves.left.and.right.fill",
+                    tint: alarmStatus == "Erlaubt" ? .green : LovePalette.pink,
+                    actionTitle: alarmStatus == "Erlaubt" ? nil : "Erlauben"
+                ) { Task { _ = await appState.alarms.requestAuthorization() } }
+
+                PermissionRow(
+                    title: "Apple Health",
+                    status: health.requested ? "Angefragt · in Health verwalten" : "Nicht eingerichtet",
+                    symbol: "heart.text.square.fill",
+                    tint: health.requested ? .green : LovePalette.pink,
+                    actionTitle: health.requested ? "Aktualisieren" : "Verbinden"
+                ) { Task { health.requested ? await health.refresh() : await health.requestAuthorization() } }
+
+                PermissionRow(
+                    title: "Bewegung & Fitness",
+                    status: motionStatus,
+                    symbol: "figure.walk.motion",
+                    tint: device.motionAuthorization == .authorized ? .green : .orange,
+                    actionTitle: device.motionAuthorization == .notDetermined ? "Anfragen" : nil
+                ) { device.startMotionUpdates() }
+
+                PermissionRow(
+                    title: "Fokusstatus",
+                    status: focusStatus,
+                    symbol: "moon.fill",
+                    tint: device.focusActive == nil ? .orange : .green,
+                    actionTitle: device.focusActive == nil ? "Anfragen" : nil
+                ) { Task { await device.requestFocusAuthorization() } }
+
+                PermissionRow(
+                    title: "iOS-Kalender",
+                    status: calendarStatus,
+                    symbol: "calendar",
+                    tint: calendar.authorizationStatus == .fullAccess ? .green : .orange,
+                    actionTitle: calendar.authorizationStatus == .fullAccess ? nil : "Erlauben"
+                ) { Task { _ = await calendar.requestAccess() } }
+            }
+
+            Section("Privatsphäre") {
+                Toggle("App mit Face ID / Gerätecode schützen", isOn: Binding(
+                    get: { privacyLock.isEnabled },
+                    set: { newValue in
+                        if newValue {
+                            Task {
+                                if !(await privacyLock.enableAfterAuthentication()) {
+                                    appState.alert = AppAlert(title: "App-Schutz", message: "Die Authentifizierung wurde nicht abgeschlossen.")
+                                }
+                            }
+                        } else {
+                            privacyLock.isEnabled = false
+                        }
+                    }
+                ))
+                Label("Passwort und Sitzungstoken liegen im iOS-Schlüsselbund. Bilder und gemeinsame Daten bleiben auf deinem eigenen Server.", systemImage: "lock.shield.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Speicher") {
+                LabeledContent("Von dir belegt", value: ByteCountFormatter.string(fromByteCount: Int64(appState.storageUsedBytes), countStyle: .file))
+                if let limit = appState.me?.storageLimitMB, limit > 0 {
+                    ProgressView(value: Double(appState.storageUsedBytes), total: Double(limit * 1024 * 1024))
+                    Text("Limit: \(limit) MB · wird in rjapp_config.json festgelegt")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Kein Speicherlimit für diesen Benutzer festgelegt.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Systemgrenzen – ehrlich erklärt") {
+                InfoLine(symbol: "iphone.radiowaves.left.and.right", text: "Push benötigt nach dem Signieren ein Profil mit Push-Entitlement und konfigurierte APNs-Schlüssel auf dem Server. Ohne APNs synchronisiert die App beim Öffnen, bei Standortereignissen und nach von iOS gewährten Hintergrundläufen.")
+                InfoLine(symbol: "moon.zzz.fill", text: "Apple erlaubt nur die Aussage „Fokus aktiv“, nicht den Namen wie Schlafen oder Nicht stören.")
+                InfoLine(symbol: "wifi", text: "Der WLAN-Name ist nur verfügbar, wenn iOS die Access-WiFi-Information-Berechtigung akzeptiert; WLAN/Mobilfunk wird immer erkannt.")
+                InfoLine(symbol: "heart.text.square", text: "Die Schlafbalance ist eine klar gekennzeichnete RJ-Love-Berechnung aus der Schlafdauer, kein offizieller Apple-Schlafscore.")
+            }
+
+            Section("Diagnose") {
+                NavigationLink {
+                    DebugConsoleView()
+                } label: {
+                    Label("Debug-Konsole", systemImage: "terminal.fill")
+                }
+                LabeledContent("App-Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                LabeledContent("Backend", value: appState.features == nil ? "Noch nicht erkannt" : "Verbunden")
+            }
+
+            Section {
+                Button("Abmelden", role: .destructive) { logoutConfirmation = true }
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(LoveBackground())
+        .navigationTitle("Mehr")
+        .confirmationDialog("Wirklich abmelden?", isPresented: $logoutConfirmation, titleVisibility: .visible) {
+            Button("Abmelden", role: .destructive) { Task { await appState.logout() } }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("Serveradresse bleibt als Hilfe gespeichert; der sichere Sitzungstoken wird gelöscht.")
+        }
+        .task {
+            await notifications.refreshStatus()
+            device.refreshFocus()
+        }
+        .onChange(of: health.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
+        .onChange(of: location.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
+        .onChange(of: appState.shareWiFiName) { _, _ in appState.queuePresenceUpload(force: true) }
+        .onChange(of: appState.shareFocus) { _, _ in appState.queuePresenceUpload(force: true) }
+    }
+
+    private var locationStatus: String {
+        switch location.authorizationStatus {
+        case .authorizedAlways: "Immer erlaubt"
+        case .authorizedWhenInUse: "Beim Verwenden"
+        case .denied: "Abgelehnt"
+        case .restricted: "Eingeschränkt"
+        case .notDetermined: "Nicht gefragt"
+        @unknown default: "Unbekannt"
+        }
+    }
+
+    private var notificationStatus: String {
+        switch notifications.authorizationStatus {
+        case .authorized, .provisional, .ephemeral: "Erlaubt"
+        case .denied: "Abgelehnt"
+        case .notDetermined: "Nicht gefragt"
+        @unknown default: "Unbekannt"
+        }
+    }
+
+    private var alarmStatus: String {
+        switch appState.alarms.authorizationState {
+        case .authorized: "Erlaubt"
+        case .denied: "Abgelehnt"
+        case .notDetermined: "Nicht gefragt"
+        @unknown default: "Unbekannt"
+        }
+    }
+
+    private var motionStatus: String {
+        switch device.motionAuthorization {
+        case .authorized: "Erlaubt · \(device.motion)"
+        case .denied: "Abgelehnt"
+        case .restricted: "Eingeschränkt"
+        case .notDetermined: "Nicht gefragt"
+        @unknown default: "Unbekannt"
+        }
+    }
+
+    private var focusStatus: String {
+        if let active = device.focusActive { return active ? "Fokus aktiv" : "Kein Fokus" }
+        return "Nicht verfügbar"
+    }
+
+    private var calendarStatus: String {
+        switch calendar.authorizationStatus {
+        case .fullAccess: "Voller Zugriff"
+        case .writeOnly: "Nur Schreiben"
+        case .denied: "Abgelehnt"
+        case .restricted: "Eingeschränkt"
+        case .notDetermined: "Nicht gefragt"
+        @unknown default: "Unbekannt"
+        }
+    }
+}
+
+private struct PermissionRow: View {
+    let title: String
+    let status: String
+    let symbol: String
+    let tint: Color
+    let actionTitle: String?
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .frame(width: 28)
+                .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(status).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct InfoLine: View {
+    let symbol: String
+    let text: String
+
+    var body: some View {
+        Label {
+            Text(text).font(.footnote).foregroundStyle(.secondary)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(LovePalette.cyan)
+        }
+    }
+}

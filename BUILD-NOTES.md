@@ -15,4 +15,4 @@
 
 Die Build-Action führt vor XcodeGen die Python-Integrationstests, `py_compile`, Plist-Prüfungen und Konsistenzchecks aus. Die Widget-Extension wird in der Haupt-App eingebettet. Ein späterer IPA-Signierer muss beide Bundles signieren und passende Provisioningprofile/Entitlements verwenden.
 
-Der `push`-Trigger ist nur für den initialen, durch ChatGPT überwachten Golden-Master-Build vorgesehen. Nach erfolgreicher Verifikation wird er entfernt; der endgültige Workflow bleibt ausschließlich manuell über `workflow_dispatch` startbar.
+Der Golden-Master-Build wurde auf dem vorgesehenen macOS-/Xcode-Runner erfolgreich verifiziert. Der endgültige Workflow ist ausschließlich manuell über `workflow_dispatch` startbar.

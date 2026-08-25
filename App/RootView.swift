@@ -1,5 +1,13 @@
 import SwiftUI
 
+enum AppTab: Hashable {
+    case home
+    case map
+    case together
+    case moments
+    case settings
+}
+
 struct RootView: View {
     @Environment(AppState.self) private var appState
 
@@ -69,18 +77,27 @@ private struct PrivacyLockView: View {
 }
 
 struct MainTabView: View {
+    @Environment(AppState.self) private var appState
+
     var body: some View {
-        TabView {
+        @Bindable var state = appState
+
+        TabView(selection: $state.selectedTab) {
             NavigationStack { HomeView() }
                 .tabItem { Label("Zuhause", systemImage: "heart.fill") }
+                .tag(AppTab.home)
             NavigationStack { PartnerMapView() }
                 .tabItem { Label("Karte", systemImage: "location.fill") }
+                .tag(AppTab.map)
             NavigationStack { TogetherView() }
                 .tabItem { Label("Gemeinsam", systemImage: "person.2.fill") }
+                .tag(AppTab.together)
             NavigationStack { MomentsView() }
                 .tabItem { Label("Momente", systemImage: "photo.stack.fill") }
+                .tag(AppTab.moments)
             NavigationStack { SettingsView() }
                 .tabItem { Label("Mehr", systemImage: "slider.horizontal.3") }
+                .tag(AppTab.settings)
         }
     }
 }

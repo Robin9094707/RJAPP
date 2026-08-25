@@ -10,6 +10,7 @@ final class AlarmService {
     private(set) var authorizationState = AlarmManager.shared.authorizationState
     private(set) var lastError: String?
     private let scheduledKey = "rjlove.scheduled-alarm-ids"
+    private let reminderFingerprintsKey = "rjlove.reminder-alarm-fingerprints"
 
     private init() {}
 
@@ -39,12 +40,19 @@ final class AlarmService {
     }
 
     func schedule(reminder: SharedRecord, senderName: String) async throws {
-        guard reminder.kind == .reminder,
-              reminder.payload.alarmEnabled ?? false,
+        guard reminder.kind == .reminder, let id = UUID(uuidString: reminder.id) else { return }
+        guard reminder.payload.alarmEnabled ?? false,
+              reminder.payload.completed != true,
               let due = reminder.payload.dueAt?.rjDate,
-              due > .now,
-              let id = UUID(uuidString: reminder.id),
-              !scheduledIDs.contains(reminder.id) else { return }
+              due > .now else {
+            cancel(id: reminder.id)
+            return
+        }
+        let fingerprint = reminderFingerprint(reminder, senderName: senderName)
+        guard reminderFingerprints[reminder.id] != fingerprint else { return }
+        if scheduledIDs.contains(reminder.id) {
+            cancel(id: reminder.id)
+        }
         guard await ensureAuthorization() else { throw AlarmServiceError.permissionDenied }
         try await RJLoveAlarmFactory.schedule(
             id: id,
@@ -52,7 +60,25 @@ final class AlarmService {
             senderName: senderName,
             fireDate: due
         )
-        remember(reminder.id)
+        remember(reminder.id, reminderFingerprint: fingerprint)
+    }
+
+    func reconcile(reminders: [SharedRecord], myID: String, senderName: String) async {
+        let active = reminders.filter { reminder in
+            reminder.payload.targetID == nil || reminder.payload.targetID == myID
+        }
+        let activeIDs = Set(active.map(\.id))
+        for trackedID in reminderFingerprints.keys where !activeIDs.contains(trackedID) {
+            cancel(id: trackedID)
+        }
+        for reminder in active {
+            do {
+                try await schedule(reminder: reminder, senderName: senderName)
+            } catch {
+                lastError = error.localizedDescription
+                DebugLogger.shared.log("Erinnerung \(reminder.id): \(error.localizedDescription)", category: "Alarm")
+            }
+        }
     }
 
     func cancel(id: String) {
@@ -61,6 +87,9 @@ final class AlarmService {
         var values = scheduledIDs
         values.remove(id)
         UserDefaults.standard.set(Array(values), forKey: scheduledKey)
+        var fingerprints = reminderFingerprints
+        fingerprints.removeValue(forKey: id)
+        UserDefaults.standard.set(fingerprints, forKey: reminderFingerprintsKey)
     }
 
     private func ensureAuthorization() async -> Bool {
@@ -77,10 +106,28 @@ final class AlarmService {
         Set(UserDefaults.standard.stringArray(forKey: scheduledKey) ?? [])
     }
 
-    private func remember(_ id: String) {
+    private var reminderFingerprints: [String: String] {
+        UserDefaults.standard.dictionary(forKey: reminderFingerprintsKey) as? [String: String] ?? [:]
+    }
+
+    private func reminderFingerprint(_ reminder: SharedRecord, senderName: String) -> String {
+        [
+            reminder.payload.dueAt ?? "",
+            reminder.payload.title ?? "",
+            reminder.payload.targetID ?? "both",
+            senderName,
+        ].joined(separator: "|")
+    }
+
+    private func remember(_ id: String, reminderFingerprint: String? = nil) {
         var values = scheduledIDs
         values.insert(id)
         UserDefaults.standard.set(Array(values), forKey: scheduledKey)
+        if let reminderFingerprint {
+            var fingerprints = self.reminderFingerprints
+            fingerprints[id] = reminderFingerprint
+            UserDefaults.standard.set(fingerprints, forKey: reminderFingerprintsKey)
+        }
     }
 }
 

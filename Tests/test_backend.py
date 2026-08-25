@@ -61,6 +61,17 @@ class RJLoveBackendTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return body["token"]
 
+    def request_error(self, path, method="GET", body=None, token=None):
+        try:
+            self.request(path, method, body, token)
+        except urllib.error.HTTPError as error:
+            try:
+                raw = error.read()
+                return error.code, json.loads(raw) if raw else None
+            finally:
+                error.close()
+        self.fail("Die Anfrage hätte abgelehnt werden müssen.")
+
     def test_health_and_authentication(self):
         status, health = self.request("/health")
         self.assertEqual(status, 200)
@@ -121,6 +132,88 @@ class RJLoveBackendTests(unittest.TestCase):
             self.assertEqual(raised.exception.code, 401)
         finally:
             raised.exception.close()
+
+    def test_record_payloads_are_validated_and_kinds_are_immutable(self):
+        token = self.login()
+        record_id = "a85251ed-4385-43f6-adce-766daf292f54"
+        status, _ = self.request(
+            "/v1/records",
+            "POST",
+            {"id": record_id, "kind": "note", "payload": {"title": "Sicher", "text": "Gemeinsam"}},
+            token,
+        )
+        self.assertEqual(status, 200)
+
+        status, error = self.request_error(
+            "/v1/records",
+            "POST",
+            {
+                "id": record_id,
+                "kind": "calendar",
+                "payload": {
+                    "title": "Falscher Typ",
+                    "start_at": "2026-09-01T10:00:00Z",
+                    "end_at": "2026-09-01T11:00:00Z",
+                },
+            },
+            token,
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"], "record_kind_conflict")
+
+        status, error = self.request_error(
+            "/v1/records",
+            "POST",
+            {
+                "id": "4c6861d8-64cd-49a8-a96e-236b098daf74",
+                "kind": "reminder",
+                "payload": {
+                    "title": "Test",
+                    "due_at": "2026-09-01T10:00:00Z",
+                    "target_id": "unbekannt",
+                    "alarm_enabled": True,
+                },
+            },
+            token,
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(error["error"], "invalid_target")
+
+        status, error = self.request_error(
+            "/v1/records",
+            "POST",
+            {
+                "id": "081f4795-98ae-4609-9df4-cf9a5f7b9a8d",
+                "kind": "moment",
+                "payload": {
+                    "caption": "Kaputt",
+                    "image_base64": "kein-base64!",
+                    "mime_type": "image/jpeg",
+                    "comments": [],
+                    "reactions": [],
+                },
+            },
+            token,
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(error["error"], "invalid_image")
+
+        status, error = self.request_error(
+            "/v1/records",
+            "POST",
+            {
+                "id": "01e0d696-fab9-482d-906b-8c534c05674b",
+                "kind": "calendar",
+                "payload": {
+                    "title": "Zeitreise",
+                    "start_at": "2026-09-01T12:00:00Z",
+                    "end_at": "2026-09-01T11:00:00Z",
+                },
+            },
+            token,
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(error["error"], "invalid_calendar_range")
 
 
 if __name__ == "__main__":

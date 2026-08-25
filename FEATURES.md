@@ -13,11 +13,12 @@
 ## Liebe & Alltag
 
 - täglicher „Ich denke an dich“-Zähler mit interaktivem Widget
+- offlinefähige Herzgedanken-Warteschlange mit automatischem Tageswechsel
 - bestätigter Weckruf mit frei wählbarer Nachricht und AlarmKit-Fallback
 - gemeinsame Notizen mit Bearbeiten und bestätigtem Löschen
 - gemeinsame Erinnerungen, frei wählbare Zielperson, Datum und AlarmKit
 - gemeinsame ausgewählte Termine plus freiwilliger Export in den lokalen iOS-Kalender
-- private Fotomomente mit Caption, Kommentaren und Reaktionen
+- private Fotomomente mit Caption, Reaktionen sowie einzeln löschbaren Kommentaren
 - konfigurierbares Speicherlimit je Benutzer
 
 ## iOS-Integration
@@ -32,6 +33,8 @@
 - AlarmKit-Live-Activity-Darstellung
 - App Intent / Siri Shortcut „An Schatzi denken“
 - Face-ID-/Gerätecode-Appschutz
+- geschützter Offline-Snapshot für bereits synchronisierte Inhalte
+- Widget-Deep-Links direkt zur Karte und zu App-Bereichen
 - persistente Debug-Konsole ohne Passwörter oder Tokens
 
 ## Backend
@@ -44,6 +47,7 @@
 - optionaler APNs-Versand mit `curl`/`openssl`
 - persistente Ereignisse und Befehle, sodass Serverneustarts keine Daten verlieren
 - Upload-/Request-Limit und Speicherquote
+- typsichere Datensatzvalidierung, unveränderliche Eintragstypen und normalisierte Galerie-Metadaten
 - sanitäre Logs ohne Zugangsdaten
 
 ## Bewusste Apple-Grenzen

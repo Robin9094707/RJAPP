@@ -12,7 +12,8 @@ struct RJLoveApp: App {
                 .environment(appState)
                 .tint(LovePalette.pink)
                 .onOpenURL { url in
-                    if url.scheme == "rjlove" {
+                    if url.scheme?.lowercased() == "rjlove" {
+                        appState.handleDeepLink(url)
                         Task { await appState.syncNow(showErrors: false) }
                     }
                 }

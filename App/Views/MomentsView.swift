@@ -198,6 +198,7 @@ private struct MomentDetailView: View {
     @State private var moment: SharedRecord
     @State private var comment = ""
     @State private var deleting = false
+    @State private var commentToDelete: MomentComment?
     @State private var saving = false
 
     init(initialMoment: SharedRecord) {
@@ -239,6 +240,23 @@ private struct MomentDetailView: View {
                 }
                 Button("Abbrechen", role: .cancel) {}
             }
+            .confirmationDialog(
+                "Kommentar wirklich löschen?",
+                isPresented: Binding(
+                    get: { commentToDelete != nil },
+                    set: { if !$0 { commentToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Kommentar löschen", role: .destructive) {
+                    guard let value = commentToDelete else { return }
+                    deleteComment(value)
+                    commentToDelete = nil
+                }
+                Button("Abbrechen", role: .cancel) { commentToDelete = nil }
+            } message: {
+                Text("Der Kommentar wird aus diesem gemeinsamen Moment entfernt.")
+            }
         }
     }
 
@@ -276,6 +294,15 @@ private struct MomentDetailView: View {
                             if let date = value.createdAt.rjDate {
                                 Text(date.formatted(.relative(presentation: .named))).font(.caption2).foregroundStyle(.tertiary)
                             }
+                            Button(role: .destructive) {
+                                commentToDelete = value
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(saving)
+                            .accessibilityLabel("Kommentar von \(value.authorName) löschen")
                         }
                         Text(value.text).font(.subheadline)
                     }
@@ -331,6 +358,12 @@ private struct MomentDetailView: View {
         )
         payload.comments = comments
         comment = ""
+        save(payload)
+    }
+
+    private func deleteComment(_ value: MomentComment) {
+        var payload = moment.payload
+        payload.comments?.removeAll { $0.id == value.id }
         save(payload)
     }
 

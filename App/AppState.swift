@@ -33,6 +33,7 @@ final class AppState {
     private(set) var features: ServerFeatures?
     private(set) var lastSync: Date?
     private(set) var connectionMessage = "Verbindung wird geprüft …"
+    var selectedTab: AppTab = .home
     var alert: AppAlert?
     var statusMessage: String {
         didSet { UserDefaults.standard.set(statusMessage, forKey: "rjlove.status-message") }
@@ -60,6 +61,7 @@ final class AppState {
     private var lastPresenceUpload = Date.distantPast
     private var queuedPresenceTask: Task<Void, Never>?
     private var isActivated = false
+    private var serverLocalDay = WidgetSharedStore.localDayStamp()
 
     init() {
         statusMessage = UserDefaults.standard.string(forKey: "rjlove.status-message") ?? "Bin für dich da 💗"
@@ -76,8 +78,19 @@ final class AppState {
     var moments: [SharedRecord] { records.filter { $0.kind == .moment } }
     var geofences: [SharedRecord] { records.filter { $0.kind == .geofence } }
     var calendarEvents: [SharedRecord] { records.filter { $0.kind == .calendar } }
-    var myThoughtCount: Int { me.flatMap { thoughts[$0.id] } ?? 0 }
-    var partnerThoughtCount: Int { partner.flatMap { thoughts[$0.id] } ?? 0 }
+    var myThoughtCount: Int {
+        let synchronized: Int
+        if serverLocalDay == WidgetSharedStore.localDayStamp() {
+            synchronized = me.flatMap { thoughts[$0.id] } ?? 0
+        } else {
+            synchronized = 0
+        }
+        return synchronized + WidgetSharedStore.pendingThoughts()
+    }
+    var partnerThoughtCount: Int {
+        guard serverLocalDay == WidgetSharedStore.localDayStamp() else { return 0 }
+        return partner.flatMap { thoughts[$0.id] } ?? 0
+    }
     var isUsingHTTPS: Bool { profile?.baseURL.lowercased().hasPrefix("https://") == true }
 
     func activate() async {
@@ -93,6 +106,14 @@ final class AppState {
         deviceStatus.start()
         location.start()
         await notifications.refreshStatus()
+        if notifications.authorizationStatus == .authorized ||
+            notifications.authorizationStatus == .provisional ||
+            notifications.authorizationStatus == .ephemeral {
+            UIApplication.shared.registerForRemoteNotifications()
+            if let token = UserDefaults.standard.string(forKey: NotificationCoordinator.deviceTokenKey) {
+                await registerDeviceToken(token)
+            }
+        }
         BackgroundRefreshCoordinator.shared.handler = { [weak self] in
             guard let self else { return false }
             await self.syncNow(showErrors: false)
@@ -102,6 +123,7 @@ final class AppState {
         BackgroundRefreshCoordinator.shared.schedule()
         observeSystemEvents()
         startPolling()
+        await scheduleSharedReminders()
         await syncNow(showErrors: false)
     }
 
@@ -124,6 +146,7 @@ final class AppState {
         do {
             let response = try await api.login(username: newProfile.username, password: password, deviceID: deviceID)
             try KeychainStore.set(response.token, for: Self.tokenKey)
+            if profile != newProfile { AppCache.clear() }
             profile = newProfile
             Self.saveProfile(newProfile)
             me = response.user
@@ -152,7 +175,12 @@ final class AppState {
         partners = []
         records = []
         thoughts = [:]
+        storageUsedBytes = 0
+        features = nil
+        lastSync = nil
         pollTask?.cancel()
+        AppCache.clear()
+        WidgetSharedStore.clearPendingThoughts()
         WidgetSharedStore.saveSnapshot(WidgetSnapshot())
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -168,6 +196,7 @@ final class AppState {
             partners = snapshot.partners
             records = snapshot.records
             thoughts = snapshot.thoughts
+            serverLocalDay = snapshot.localDay
             storageUsedBytes = snapshot.storageUsedBytes
             features = snapshot.features
             lastSync = .now
@@ -178,6 +207,7 @@ final class AppState {
             await drainWidgetThoughts()
             updateWidgetSnapshot()
             await updateLiveActivity()
+            persistCache()
             if health.sharingEnabled { await health.refresh() }
             queuePresenceUpload(force: true)
             return true
@@ -198,14 +228,15 @@ final class AppState {
     }
 
     func sendThought() async {
-        do {
-            let response = try await api.sendThought()
-            if let myID = me?.id { thoughts[myID] = response.count }
-            updateWidgetSnapshot()
-            Haptics.success()
-        } catch {
-            alert = AppAlert(title: "Gedanke nicht gesendet", message: error.localizedDescription)
+        _ = WidgetSharedStore.addPendingThought()
+        updateWidgetSnapshot()
+        Haptics.success()
+        await drainWidgetThoughts()
+        if WidgetSharedStore.pendingThoughts() > 0 {
+            connectionMessage = "Offline · Herzgedanke vorgemerkt"
         }
+        updateWidgetSnapshot()
+        persistCache()
     }
 
     func sendWake(message: String) async -> Bool {
@@ -227,6 +258,7 @@ final class AppState {
             records.insert(record, at: 0)
             synchronizeGeofences()
             if kind == .reminder { await scheduleSharedReminders() }
+            persistCache()
             Haptics.success()
             return record
         } catch {
@@ -241,6 +273,7 @@ final class AppState {
             records.removeAll { $0.id == record.id }
             alarms.cancel(id: record.id)
             synchronizeGeofences()
+            persistCache()
             Haptics.success()
             return true
         } catch {
@@ -337,8 +370,11 @@ final class AppState {
             return
         }
         api.configure(baseURL: url, token: token)
+        if let cached = AppCache.load(matching: profile) {
+            apply(cached)
+        }
         phase = .authenticated
-        connectionMessage = "Gespeicherte Sitzung"
+        connectionMessage = lastSync == nil ? "Gespeicherte Sitzung" : "Offline-Daten geladen · synchronisiere …"
     }
 
     private func observeSystemEvents() {
@@ -397,9 +433,11 @@ final class AppState {
 
     private func scheduleSharedReminders() async {
         guard let myID = me?.id else { return }
-        for reminder in reminders where reminder.payload.targetID == nil || reminder.payload.targetID == myID {
-            try? await alarms.schedule(reminder: reminder, senderName: partner?.displayName ?? "Schatzi")
-        }
+        await alarms.reconcile(
+            reminders: reminders,
+            myID: myID,
+            senderName: partner?.displayName ?? "Schatzi"
+        )
     }
 
     private func drainWidgetThoughts() async {
@@ -432,6 +470,17 @@ final class AppState {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme?.lowercased() == "rjlove" else { return }
+        switch url.host?.lowercased() {
+        case "map": selectedTab = .map
+        case "together": selectedTab = .together
+        case "moments": selectedTab = .moments
+        case "settings": selectedTab = .settings
+        default: selectedTab = .home
+        }
+    }
+
     private func updateLiveActivity() async {
         guard liveActivity.isRunning else { return }
         await liveActivity.update(
@@ -460,6 +509,36 @@ final class AppState {
             )
         }
         location.synchronizeGeofences(places)
+    }
+
+    private func apply(_ cached: CachedAppSnapshot) {
+        me = cached.me
+        partners = cached.partners
+        records = cached.records
+        thoughts = cached.localDay == WidgetSharedStore.localDayStamp() ? cached.thoughts : [:]
+        storageUsedBytes = cached.storageUsedBytes
+        features = cached.features
+        lastSync = cached.lastSync
+        serverLocalDay = cached.localDay
+        synchronizeGeofences()
+        updateWidgetSnapshot()
+    }
+
+    private func persistCache() {
+        guard let profile, let me, let features, let lastSync else { return }
+        AppCache.save(
+            CachedAppSnapshot(
+                profile: profile,
+                localDay: serverLocalDay,
+                me: me,
+                partners: partners,
+                records: records,
+                thoughts: thoughts,
+                storageUsedBytes: storageUsedBytes,
+                features: features,
+                lastSync: lastSync
+            )
+        )
     }
 
     private var deviceID: String {

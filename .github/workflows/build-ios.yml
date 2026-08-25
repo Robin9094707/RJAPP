@@ -2,6 +2,9 @@ name: Build RJ Love unsigned IPA
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read

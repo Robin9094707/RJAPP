@@ -14,11 +14,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         BackgroundRefreshCoordinator.shared.register()
+        application.registerForRemoteNotifications()
         return true
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        UserDefaults.standard.set(token, forKey: NotificationCoordinator.deviceTokenKey)
         NotificationCenter.default.post(name: .rjDeviceTokenReceived, object: token)
     }
 
@@ -48,6 +50,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 @MainActor
 final class NotificationCoordinator: ObservableObject {
     static let shared = NotificationCoordinator()
+    static let deviceTokenKey = "rjlove.apns-device-token"
 
     @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
 

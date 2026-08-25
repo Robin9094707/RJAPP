@@ -1,6 +1,7 @@
 # Build Notes
 
 - App: `RJLove`
+- Version: `1.1.0` (Build 2)
 - Scheme: `RJLove`
 - Bundle-ID: `eu.rjuhas.rjlove`
 - Widget-Bundle-ID: `eu.rjuhas.rjlove.widgets`

@@ -28,6 +28,8 @@ Voraussetzung: Python 3.11 oder neuer. Es werden keine `pip`-Pakete benötigt.
 
 Die erzeugte Konfiguration enthält bereits zufällige, starke Startpasswörter. Sie kann direkt verwendet oder geändert werden. `storage_limit_mb: 0` bedeutet unbegrenzt. Daten landen standardmäßig in `Backend/rjlove_data/rjlove.sqlite3`; WAL sorgt dafür, dass Neustarts und kurze Unterbrechungen nichts verlieren.
 
+Die iOS-App hält zusätzlich einen durch iOS-Dateischutz abgesicherten Offline-Snapshot vor. Bereits synchronisierte Karten-, Status- und Gemeinschaftsdaten bleiben dadurch nach einem App- oder Serverneustart sichtbar. Herzgedanken werden bei fehlender Verbindung lokal vorgemerkt und beim nächsten erfolgreichen Sync zuverlässig nachgesendet.
+
 ### HTTPS
 
 Empfohlen ist ein Reverse Proxy (NGINX, Caddy, Cloudflare Tunnel) vor dem internen HTTP-Port. Alternativ kann der Server selbst TLS aktivieren:
@@ -66,6 +68,7 @@ Die IPA ist absichtlich unsigniert. Beim späteren Signieren müssen die eingebe
 - freiwillige Freigaben einzeln schaltbar;
 - Health teilt nur Schritte, Schlafminuten und den app-eigenen Dauer-Score;
 - alle gemeinsamen Einträge sind in der App löschbar;
+- einzelne Galeriekommentare sind mit Bestätigung löschbar;
 - keine Zugangsdaten, Zertifikate oder persönlichen Serverdaten im Git-Repository.
 
 Weitere Details stehen in [FEATURES.md](FEATURES.md), [BUILD-NOTES.md](BUILD-NOTES.md) und [PRIVACY.md](PRIVACY.md).

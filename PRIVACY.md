@@ -6,7 +6,8 @@ RJ Love ist für eine private, einvernehmliche Verbindung zwischen den konfiguri
 
 - Server: freigegebene Position/Statuswerte, gemeinsame Inhalte, Sitzungen, APNs-Gerätetoken und Ereigniszustand.
 - iPhone-Schlüsselbund: Server-Sitzungstoken.
-- iPhone-App-Container/App Group: nicht geheime UI-Einstellungen, Widget-Snapshot und noch nicht gesendete Widget-Herzgedanken.
+- iPhone-App-Container: durch iOS-Dateischutz abgesicherter Offline-Snapshot der zuletzt synchronisierten Inhalte.
+- App Group: Widget-Snapshot ausgewählter Partnerwerte und noch nicht gesendete Herzgedanken.
 
 ## Nicht erhoben
 

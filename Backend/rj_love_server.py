@@ -15,6 +15,7 @@ by the Python standard library (APNs additionally uses the system ``curl`` and
 from __future__ import annotations
 
 import base64
+import binascii
 import contextlib
 import datetime as dt
 import hashlib
@@ -41,7 +42,7 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
@@ -56,7 +57,7 @@ def iso_now() -> str:
 
 
 def parse_iso(value: str | None) -> dt.datetime | None:
-    if not value:
+    if not isinstance(value, str) or not value:
         return None
     try:
         parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -526,6 +527,152 @@ class RJLoveApplication:
 
     def partner_ids(self, user_id: str) -> list[str]:
         return [item["id"] for item in self.config["users"] if item["id"] != user_id]
+
+    def validate_record_payload(self, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+        allowed_fields = {
+            "note": {"title", "text"},
+            "reminder": {"title", "message", "due_at", "target_id", "alarm_enabled", "completed"},
+            "moment": {"caption", "image_base64", "mime_type", "comments", "reactions"},
+            "geofence": {
+                "name", "latitude", "longitude", "radius", "target_id",
+                "notify_on_enter", "notify_on_exit",
+            },
+            "calendar": {"title", "start_at", "end_at", "location", "notes"},
+        }[kind]
+        unknown = set(payload) - allowed_fields
+        if unknown:
+            raise APIError(
+                HTTPStatus.BAD_REQUEST,
+                "unknown_record_field",
+                f"Unbekanntes Feld für {kind}: {sorted(unknown)[0]}",
+            )
+        clean = dict(payload)
+
+        def text_field(key: str, maximum: int, *, required: bool = False) -> None:
+            value = clean.get(key)
+            if value is None:
+                clean.pop(key, None)
+                if required:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "missing_record_field", f"'{key}' fehlt.")
+                return
+            clean[key] = safe_text(value, maximum, allow_empty=not required)
+
+        def boolean_field(key: str) -> None:
+            if key in clean and not isinstance(clean[key], bool):
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_boolean", f"'{key}' muss true oder false sein.")
+
+        def target_field() -> None:
+            target = clean.get("target_id")
+            if target is None:
+                clean.pop("target_id", None)
+                return
+            target = safe_text(target, 64, allow_empty=False).lower()
+            if self.user_by_id(target) is None:
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_target", "Der ausgewählte Benutzer existiert nicht.")
+            clean["target_id"] = target
+
+        if kind == "note":
+            text_field("title", 120, required=True)
+            text_field("text", 20_000)
+
+        elif kind == "reminder":
+            text_field("title", 120, required=True)
+            text_field("message", 1_000)
+            text_field("due_at", 80, required=True)
+            if parse_iso(clean.get("due_at")) is None:
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_due_at", "Der Erinnerungszeitpunkt ist ungültig.")
+            target_field()
+            boolean_field("alarm_enabled")
+            boolean_field("completed")
+
+        elif kind == "moment":
+            text_field("caption", 1_000)
+            text_field("image_base64", int(self.config["server"].get("max_request_mb", 10)) * 1_500_000, required=True)
+            text_field("mime_type", 80, required=True)
+            if clean["mime_type"] not in {"image/jpeg", "image/png", "image/heic", "image/heif"}:
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_image_type", "Dieses Bildformat wird nicht unterstützt.")
+            try:
+                image_data = base64.b64decode(clean["image_base64"], validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_image", "Das Bild ist nicht gültig kodiert.") from exc
+            maximum_image = int(self.config["server"].get("max_request_mb", 10)) * 1024 * 1024
+            if not image_data or len(image_data) > maximum_image:
+                raise APIError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "image_too_large", "Das Bild überschreitet das Upload-Limit.")
+
+            comments = clean.get("comments", [])
+            if not isinstance(comments, list) or len(comments) > 200:
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_comments", "Die Kommentarliste ist ungültig oder zu lang.")
+            normalized_comments = []
+            for comment in comments:
+                if not isinstance(comment, dict):
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_comment", "Ein Kommentar ist ungültig.")
+                comment_id = safe_text(comment.get("id", ""), 64, allow_empty=False)
+                try:
+                    uuid.UUID(comment_id)
+                except ValueError as exc:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_comment_id", "Eine Kommentar-ID ist ungültig.") from exc
+                author_id = safe_text(comment.get("author_id", ""), 64, allow_empty=False).lower()
+                author = self.user_by_id(author_id)
+                if author is None:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_comment_author", "Ein Kommentarautor ist ungültig.")
+                created_at = safe_text(comment.get("created_at", ""), 80, allow_empty=False)
+                if parse_iso(created_at) is None:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_comment_date", "Ein Kommentarzeitpunkt ist ungültig.")
+                normalized_comments.append({
+                    "id": comment_id,
+                    "author_id": author_id,
+                    "author_name": author["display_name"],
+                    "text": safe_text(comment.get("text", ""), 500, allow_empty=False),
+                    "created_at": created_at,
+                })
+            clean["comments"] = normalized_comments
+
+            reactions = clean.get("reactions", [])
+            allowed_reactions = {"❤️", "🥰", "😂", "🥹", "✨"}
+            if not isinstance(reactions, list) or len(reactions) > len(self.config["users"]):
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_reactions", "Die Reaktionsliste ist ungültig.")
+            normalized_reactions = []
+            seen_reactors: set[str] = set()
+            for reaction in reactions:
+                if not isinstance(reaction, dict):
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_reaction", "Eine Reaktion ist ungültig.")
+                author_id = safe_text(reaction.get("author_id", ""), 64, allow_empty=False).lower()
+                emoji = safe_text(reaction.get("emoji", ""), 8, allow_empty=False)
+                if self.user_by_id(author_id) is None or author_id in seen_reactors or emoji not in allowed_reactions:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_reaction", "Eine Reaktion ist ungültig.")
+                seen_reactors.add(author_id)
+                normalized_reactions.append({"author_id": author_id, "emoji": emoji})
+            clean["reactions"] = normalized_reactions
+
+        elif kind == "geofence":
+            text_field("name", 80, required=True)
+            target_field()
+            for key, minimum, maximum in (("latitude", -90.0, 90.0), ("longitude", -180.0, 180.0), ("radius", 50.0, 1_000.0)):
+                value = clean.get(key)
+                if isinstance(value, bool):
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_geofence", f"'{key}' ist ungültig.")
+                try:
+                    number = float(value)
+                except (TypeError, ValueError) as exc:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_geofence", f"'{key}' ist ungültig.") from exc
+                if not minimum <= number <= maximum:
+                    raise APIError(HTTPStatus.BAD_REQUEST, "invalid_geofence", f"'{key}' liegt außerhalb des gültigen Bereichs.")
+                clean[key] = number
+            boolean_field("notify_on_enter")
+            boolean_field("notify_on_exit")
+
+        elif kind == "calendar":
+            text_field("title", 120, required=True)
+            text_field("start_at", 80, required=True)
+            text_field("end_at", 80, required=True)
+            text_field("location", 500)
+            text_field("notes", 5_000)
+            start = parse_iso(clean.get("start_at"))
+            end = parse_iso(clean.get("end_at"))
+            if start is None or end is None or end < start:
+                raise APIError(HTTPStatus.BAD_REQUEST, "invalid_calendar_range", "Der Terminzeitraum ist ungültig.")
+
+        return clean
 
     def password_matches(self, user: dict[str, Any], candidate: str) -> bool:
         secret = self.config["security"]["server_secret"].encode("utf-8")
@@ -1002,13 +1149,23 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         payload = body.get("payload")
         if not isinstance(payload, dict):
             raise APIError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Der Datensatzinhalt ist ungültig.")
+        payload = self.app.validate_record_payload(kind, payload)
         raw_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         size = len(raw_payload.encode("utf-8"))
         now = iso_now()
 
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            old = db.execute("SELECT owner_id,size_bytes,created_at FROM records WHERE id=?", (record_id,)).fetchone()
+            old = db.execute(
+                "SELECT owner_id,kind,size_bytes,created_at FROM records WHERE id=?",
+                (record_id,),
+            ).fetchone()
+            if old and str(old["kind"]) != kind:
+                raise APIError(
+                    HTTPStatus.CONFLICT,
+                    "record_kind_conflict",
+                    "Der Typ eines vorhandenen Eintrags kann nicht geändert werden.",
+                )
             owner_id = str(old["owner_id"]) if old else user_id
             if old and owner_id != user_id:
                 # Both partners may edit shared records, but quota remains charged to the creator.
@@ -1154,7 +1311,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             raise APIError(HTTPStatus.NOT_FOUND, "image_not_found", "Das Bild wurde nicht gefunden.")
         try:
             data = base64.b64decode(encoded, validate=True)
-        except ValueError as exc:
+        except (ValueError, binascii.Error) as exc:
             raise APIError(HTTPStatus.INTERNAL_SERVER_ERROR, "image_invalid", "Das gespeicherte Bild ist beschädigt.") from exc
         mime = str(payload.get("mime_type") or "image/jpeg")
         if not mime.startswith("image/"):

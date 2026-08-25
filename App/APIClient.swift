@@ -1,6 +1,6 @@
 import Foundation
 
-struct ServerProfile: Codable, Equatable {
+struct ServerProfile: Codable, Equatable, Sendable {
     var baseURL: String
     var username: String
 }

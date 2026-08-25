@@ -53,7 +53,7 @@ enum WidgetSharedStore {
 
     static func pendingThoughts() -> Int {
         resetPendingThoughtsIfNeeded()
-        defaults.integer(forKey: pendingThoughtsKey)
+        return defaults.integer(forKey: pendingThoughtsKey)
     }
 
     static func consumeOnePendingThought() -> Bool {

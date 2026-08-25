@@ -37,7 +37,7 @@ struct SettingsView: View {
                 .disabled(appState.isSyncing)
             }
 
-            Section("Was ich teile") {
+            Section {
                 Toggle("Live-Standort", isOn: $location.sharingEnabled)
                 Toggle("Health-Zusammenfassung", isOn: $health.sharingEnabled)
                 Toggle("WLAN-Name, wenn verfügbar", isOn: $state.shareWiFiName)
@@ -45,6 +45,8 @@ struct SettingsView: View {
                 TextField("Mein Status", text: $state.statusMessage, axis: .vertical)
                     .lineLimit(2...4)
                 Button("Status jetzt übertragen") { appState.queuePresenceUpload(force: true) }
+            } header: {
+                Text("Was ich teile")
             } footer: {
                 Text("Health teilt nur Schritte, Schlafdauer und die von RJ Love berechnete Schlafbalance – keine Rohdaten. iOS gibt Apps keinen Namen des aktiven Fokus frei.")
             }

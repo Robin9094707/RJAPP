@@ -254,7 +254,7 @@ struct HomeView: View {
 
     private var networkLabel: String {
         if let wifi = appState.partner?.presence?.wifiName, !wifi.isEmpty { return wifi }
-        switch appState.partner?.presence?.networkType {
+        return switch appState.partner?.presence?.networkType {
         case "wifi": "WLAN"
         case "cellular": "Mobilfunk"
         case "offline": "Offline"
@@ -264,7 +264,7 @@ struct HomeView: View {
     }
 
     private var networkSymbol: String {
-        switch appState.partner?.presence?.networkType {
+        return switch appState.partner?.presence?.networkType {
         case "wifi": "wifi"
         case "cellular": "antenna.radiowaves.left.and.right"
         case "offline": "wifi.slash"
@@ -273,7 +273,7 @@ struct HomeView: View {
     }
 
     private var motionSymbol: String {
-        switch appState.partner?.presence?.motion {
+        return switch appState.partner?.presence?.motion {
         case "Auto": "car.fill"
         case "Fahrrad": "bicycle"
         case "Laufen": "figure.run"

@@ -96,7 +96,8 @@ final class AppState {
         BackgroundRefreshCoordinator.shared.handler = { [weak self] in
             guard let self else { return false }
             await self.syncNow(showErrors: false)
-            return self.lastSync.map { Date.now.timeIntervalSince($0) < 60 } ?? false
+            let timestamp = await self.lastSync
+            return timestamp.map { Date.now.timeIntervalSince($0) < 60 } ?? false
         }
         BackgroundRefreshCoordinator.shared.schedule()
         observeSystemEvents()

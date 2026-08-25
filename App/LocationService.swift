@@ -12,7 +12,7 @@ struct MonitoredLovePlace: Hashable {
 }
 
 @MainActor
-final class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
+final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocationManagerDelegate {
     static let shared = LocationService()
 
     @Published private(set) var authorizationStatus: CLAuthorizationStatus

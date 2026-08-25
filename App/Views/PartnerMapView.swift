@@ -150,14 +150,11 @@ struct PartnerMapView: View {
         }
         Task {
             do {
-                let placemarks = try await CLGeocoder().reverseGeocodeLocation(
-                    CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                )
-                if let place = placemarks.first {
-                    let street = [place.thoroughfare, place.subThoroughfare].compactMap { $0 }.joined(separator: " ")
-                    let city = [place.postalCode, place.locality].compactMap { $0 }.joined(separator: " ")
-                    address = [street, city].filter { !$0.isEmpty }.joined(separator: ", ")
-                }
+                let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                guard let request = MKReverseGeocodingRequest(location: location) else { return }
+                let mapItems = try await request.mapItems
+                address = mapItems.first?.name
+                    ?? String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
             } catch {
                 address = String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
             }
@@ -166,7 +163,8 @@ struct PartnerMapView: View {
 
     private func openRoute() {
         guard let coordinate = partnerCoordinate else { return }
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let item = MKMapItem(location: location, address: nil)
         item.name = appState.partner?.displayName ?? "Schatzi"
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
     }

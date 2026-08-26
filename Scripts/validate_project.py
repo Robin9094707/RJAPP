@@ -53,6 +53,8 @@ for expected in ["eu.rjuhas.rjlove", "eu.rjuhas.rjlove.widgets", 'iOS: "26.1"', 
 for expected in ["workflow_dispatch", "CODE_SIGNING_ALLOWED=NO", "RJ-Love-unsigned.ipa", "RJ-Love-build.log"]:
     if expected not in workflow:
         fail(f"workflow missing {expected}")
+if "\n  push:" in workflow:
+    fail("final workflow must remain manual-only")
 
 for path in ROOT.rglob("*"):
     if not path.is_file() or path.suffix not in {".swift", ".yml", ".md", ".plist"}:

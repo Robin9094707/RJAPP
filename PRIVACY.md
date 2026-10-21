@@ -1,4 +1,4 @@
-# Datenschutz — RJ Love 2.1
+# Datenschutz — RJ Love 2.2
 
 RJ Love ist für genau zwei konfigurierte Konten vorgesehen. Kein Tracking-SDK, keine Werbung, keine Analyseplattform.
 
@@ -20,3 +20,7 @@ Mikrofonzugriff wird erst nach einer Aufnahmeaktion abgefragt. Der Recorder ist 
 Ein Entwurf liegt mit iOS-Dateischutz lokal im App-Ordner. Erst die Senden-Aktion lädt ihn auf den eigenen Server hoch. Anhören lädt Audio nur nach Nutzeraktion; es gibt keinen öffentlichen Audio-Link und kein automatisches Abspielen eingehender Clips. Die aktive App-Anmeldung ist bei jedem Download erforderlich. Playback nutzt einen flüchtigen Speicherpuffer. Bei Abmeldung werden lokale Entwürfe gelöscht. Aufnahmen sind für beide Konten sichtbar. Nur der Ersteller kann sie löschen; nur das Gegenüber kann bewerten. Audio/zugehörige Wertungen werden beim Löschen aus den aktiven Tabellen entfernt. Serverseitige SQLite-Freiseiten und eigene Sicherungen können frühere Bytes enthalten; deren sichere Löschung liegt beim Serverbetreiber. Keine Ende-zu-Ende-Verschlüsselung.
 
 Die Aufnahme-Live-Aktivität zeigt nur den laufenden Recorder, keine geteilten Audioinhalte. Optionale Push-Dienste erhalten nur einen allgemeinen Hinweis auf neue Duftpost. Sterne sind manuelle Spaßbewertungen; Wellenformen sind Aufnahmepegel, keine objektive Geruchs- oder Qualitätsmessung.
+
+## Update 2.2
+
+Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk puffert Audio und Texte höchstens zehn Minuten auf eurem eigenen Server.

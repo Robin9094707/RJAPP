@@ -30,6 +30,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     var onGeofenceEvent: ((String, String, String) -> Void)?
 
     private let manager = CLLocationManager()
+    private var authorizationWaiter: CheckedContinuation<Void, Never>?
     private var placeNames: [String: String] = [:]
 
     private override init() {
@@ -43,6 +44,18 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.activityType = .otherNavigation
         manager.pausesLocationUpdatesAutomatically = true
         manager.showsBackgroundLocationIndicator = true
+    }
+
+    func requestSetupAccess() async {
+        if manager.authorizationStatus == .notDetermined {
+            await withCheckedContinuation { continuation in
+                authorizationWaiter = continuation
+                manager.requestWhenInUseAuthorization()
+            }
+        }
+        if manager.authorizationStatus == .authorizedWhenInUse {
+            manager.requestAlwaysAuthorization()
+        }
     }
 
     func requestWhenInUse() {
@@ -116,6 +129,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
         accuracyAuthorization = manager.accuracyAuthorization
+        if authorizationStatus != .notDetermined { authorizationWaiter?.resume(); authorizationWaiter = nil }
         if sharingEnabled, manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
             start()
         }

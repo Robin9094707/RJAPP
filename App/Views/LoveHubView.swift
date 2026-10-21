@@ -45,6 +45,9 @@ struct LoveHubView: View {
         }
         .background(LoveBackground()).navigationTitle("Nur wir zwei").navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Walkie-Talkie", systemImage: "antenna.radiowaves.left.and.right") { appState.showingRadio = true }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink { TogetherView() } label: { Image(systemName: "tray.full") }
                     .accessibilityLabel("Notizen, Erinnerungen und Kalender")

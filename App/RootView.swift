@@ -36,6 +36,10 @@ struct RootView: View {
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {
                         FartRecorderView(autoStart: false)
+                    } else if ProcessInfo.processInfo.arguments.contains("--preview-radio") {
+                        NavigationStack { WalkieTalkieView() }
+                    } else if ProcessInfo.processInfo.arguments.contains("--preview-setup") {
+                        SetupJourneyView()
                     } else if ProcessInfo.processInfo.arguments.contains("--preview-health") {
                         NavigationStack { HealthDashboardView() }
                     } else { MainTabView() }
@@ -107,8 +111,10 @@ struct MainTabView: View {
                 .tabItem { Label("Mehr", systemImage: "slider.horizontal.3") }
                 .tag(AppTab.settings)
         }
-        .sheet(isPresented: $state.showingFartRecorder) {
+        .sheet(isPresented: $state.showingFartRecorder, onDismiss: { Task { await appState.radio.restoreIfEnabled(api: appState.api) } }) {
             FartRecorderView(autoStart: appState.quickFartRecording)
         }
+        .sheet(isPresented: $state.showingRadio) { NavigationStack { WalkieTalkieView() } }
+        .fullScreenCover(isPresented: $state.setupJourney.presented) { SetupJourneyView() }
     }
 }

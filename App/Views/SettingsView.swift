@@ -2,7 +2,6 @@ import AlarmKit
 import CoreLocation
 import CoreMotion
 import EventKit
-import Intents
 import SwiftUI
 import UserNotifications
 
@@ -20,7 +19,9 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
-            Section("Euer privater Raum · 2.1") {
+            Section("Euer privater Raum · 2.2") {
+                Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
+                NavigationLink { WalkieTalkieView() } label: { Label("Walkie-Talkie & Vorlesen", systemImage: "antenna.radiowaves.left.and.right") }
                 NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }
                 NavigationLink { HealthDashboardView() } label: { Label("Health & Freigaben", systemImage: "heart.text.square.fill") }
                 NavigationLink { CapabilitiesView() } label: { Label("Funktionen & Signatur", systemImage: "checkmark.seal.fill") }
@@ -47,14 +48,13 @@ struct SettingsView: View {
                 Toggle("Live-Standort", isOn: $location.sharingEnabled)
                 Toggle("Health-Zusammenfassung", isOn: $health.sharingEnabled)
                 Toggle("WLAN-Name, wenn verfügbar", isOn: $state.shareWiFiName)
-                Toggle("Fokus aktiv / nicht aktiv", isOn: $state.shareFocus)
                 TextField("Mein Status", text: $state.statusMessage, axis: .vertical)
                     .lineLimit(2...4)
                 Button("Status jetzt übertragen") { appState.queuePresenceUpload(force: true) }
             } header: {
                 Text("Was ich teile")
             } footer: {
-                Text("Wähle unter Health & Freigaben getrennt aus, ob du Aktivität, Schlaf oder Vitalwerte teilst. iOS gibt Apps keinen Namen des aktiven Fokus frei.")
+                Text("Wähle unter Health & Freigaben getrennt aus, ob du Aktivität, Schlaf oder Vitalwerte teilst.")
             }
 
             Section("Berechtigungen") {
@@ -117,14 +117,6 @@ struct SettingsView: View {
                 ) { device.startMotionUpdates() }
 
                 PermissionRow(
-                    title: "Fokusstatus",
-                    status: focusStatus,
-                    symbol: "moon.fill",
-                    tint: device.focusActive == nil ? .orange : .green,
-                    actionTitle: device.focusActive == nil ? "Anfragen" : nil
-                ) { Task { await device.requestFocusAuthorization() } }
-
-                PermissionRow(
                     title: "iOS-Kalender",
                     status: calendarStatus,
                     symbol: "calendar",
@@ -169,7 +161,6 @@ struct SettingsView: View {
 
             Section("Systemgrenzen – ehrlich erklärt") {
                 InfoLine(symbol: "iphone.radiowaves.left.and.right", text: "Push benötigt nach dem Signieren ein Profil mit Push-Entitlement und konfigurierte APNs-Schlüssel auf dem Server. Ohne APNs synchronisiert die App beim Öffnen, bei Standortereignissen und nach von iOS gewährten Hintergrundläufen.")
-                InfoLine(symbol: "moon.zzz.fill", text: "Apple erlaubt nur die Aussage „Fokus aktiv“, nicht den Namen wie Schlafen oder Nicht stören.")
                 InfoLine(symbol: "wifi", text: "Der WLAN-Name ist nur verfügbar, wenn iOS die Access-WiFi-Information-Berechtigung akzeptiert; WLAN/Mobilfunk wird immer erkannt.")
                 InfoLine(symbol: "heart.text.square", text: "Die Schlafbalance ist eine klar gekennzeichnete RJ-Love-Berechnung aus der Schlafdauer, kein offizieller Apple-Schlafscore.")
             }
@@ -194,7 +185,6 @@ struct SettingsView: View {
         .onChange(of: health.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
         .onChange(of: location.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
         .onChange(of: appState.shareWiFiName) { _, _ in appState.queuePresenceUpload(force: true) }
-        .onChange(of: appState.shareFocus) { _, _ in appState.queuePresenceUpload(force: true) }
         .navigationTitle("Mehr")
         .confirmationDialog("Wirklich abmelden?", isPresented: $logoutConfirmation, titleVisibility: .visible) {
             Button("Abmelden", role: .destructive) { Task { await appState.logout() } }
@@ -204,12 +194,10 @@ struct SettingsView: View {
         }
         .task {
             await notifications.refreshStatus()
-            device.refreshFocus()
         }
         .onChange(of: health.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
         .onChange(of: location.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
         .onChange(of: appState.shareWiFiName) { _, _ in appState.queuePresenceUpload(force: true) }
-        .onChange(of: appState.shareFocus) { _, _ in appState.queuePresenceUpload(force: true) }
     }
 
     private var locationStatus: String {
@@ -249,11 +237,6 @@ struct SettingsView: View {
         case .notDetermined: "Nicht gefragt"
         @unknown default: "Unbekannt"
         }
-    }
-
-    private var focusStatus: String {
-        if let active = device.focusActive { return active ? "Fokus aktiv" : "Kein Fokus" }
-        return "Nicht verfügbar"
     }
 
     private var calendarStatus: String {

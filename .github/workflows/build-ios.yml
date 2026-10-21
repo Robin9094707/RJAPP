@@ -100,9 +100,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-2.1-Komplettpaket
+          name: RJ-Love-2.2-Komplettpaket
           path: |
-            RJ-Love-2.1-Komplettpaket.zip
+            RJ-Love-2.2-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -148,4 +148,6 @@ jobs:
           path: |
             Preview-*.png
             Simulator-build.log
+            UI-backend.log
+            RecorderFlow.xcresult
           if-no-files-found: warn

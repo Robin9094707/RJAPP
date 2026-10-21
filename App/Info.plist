@@ -65,6 +65,8 @@
 		<string>location</string>
 		<string>fetch</string>
 		<string>remote-notification</string>
+		<string>push-to-talk</string>
+		<string>audio</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
@@ -91,6 +93,6 @@
 	<key>NSNearbyInteractionUsageDescription</key>
 	<string>Wenn ihr beide die Nahbereichssuche öffnet, misst RJ Love per Ultra-Breitband eure Entfernung und Richtung.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>RJ Love nimmt nur auf deinen Wunsch kurze Audios für eure private Duftpost auf. Du kannst sie vor dem Teilen anhören und löschen.</string>
+	<string>RJ Love verwendet das Mikrofon für deine Duftpost und solange du im Walkie-Talkie die Sprechtaste drückst. Aufnahmen kannst du vor dem Teilen anhören und schneiden.</string>
 </dict>
 </plist>

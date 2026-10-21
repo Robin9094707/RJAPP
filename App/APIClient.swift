@@ -49,6 +49,11 @@ final class APIClient: @unchecked Sendable {
         lock.unlock()
     }
 
+    func sessionCopy() -> APIClient {
+        let copy = APIClient()
+        if let (url, token) = try? snapshot() { copy.configure(baseURL: url, token: token) }
+        return copy
+    }
     private func snapshot() throws -> (URL, String?) {
         lock.lock()
         defer { lock.unlock() }
@@ -216,6 +221,9 @@ final class APIClient: @unchecked Sendable {
     func uploadFart(_ body: FartUpload) async throws -> FartClip {
         try await execute(try request(path: "/v1/farts", method: "POST", body: encoder.encode(body)), as: FartClip.self)
     }
+    func editFart(_ body: FartUpload) async throws -> FartClip {
+        try await execute(try request(path: "/v1/farts/\(body.id)/edit", method: "POST", body: encoder.encode(body)), as: FartClip.self)
+    }
     func rateFart(id: String, overall: Int, power: Int, style: Int, comment: String) async throws -> FartClip {
         struct Body: Encodable { let overall: Int; let power: Int; let style: Int; let comment: String }
         return try await execute(try request(path: "/v1/farts/\(id)/rating", method: "POST", body: encoder.encode(Body(overall: overall, power: power, style: style, comment: comment))), as: FartClip.self)
@@ -237,6 +245,29 @@ final class APIClient: @unchecked Sendable {
         }
         guard data.count <= 4 * 1024 * 1024 else { throw APIClientError.invalidResponse }
         return data
+    }
+
+    func radioJoin(token: String) async throws -> RadioJoin {
+        #if DEBUG
+        let environment = "sandbox"
+        #else
+        let environment = "production"
+        #endif
+        return try await execute(try request(path: "/v1/radio/join", method: "POST", body: encoder.encode(["token": token, "environment": environment])), as: RadioJoin.self)
+    }
+    func radioFeed(after cursor: Int) async throws -> RadioFeed {
+        var value = try request(path: "/v1/radio/feed", method: "GET")
+        var components = URLComponents(url: value.url!, resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "after", value: String(cursor))]
+        value.url = components.url
+        return try await execute(value, as: RadioFeed.self)
+    }
+    func radioAction(_ action: String, transmissionID: String? = nil, chunkIndex: Int? = nil, audio: Data? = nil, text: String? = nil) async throws {
+        struct Body: Encodable {
+            var transmission_id: String?; var chunk_index: Int?; var audio_base64: String?; var text: String?
+        }
+        let body = Body(transmission_id: transmissionID, chunk_index: chunkIndex, audio_base64: audio?.base64EncodedString(), text: text)
+        _ = try await execute(try request(path: "/v1/radio/\(action)", method: "POST", body: encoder.encode(body)), as: EmptyResponse.self)
     }
 
     func logout() async {

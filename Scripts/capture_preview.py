@@ -25,10 +25,20 @@ try:
     app = Path('.sim-derived/Build/Products/Debug-iphonesimulator/RJ Love.app')
     assert app.is_dir()
     run('xcrun', 'simctl', 'install', device, str(app))
-    for name, arguments in [('Wir', []), ('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Recorder', ['--preview-recorder']), ('Liebe', ['--preview-love'])]:
+    for name, arguments in [('Wir', []), ('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Recorder', ['--preview-recorder']), ('Liebe', ['--preview-love']), ('Schnitt', ['--preview-recorder', '--preview-draft']), ('Funk', ['--preview-radio']), ('Einrichtung', ['--preview-setup'])]:
         run('xcrun', 'simctl', 'launch', device, 'eu.rjuhas.rjlove', '--preview', *arguments)
         time.sleep(5)
         run('xcrun', 'simctl', 'io', device, 'screenshot', f'Preview-{name}.png')
         run('xcrun', 'simctl', 'terminate', device, 'eu.rjuhas.rjlove')
+    # End-to-end UI regression: blank name, real local AAC, trim, authenticated upload.
+    server_log = open('UI-backend.log', 'w')
+    server = subprocess.Popen(['python3', 'Scripts/ui_test_server.py'], stdout=server_log, stderr=subprocess.STDOUT)
+    try:
+        time.sleep(2)
+        run('xcodebuild', '-project', 'RJLove.xcodeproj', '-scheme', 'RJLove', '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={device}', '-derivedDataPath', '.sim-derived', '-resultBundlePath', 'RecorderFlow.xcresult', 'CODE_SIGNING_ALLOWED=NO', '-parallel-testing-enabled', 'NO', 'test', timeout=600)
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+        server_log.close()
 finally:
     subprocess.run(['xcrun', 'simctl', 'shutdown', device], timeout=30)

@@ -27,9 +27,12 @@ struct FartClip: Codable, Hashable, Identifiable, Sendable {
     let createdAt: String
     let ratings: [FartRating]
     let reactions: [FartReaction]
+    var revision: Int? = nil
+    var updatedAt: String? = nil
     var stars: Int? { ratings.first?.overall }
     enum CodingKeys: String, CodingKey {
-        case id, title, caption, category, duration, waveform, ratings, reactions
+        case id, title, caption, category, duration, waveform, ratings, reactions, revision
+        case updatedAt = "updated_at"
         case ownerID = "owner_id"; case sizeBytes = "size_bytes"; case createdAt = "created_at"
     }
 }
@@ -40,8 +43,10 @@ struct FartUpload: Encodable {
     let category: String
     let duration: Double
     let waveform: [Double]
+    var baseRevision: Int? = nil
+    var editID: String? = nil
     let audioBase64: String
-    enum CodingKeys: String, CodingKey { case id, title, caption, category, duration, waveform; case audioBase64 = "audio_base64" }
+    enum CodingKeys: String, CodingKey { case id, title, caption, category, duration, waveform; case audioBase64 = "audio_base64"; case baseRevision = "base_revision"; case editID = "edit_id" }
 }
 enum FartCategory: String, CaseIterable, Identifiable {
     case natural = "Naturtalent", thunder = "Donnergrollen", ninja = "Ninja", trumpet = "Trompete", duck = "Quietschente", love = "Liebeslüftchen"

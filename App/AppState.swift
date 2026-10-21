@@ -36,6 +36,7 @@ final class AppState {
     var selectedTab: AppTab = .home
     var experienceSection: ExperienceSection = .farts
     var showingFartRecorder = false
+    var showingRadio = false
     var quickFartRecording = false
     private(set) var farts: [FartClip] = []
     var alert: AppAlert?
@@ -45,10 +46,9 @@ final class AppState {
     var shareWiFiName: Bool {
         didSet { UserDefaults.standard.set(shareWiFiName, forKey: "rjlove.share-wifi-name") }
     }
-    var shareFocus: Bool {
-        didSet { UserDefaults.standard.set(shareFocus, forKey: "rjlove.share-focus") }
-    }
 
+    let setupJourney = SetupJourney()
+    let radio = WalkieTalkieService.shared
     let studio = AudioStudioService.shared
     let api = APIClient()
     let nearby = NearbyService()
@@ -72,7 +72,6 @@ final class AppState {
     init() {
         statusMessage = UserDefaults.standard.string(forKey: "rjlove.status-message") ?? "Bin für dich da 💗"
         shareWiFiName = UserDefaults.standard.bool(forKey: "rjlove.share-wifi-name")
-        shareFocus = UserDefaults.standard.bool(forKey: "rjlove.share-focus")
         profile = Self.loadProfile()
         configureCallbacks()
         restoreSession()
@@ -110,6 +109,7 @@ final class AppState {
             _ = await privacyLock.unlock()
         }
         guard !isActivated else {
+            await radio.restoreIfEnabled(api: api)
             startPolling()
             await syncNow(showErrors: false)
             return
@@ -134,6 +134,7 @@ final class AppState {
             return timestamp.map { Date.now.timeIntervalSince($0) < 60 } ?? false
         }
         BackgroundRefreshCoordinator.shared.schedule()
+        await radio.restoreIfEnabled(api: api)
         observeSystemEvents()
         startPolling()
         await scheduleSharedReminders()
@@ -143,6 +144,7 @@ final class AppState {
     func deactivateForeground() {
         studio.finishRecording()
         studio.stopPlayback()
+        radio.enterBackground()
         nearby.stop(api: api)
         pollTask?.cancel()
         pollTask = nil
@@ -167,7 +169,6 @@ final class AppState {
                 health.sharingEnabled = false
                 health.shareActivity = false; health.shareSleep = false; health.shareVitals = false
                 location.sharingEnabled = false
-                shareWiFiName = false; shareFocus = false
                 WidgetSharedStore.clearPendingThoughts()
                 WidgetSharedStore.saveSnapshot(WidgetSnapshot())
                 UserDefaults.standard.removeObject(forKey: "rjlove.chat-draft")
@@ -179,9 +180,6 @@ final class AppState {
             phase = .authenticated
             connectionMessage = "Verbunden"
             DebugLogger.shared.log("Anmeldung erfolgreich", category: "Server")
-            if notifications.authorizationStatus == .notDetermined {
-                _ = await notifications.requestAuthorization()
-            }
             await syncNow(showErrors: true)
             if let token = UserDefaults.standard.string(forKey: NotificationCoordinator.deviceTokenKey) { await registerDeviceToken(token) }
             startPolling()
@@ -194,6 +192,7 @@ final class AppState {
     }
 
     func logout() async {
+        radio.disable()
         nearby.stop(api: api)
         await liveActivity.stop()
         await api.logout()
@@ -227,6 +226,7 @@ final class AppState {
         do {
             let snapshot = try await api.bootstrap()
             me = snapshot.me
+            setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
             records = snapshot.records
             farts = snapshot.farts ?? []
@@ -276,6 +276,7 @@ final class AppState {
     }
 
     func openFartRecorder(quick: Bool = false) {
+        radio.pauseForStudio()
         quickFartRecording = quick
         showingFartRecorder = true
     }
@@ -289,11 +290,14 @@ final class AppState {
             guard let draft = studio.draft else { return false }
             guard draft.ownerID == me?.id else { studio.discard(); return false }
             let data = try Data(contentsOf: draft.url)
-            let body = FartUpload(id: draft.id, title: title, caption: caption, category: category, duration: draft.duration, waveform: draft.waveform, audioBase64: data.base64EncodedString())
+            let body = FartUpload(id: draft.id, title: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ein kleines Meisterwerk" : title, caption: caption, category: category, duration: draft.duration, waveform: draft.waveform, audioBase64: data.base64EncodedString())
             receiveFart(try await api.uploadFart(body))
             studio.discard(); Haptics.success()
             return true
         } catch { alert = AppAlert(title: "Duftpost wartet noch", message: error.localizedDescription + " Deine lokale Aufnahme bleibt erhalten."); return false }
+    }
+    func editFart(_ body: FartUpload) async throws {
+        receiveFart(try await api.editFart(body)); studio.stopPlayback(); Haptics.success()
     }
     func rateFart(_ clip: FartClip, overall: Int, power: Int, style: Int, comment: String) async -> Bool {
         do { receiveFart(try await api.rateFart(id: clip.id, overall: overall, power: power, style: style, comment: comment)); Haptics.success(); return true }
@@ -396,7 +400,6 @@ final class AppState {
         payload.lowPowerMode = deviceStatus.lowPowerMode
         payload.networkType = deviceStatus.networkType
         payload.wifiName = shareWiFiName ? deviceStatus.wifiName : nil
-        payload.focusActive = shareFocus ? deviceStatus.focusActive : nil
         payload.motion = deviceStatus.motion
         if health.sharingEnabled {
             payload.steps = health.shareActivity ? health.steps : nil
@@ -445,6 +448,7 @@ final class AppState {
             return
         }
         api.configure(baseURL: url, token: token)
+        radio.configure(api: api)
         if let cached = AppCache.load(matching: profile) {
             apply(cached)
         }
@@ -559,12 +563,14 @@ final class AppState {
         case "farts": selectedTab = .moments; experienceSection = .farts
         case "dates": selectedTab = .moments; experienceSection = .love
         case "record-fart":
+            radio.pauseForStudio()
             selectedTab = .moments; experienceSection = .farts
             quickFartRecording = true; showingFartRecorder = true
         case "stop-recording":
             studio.finishRecording()
             selectedTab = .moments; experienceSection = .farts
             quickFartRecording = false; showingFartRecorder = true
+        case "radio": showingRadio = true
         case "settings", "health": selectedTab = .settings
         default: selectedTab = .home
         }
@@ -665,6 +671,8 @@ final class AppState {
 #if DEBUG
 extension AppState {
     func loadPreview() {
+        if ProcessInfo.processInfo.arguments.contains("--preview-draft") { studio.preparePreviewDraft() }
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-server") { api.configure(baseURL: URL(string: "http://127.0.0.1:8787")!, token: "ui-test-token") }
         phase = .authenticated
         me = UserProfile(id: "robin", displayName: "Robin", accent: "cyan", storageLimitMB: 0)
         var presence = PresencePayload()

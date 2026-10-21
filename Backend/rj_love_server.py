@@ -40,6 +40,9 @@ import sys
 import threading
 import time
 import uuid
+import tarfile
+import shutil
+import tempfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -47,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
@@ -224,6 +227,52 @@ class ClosingSQLiteConnection(sqlite3.Connection):
             self.close()
 
 
+class MediaLock:
+    """Serialize media mutation and backups across threads AND CLI/server processes."""
+    def __init__(self, path: Path):
+        self.path = path
+        self.lock = threading.RLock()
+        self.depth = 0
+        self.stream = None
+
+    def __enter__(self):
+        self.lock.acquire()
+        try:
+            if self.depth == 0:
+                self.stream = self.path.open("a+b")
+                if os.name == "nt":
+                    import msvcrt
+                    self.stream.seek(0)
+                    self.stream.write(b"0")
+                    self.stream.flush()
+                    self.stream.seek(0)
+                    msvcrt.locking(self.stream.fileno(), msvcrt.LK_LOCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.stream.fileno(), fcntl.LOCK_EX)
+            self.depth += 1
+            return self
+        except Exception:
+            if self.stream:
+                self.stream.close()
+            self.lock.release()
+            raise
+
+    def __exit__(self, *args):
+        self.depth -= 1
+        if self.depth == 0 and self.stream:
+            if os.name == "nt":
+                import msvcrt
+                self.stream.seek(0)
+                msvcrt.locking(self.stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.stream.fileno(), fcntl.LOCK_UN)
+            self.stream.close()
+            self.stream = None
+        self.lock.release()
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = path
@@ -264,6 +313,9 @@ class Database:
                     clip_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL,
                     PRIMARY KEY(clip_id,user_id,emoji)
                 );
+                CREATE TABLE IF NOT EXISTS radio_members (user_id TEXT PRIMARY KEY, token TEXT NOT NULL, environment TEXT NOT NULL, updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS radio_floor (id INTEGER PRIMARY KEY CHECK(id=1), user_id TEXT NOT NULL, transmission_id TEXT NOT NULL, expires_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS radio_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, transmission_id TEXT NOT NULL, chunk_index INTEGER NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL, audio BLOB, text TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(transmission_id,chunk_index));
                 CREATE TABLE IF NOT EXISTS credential_versions (user_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_activities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, environment TEXT NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS nearby (user_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL);
@@ -338,6 +390,12 @@ class Database:
                 CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
                 """
             )
+
+            columns = {r["name"] for r in db.execute("PRAGMA table_info(fart_clips)")}
+            for name, declaration in {"audio_path": "TEXT NOT NULL DEFAULT ''", "revision": "INTEGER NOT NULL DEFAULT 1", "updated_at": "TEXT", "last_edit_id": "TEXT"}.items():
+                if name not in columns:
+                    db.execute(f"ALTER TABLE fart_clips ADD COLUMN {name} {declaration}")
+            db.execute("CREATE TABLE IF NOT EXISTS audio_versions (clip_id TEXT NOT NULL, revision INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, PRIMARY KEY(clip_id,revision))")
 
 
 class LoginLimiter:
@@ -509,6 +567,8 @@ class RJLoveApplication:
         self.data_directory = self.resolve_config_path(data_value)
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.database = Database(self.data_directory / "rjlove.sqlite3")
+        self.media_lock = MediaLock(self.data_directory / "media.lock")
+        self.migrate_media()
         self.synchronize_credential_versions()
         self.logger = self._make_logger()
         self.login_limiter = LoginLimiter(config["security"].get("login_attempts_per_10_minutes", 10))
@@ -519,6 +579,80 @@ class RJLoveApplication:
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
         self._cleanup_thread.start()
+
+    @staticmethod
+    def atomic_write(path: Path, data: bytes) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = path.with_name(path.name + "." + secrets.token_hex(6) + ".tmp")
+        try:
+            with temporary.open("xb") as stream:
+                os.chmod(temporary, 0o600)
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def clip_directory(self, row: Any) -> Path:
+        # The hierarchy uses server-configured account IDs and validated UUIDs only.
+        owner = re.sub(r"[^a-zA-Z0-9_-]", "_", row["owner_id"])
+        stamp = parse_iso(row["created_at"]) or utc_now()
+        return self.data_directory / "media" / "duftpost" / owner / stamp.strftime("%Y/%m") / str(uuid.UUID(row["id"]))
+
+    def media_path(self, relative: str) -> Path:
+        value = (self.data_directory / relative).resolve()
+        if not value.is_relative_to((self.data_directory / "media").resolve()):
+            raise ValueError("Media path escaped storage root")
+        return value
+
+    def migrate_media(self) -> None:
+        with self.media_lock, self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for row in db.execute("SELECT * FROM fart_clips").fetchall():
+                if not row["audio_path"]:
+                    path = self.clip_directory(row) / "original.m4a"
+                    self.atomic_write(path, bytes(row["audio"]))
+                    relative = path.relative_to(self.data_directory).as_posix()
+                    db.execute("UPDATE fart_clips SET audio_path=?,audio=?,updated_at=created_at WHERE id=?", (relative, b"", row["id"]))
+                    db.execute("INSERT OR IGNORE INTO audio_versions VALUES(?,?,?,?)", (row["id"], 1, relative, row["size_bytes"]))
+                    self.write_clip_manifest(row["id"], db)
+
+    def write_clip_manifest(self, clip_id: str, db: sqlite3.Connection) -> None:
+        row = db.execute("SELECT * FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+        manifest = self.fart_clip(clip_id, db)
+        manifest["format_version"] = 1
+        manifest["current_audio"] = Path(row["audio_path"]).name
+        manifest["versions"] = [dict(r) for r in db.execute("SELECT revision,path,size_bytes FROM audio_versions WHERE clip_id=? ORDER BY revision", (clip_id,))]
+        self.atomic_write(self.clip_directory(row) / "metadata.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode())
+
+    def backup(self, destination: Path | None = None) -> Path:
+        destination = destination or self.data_directory / "backups" / (utc_now().strftime("RJ-Love-%Y%m%dT%H%M%S-") + secrets.token_hex(3) + ".tar.gz")
+        destination = destination.resolve()
+        if destination.is_relative_to((self.data_directory / "media").resolve()):
+            raise ValueError("Backups cannot be written inside media")
+        destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        temporary = destination.with_name(destination.name + ".tmp")
+        try:
+            with self.media_lock, tempfile.TemporaryDirectory() as staging:
+                snapshot = Path(staging) / "rjlove.sqlite3"
+                with self.database.connect() as source, sqlite3.connect(snapshot) as target:
+                    source.backup(target)
+                with tarfile.open(temporary, "w:gz") as archive:
+                    archive.add(snapshot, arcname="rjlove_data/rjlove.sqlite3")
+                    media = self.data_directory / "media"
+                    if media.exists():
+                        archive.add(media, arcname="rjlove_data/media")
+                    if self.config_path.exists():
+                        archive.add(self.config_path, arcname=CONFIG_FILENAME)
+                    details = Path(staging) / "BACKUP.json"
+                    details.write_text(json.dumps({"version": APP_VERSION, "created_at": iso_now(), "restore": "Stop server, restore config and rjlove_data together, check data_directory, restart."}, indent=2))
+                    archive.add(details, arcname="BACKUP.json")
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return destination
 
     def _make_logger(self) -> logging.Logger:
         logger = logging.getLogger(f"rj_love_server.{id(self)}")
@@ -754,7 +888,7 @@ class RJLoveApplication:
                 fingerprint = self.credential_fingerprint(user)
                 row = db.execute("SELECT fingerprint FROM credential_versions WHERE user_id=?", (user["id"],)).fetchone()
                 if row is None or row["fingerprint"] != fingerprint:
-                    for table in ("sessions", "devices", "nearby", "live_activities"):
+                    for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
                         db.execute(f"DELETE FROM {table} WHERE user_id=?", (user["id"],))
                     db.execute("INSERT INTO credential_versions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET fingerprint=excluded.fingerprint", (user["id"], fingerprint))
 
@@ -779,7 +913,7 @@ class RJLoveApplication:
                 raise
             with self.database.connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                for table in ("sessions", "devices", "nearby", "live_activities"):
+                for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
                     db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
                 db.execute("INSERT INTO credential_versions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET fingerprint=excluded.fingerprint", (user_id, self.credential_fingerprint(user)))
 
@@ -790,7 +924,7 @@ class RJLoveApplication:
         expires = created + dt.timedelta(days=int(self.config["server"].get("session_days", 30)))
         with self.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            for table in ("sessions", "devices", "nearby", "live_activities"):
+            for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
                 db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
             db.execute(
                 "INSERT INTO sessions(token_hash,user_id,device_id,created_at,expires_at,last_seen_at) VALUES(?,?,?,?,?,?)",
@@ -838,6 +972,34 @@ class RJLoveApplication:
                         self.logger.warning("Live-Aktivität konnte nicht aktualisiert werden (HTTP %s)", status)
             except Exception:
                 self.logger.warning("Live-Aktivitäts-Push fehlgeschlagen")
+        threading.Thread(target=deliver, daemon=True).start()
+
+    def push_radio(self, sender_id: str, sequence: int) -> None:
+        if not self.apns.enabled:
+            return
+        def deliver() -> None:
+            try:
+                bearer = self.apns.provider_token()
+                config = self.config["apns"]
+                with self.database.connect() as db:
+                    members = db.execute("SELECT * FROM radio_members WHERE user_id<>? AND token<>''", (sender_id,)).fetchall()
+                for member in members:
+                    host = "api.push.apple.com" if member["environment"] == "production" else "api.sandbox.push.apple.com"
+                    payload = {"aps": {}, "speaker": self.user_by_id(sender_id)["display_name"], "sequence": sequence}
+                    command = ["curl", "--silent", "--show-error", "--http2", "--max-time", "10", "--output", "/dev/null", "--write-out", "%{http_code}",
+                               "--header", "authorization: bearer " + bearer,
+                               "--header", "apns-topic: " + config.get("bundle_id", "eu.rjuhas.rjlove") + ".voip-ptt",
+                               "--header", "apns-push-type: pushtotalk", "--header", "apns-priority: 10", "--header", "apns-expiration: 0",
+                               "--data-binary", "@-", f"https://{host}/3/device/{member['token']}"]
+                    result = subprocess.run(command, input=json_bytes(payload), capture_output=True, timeout=15)
+                    status = result.stdout.decode(errors="replace").strip()
+                    if result.returncode or status != "200":
+                        self.logger.warning("PTT delivery failed for %s (HTTP %s)", member["user_id"], status)
+                        if status in {"400", "410"}:
+                            with self.database.connect() as db:
+                                db.execute("UPDATE radio_members SET token='' WHERE user_id=? AND token=?", (member["user_id"], member["token"]))
+            except Exception:
+                self.logger.exception("PTT push failed; foreground transport remains available")
         threading.Thread(target=deliver, daemon=True).start()
 
     def send_ntfy(self, user_id: str, event: dict[str, Any]) -> None:
@@ -889,7 +1051,7 @@ class RJLoveApplication:
                 "SELECT COALESCE(SUM(size_bytes),0) AS total FROM records WHERE owner_id=? AND deleted_at IS NULL",
                 (user_id,),
             ).fetchone()
-            audio = connection.execute("SELECT COALESCE(SUM(size_bytes),0) AS total FROM fart_clips WHERE owner_id=?", (user_id,)).fetchone()
+            audio = connection.execute("SELECT COALESCE(SUM(v.size_bytes),0) AS total FROM audio_versions v JOIN fart_clips f ON f.id=v.clip_id WHERE f.owner_id=?", (user_id,)).fetchone()
             return int(row["total"]) + int(audio["total"])
         finally:
             if owns_connection:
@@ -961,7 +1123,7 @@ class RJLoveApplication:
         owns = db is None
         connection = db or self.database.connect()
         try:
-            row = connection.execute("SELECT id,owner_id,title,caption,category,duration,waveform,size_bytes,created_at FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            row = connection.execute("SELECT id,owner_id,title,caption,category,duration,waveform,size_bytes,created_at,revision,updated_at FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
             if row is None:
                 raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
             result = dict(row)
@@ -1041,6 +1203,8 @@ class RJLoveApplication:
             "farts": self.list_farts(),
             "features": {
                 "audio_studio_enabled": True,
+                "radio_enabled": True,
+                "radio_background_push_configured": self.apns.enabled,
                 "apns_enabled": self.apns.enabled,
                 "low_battery_threshold": int(self.config["notifications"].get("low_battery_threshold", 15)),
                 "max_request_mb": int(self.config["server"].get("max_request_mb", 10)),
@@ -1052,6 +1216,8 @@ class RJLoveApplication:
         old_events = now - dt.timedelta(days=30)
         old_commands = now - dt.timedelta(days=14)
         with self.database.connect() as db:
+            db.execute("DELETE FROM radio_events WHERE created_at<?", ((now - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),))
+            db.execute("DELETE FROM radio_floor WHERE expires_at<?", (iso_now(),))
             db.execute("DELETE FROM sessions WHERE expires_at < ?", (now.isoformat(),))
             db.execute("DELETE FROM nearby WHERE expires_at < ?", (iso_now(),))
             db.execute("DELETE FROM events WHERE read_at IS NOT NULL AND created_at < ?", (old_events.isoformat(),))
@@ -1142,7 +1308,10 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         try:
-            path, parts, _ = self.route()
+            path, parts, query = self.route()
+            if path == "/v1/radio/feed":
+                self._radio_feed(self.current_user(), query)
+                return
             if path == "/health":
                 self.send_json(HTTPStatus.OK, {"status": "ok", "version": APP_VERSION, "time": iso_now()})
                 return
@@ -1185,8 +1354,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
-            if path == "/v1/farts":
+            if path.startswith("/v1/radio/"):
+                self._radio_action(user_id, parts[-1])
+            elif path == "/v1/farts":
                 self._upload_fart(user_id)
+            elif len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] == "edit":
+                self._upload_fart(user_id, editing_id=parts[2])
             elif len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] in {"rating", "reaction"}:
                 self._fart_feedback(user_id, parts[2], parts[3])
             elif path == "/v1/auth/credentials":
@@ -1305,7 +1478,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
-            for table in ("devices", "nearby", "live_activities"):
+            for table in ("devices", "nearby", "live_activities", "radio_members"):
                 db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
         self.send_empty()
 
@@ -1314,7 +1487,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         allowed = {
             "latitude", "longitude", "horizontal_accuracy", "altitude", "speed",
             "course", "location_timestamp", "battery_level", "battery_state",
-            "low_power_mode", "network_type", "wifi_name", "focus_active",
+            "low_power_mode", "network_type", "wifi_name",
             "motion", "steps", "sleep_minutes", "sleep_score", "health_updated_at", "health_metrics",
             "location_sharing", "status_message", "device_name", "app_version",
         }
@@ -1500,14 +1673,123 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         )
         self.send_empty()
 
-    def _upload_fart(self, user_id: str) -> None:
+    def _radio_feed(self, user_id: str, query: dict[str, list[str]]) -> None:
+        try:
+            cursor = int(query.get("after", ["0"])[0])
+            if cursor < 0:
+                raise ValueError
+        except (ValueError, IndexError) as exc:
+            raise APIError(400, "invalid_cursor", "Ungültiger Funk-Cursor.") from exc
+        with self.app.database.connect() as db:
+            if not db.execute("SELECT 1 FROM radio_members WHERE user_id=?", (user_id,)).fetchone():
+                raise APIError(409, "radio_not_joined", "Bitte Walkie-Talkie zuerst einschalten.")
+            cutoff = (utc_now() - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+            rows = db.execute("SELECT * FROM radio_events WHERE seq>? AND created_at>? ORDER BY seq LIMIT 12", (cursor,cutoff)).fetchall()
+            events = []
+            for row in rows:
+                if row["user_id"] == user_id:
+                    continue
+                value = dict(row)
+                audio = value.pop("audio")
+                value["audio_base64"] = base64.b64encode(audio).decode() if audio else None
+                value["speaker"] = self.app.user_by_id(row["user_id"])["display_name"]
+                events.append(value)
+            floor = db.execute("SELECT user_id,transmission_id,expires_at FROM radio_floor WHERE expires_at>?", (iso_now(),)).fetchone()
+            latest = rows[-1]["seq"] if rows else cursor
+        self.send_json(200, {"events": events, "cursor": latest, "speaker_id": floor["user_id"] if floor else None, "background_push_configured": self.app.apns.enabled})
+
+    def _radio_action(self, user_id: str, action: str) -> None:
+        body = self.read_json()
+        push_sequence = None
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            now = iso_now()
+            db.execute("DELETE FROM radio_events WHERE created_at<?", ((utc_now() - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),))
+            if action == "join":
+                token = safe_text(body.get("token", ""), 1024).lower()
+                environment = body.get("environment", "production")
+                if environment not in {"sandbox", "production"} or token and (len(token) < 32 or any(c not in "0123456789abcdef" for c in token)):
+                    raise APIError(400, "invalid_ptt_token", "Ungültiger Push-to-Talk-Token.")
+                db.execute("INSERT INTO radio_members VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET token=excluded.token,environment=excluded.environment,updated_at=excluded.updated_at", (user_id,token,environment,now))
+                cursor = db.execute("SELECT COALESCE(MAX(seq),0) FROM radio_events").fetchone()[0]
+                result = {"cursor": cursor, "background_push_configured": self.app.apns.enabled}
+            elif action == "leave":
+                db.execute("DELETE FROM radio_members WHERE user_id=?", (user_id,))
+                floor = db.execute("SELECT * FROM radio_floor WHERE user_id=?", (user_id,)).fetchone()
+                if floor:
+                    index = db.execute("SELECT COALESCE(MAX(chunk_index),-1)+1 FROM radio_events WHERE transmission_id=?", (floor["transmission_id"],)).fetchone()[0]
+                    db.execute("INSERT OR IGNORE INTO radio_events (transmission_id,chunk_index,user_id,kind,text,created_at) VALUES(?,?,?,'end','',?)", (floor["transmission_id"],index,user_id,now))
+                db.execute("DELETE FROM radio_floor WHERE user_id=?", (user_id,))
+                result = {}
+            else:
+                if not db.execute("SELECT 1 FROM radio_members WHERE user_id=?", (user_id,)).fetchone():
+                    raise APIError(409, "radio_not_joined", "Walkie-Talkie ist ausgeschaltet.")
+                tx = safe_text(body.get("transmission_id", ""), 64, allow_empty=False)
+                try:
+                    uuid.UUID(tx)
+                except ValueError as exc:
+                    raise APIError(400, "invalid_transmission", "Ungültige Funk-ID.") from exc
+                floor = db.execute("SELECT * FROM radio_floor WHERE expires_at>?", (now,)).fetchone()
+                if action in {"begin", "text"}:
+                    if floor and (floor["user_id"] != user_id or floor["transmission_id"] != tx):
+                        raise APIError(409, "radio_busy", "Dein Gegenüber spricht gerade. Bitte kurz warten.")
+                    if action == "begin":
+                        if not floor:
+                            expires = (utc_now() + dt.timedelta(seconds=35)).isoformat().replace("+00:00", "Z")
+                            db.execute("INSERT OR REPLACE INTO radio_floor VALUES(1,?,?,?)", (user_id,tx,expires))
+                        result = {}
+                    else:
+                        text = safe_text(body.get("text", ""), 600, allow_empty=False)
+                        old = db.execute("SELECT seq FROM radio_events WHERE transmission_id=? AND chunk_index=0", (tx,)).fetchone()
+                        if not old:
+                            push_sequence = db.execute("INSERT INTO radio_events (transmission_id,chunk_index,user_id,kind,text,created_at) VALUES(?,0,?,'text',?,?)", (tx,user_id,text,now)).lastrowid
+                        result = {}
+                elif action in {"audio", "end"}:
+                    index = body.get("chunk_index")
+                    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index <= 100:
+                        raise APIError(400, "invalid_chunk", "Ungültige Funk-Reihenfolge.")
+                    old = db.execute("SELECT user_id FROM radio_events WHERE transmission_id=? AND chunk_index=?", (tx,index)).fetchone()
+                    if old:
+                        if old["user_id"] != user_id:
+                            raise APIError(403, "not_owner", "Fremde Funkübertragung.")
+                        self.send_json(200, {})
+                        return
+                    if not floor or floor["user_id"] != user_id or floor["transmission_id"] != tx:
+                        raise APIError(409, "radio_expired", "Sprechzeit beendet. Bitte erneut drücken.")
+                    expected = db.execute("SELECT COUNT(*) FROM radio_events WHERE transmission_id=?", (tx,)).fetchone()[0]
+                    if index != expected:
+                        raise APIError(409, "chunk_gap", "Ein Audioteil fehlt. Bitte erneut sprechen.")
+                    audio = None
+                    if action == "audio":
+                        encoded = body.get("audio_base64")
+                        if not isinstance(encoded, str) or len(encoded) > 180000:
+                            raise APIError(413, "audio_too_large", "Funk-Audioteil zu groß.")
+                        try:
+                            audio = base64.b64decode(encoded, validate=True)
+                        except (ValueError, binascii.Error) as exc:
+                            raise APIError(400, "invalid_audio", "Ungültiges Funk-Audio.") from exc
+                        if not 24 <= len(audio) <= 128000 or audio[4:8] != b"ftyp" or audio[8:12] not in {b"M4A ",b"mp42",b"isom"}:
+                            raise APIError(400, "invalid_audio", "Ungültiges Funk-Audioformat.")
+                    seq = db.execute("INSERT INTO radio_events (transmission_id,chunk_index,user_id,kind,audio,text,created_at) VALUES(?,?,?,?,?,'',?)", (tx,index,user_id,action,audio,now)).lastrowid
+                    if action == "audio" and index == 0:
+                        push_sequence = seq
+                    if action == "end":
+                        db.execute("DELETE FROM radio_floor WHERE user_id=? AND transmission_id=?", (user_id,tx))
+                    result = {}
+                else:
+                    raise APIError(404, "not_found", "Funk-Aktion nicht gefunden.")
+        if push_sequence is not None:
+            self.app.push_radio(user_id, push_sequence)
+        self.send_json(200, result)
+
+    def _upload_fart(self, user_id: str, editing_id: str | None = None) -> None:
         body = self.read_json()
         clip_id = safe_text(body.get("id", ""), 64, allow_empty=False)
         try:
             uuid.UUID(clip_id)
         except ValueError as exc:
             raise APIError(400, "invalid_clip_id", "Ungültige Aufnahme-ID.") from exc
-        title = safe_text(body.get("title", ""), 100, allow_empty=False)
+        title = safe_text(body.get("title", ""), 100) or "Ein kleines Meisterwerk"
         caption = safe_text(body.get("caption", ""), 500)
         category = safe_text(body.get("category", "Naturtalent"), 40, allow_empty=False)
         if category not in {"Naturtalent", "Donnergrollen", "Ninja", "Trompete", "Quietschente", "Liebeslüftchen"}:
@@ -1527,27 +1809,59 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             raise APIError(400, "invalid_audio", "Ungültige Audiodaten.") from exc
         if not 24 <= len(audio) <= 4 * 1024 * 1024 or audio[4:8] != b"ftyp" or audio[8:12] not in {b"M4A ", b"mp42", b"isom"}:
             raise APIError(400, "invalid_audio", "Bitte eine gültige M4A-Aufnahme verwenden.")
-        # Client IDs make retries idempotent: a connection timeout must not duplicate clips.
-        with self.app.database.connect() as db:
+        if editing_id is not None and editing_id != clip_id:
+            raise APIError(400, "invalid_clip_id", "Aufnahme-ID stimmt nicht überein.")
+        with self.app.media_lock, self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            old = db.execute("SELECT owner_id FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
-            if old:
-                if old["owner_id"] != user_id:
-                    raise APIError(403, "not_owner", "Diese Aufnahme gehört deinem Gegenüber.")
+            old = db.execute("SELECT * FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            if old and old["owner_id"] != user_id:
+                raise APIError(403, "not_owner", "Diese Aufnahme gehört deinem Gegenüber.")
+            if not editing_id and old:
                 self.send_json(200, self.app.fart_clip(clip_id, db))
                 return
+            if editing_id:
+                if old is None:
+                    raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
+                edit_id = safe_text(body.get("edit_id", ""), 64, allow_empty=False)
+                try:
+                    uuid.UUID(edit_id)
+                except ValueError as exc:
+                    raise APIError(400, "invalid_edit_id", "Ungültige Bearbeitungs-ID.") from exc
+                if edit_id == old["last_edit_id"]:
+                    self.send_json(200, self.app.fart_clip(clip_id, db))
+                    return
+                if isinstance(body.get("base_revision"), bool) or body.get("base_revision") != old["revision"]:
+                    raise APIError(409, "revision_conflict", "Die Aufnahme wurde inzwischen geändert. Bitte neu öffnen.")
+            else:
+                edit_id = None
             self.app.enforce_quota(user_id, len(audio), db=db)
-            db.execute("INSERT INTO fart_clips VALUES(?,?,?,?,?,?,?,?,?,?)", (clip_id, user_id, title, caption, category, float(duration), json.dumps(wave), audio, len(audio), iso_now()))
+            revision = old["revision"] + 1 if old else 1
+            created = old["created_at"] if old else iso_now()
+            row = {"id": clip_id, "owner_id": user_id, "created_at": created}
+            directory = self.app.clip_directory(row)
+            path = directory / ("original.m4a" if revision == 1 else f"edit-{revision:04d}-{edit_id}.m4a")
+            relative = path.relative_to(self.app.data_directory).as_posix()
+            self.app.atomic_write(path, audio)
+            try:
+                if old:
+                    db.execute("UPDATE fart_clips SET title=?,duration=?,waveform=?,audio_path=?,size_bytes=?,revision=?,updated_at=?,last_edit_id=? WHERE id=?", (title, float(duration), json.dumps(wave), relative, len(audio), revision, iso_now(), edit_id, clip_id))
+                else:
+                    db.execute("INSERT INTO fart_clips (id,owner_id,title,caption,category,duration,waveform,audio,size_bytes,created_at,audio_path,revision,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (clip_id,user_id,title,caption,category,float(duration),json.dumps(wave),b"",len(audio),created,relative,1,created))
+                db.execute("INSERT INTO audio_versions VALUES(?,?,?,?)", (clip_id,revision,relative,len(audio)))
+                self.app.write_clip_manifest(clip_id, db)
+            except Exception:
+                path.unlink(missing_ok=True)
+                raise
         sender = self.app.user_by_id(user_id)["display_name"]
         self.app.broadcast_event(user_id, "fart_clip", "Neue Duftpost 💨", f"{sender} hat ein kleines Meisterwerk für dich aufgenommen.")
         self.send_json(200, self.app.fart_clip(clip_id))
 
     def _fart_audio(self, clip_id: str) -> None:
         with self.app.database.connect() as db:
-            row = db.execute("SELECT audio FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            row = db.execute("SELECT audio_path FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
         if row is None:
             raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
-        data = bytes(row["audio"])
+        data = self.app.media_path(row["audio_path"]).read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", "audio/mp4")
         self.send_header("Content-Length", str(len(data)))
@@ -1558,7 +1872,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     def _fart_feedback(self, user_id: str, clip_id: str, action: str) -> None:
         body = self.read_json()
-        with self.app.database.connect() as db:
+        with self.app.media_lock, self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             clip = self.app.fart_clip(clip_id, db)
             if action == "rating":
@@ -1578,21 +1892,34 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     db.execute("DELETE FROM fart_reactions WHERE clip_id=? AND user_id=? AND emoji=?", (clip_id, user_id, emoji))
                 else:
                     db.execute("INSERT INTO fart_reactions VALUES(?,?,?)", (clip_id, user_id, emoji))
+            self.app.write_clip_manifest(clip_id, db)
         if action == "rating":
             self.app.broadcast_event(user_id, "fart_rating", "Die Duftjury hat gesprochen 🏆", "Dein Meisterwerk hat eine neue Bewertung.")
         self.send_json(200, self.app.fart_clip(clip_id))
 
     def _delete_fart(self, user_id: str, clip_id: str) -> None:
-        with self.app.database.connect() as db:
+        with self.app.media_lock, self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT owner_id FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
-            if row is None:
+            row = db.execute("SELECT * FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            if not row:
                 raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
             if row["owner_id"] != user_id:
-                raise APIError(403, "not_owner", "Nur eigene Aufnahmen können gelöscht werden.")
-            for table in ("fart_ratings", "fart_reactions"):
-                db.execute(f"DELETE FROM {table} WHERE clip_id=?", (clip_id,))
-            db.execute("DELETE FROM fart_clips WHERE id=?", (clip_id,))
+                raise APIError(403, "not_owner", "Nur die eigene Aufnahme kann gelöscht werden.")
+            directory = self.app.clip_directory(row)
+            # Move first; on a DB failure restore the archive rather than silently lose it.
+            trash = directory.with_name(directory.name + ".deleting")
+            if directory.exists():
+                os.replace(directory, trash)
+            try:
+                for table in ("fart_ratings", "fart_reactions", "audio_versions"):
+                    db.execute(f"DELETE FROM {table} WHERE clip_id=?", (clip_id,))
+                db.execute("DELETE FROM fart_clips WHERE id=?", (clip_id,))
+                db.commit()
+            except Exception:
+                if trash.exists():
+                    os.replace(trash, directory)
+                raise
+            shutil.rmtree(trash, ignore_errors=True)
         self.send_empty()
 
     def _create_command(self, user_id: str) -> None:
@@ -1747,8 +2074,9 @@ def config_path_from_environment() -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="RJ Love 2.1 – privater Partner-Server")
+    parser = argparse.ArgumentParser(description="RJ Love 2.2 – privater Partner-Server")
     parser.add_argument("--reset-user", choices=["robin", "raphaela"], help="Passwort sicher zurücksetzen und alle Sitzungen widerrufen")
+    parser.add_argument("--backup", nargs="?", const="auto", help="Konsistentes Archiv mit Datenbank, Medien und Konfiguration erstellen und beenden")
     args = parser.parse_args()
     config_path = config_path_from_environment()
     if not config_path.exists():
@@ -1764,6 +2092,12 @@ def main() -> int:
                 user["password"] = RJLoveApplication.encode_password(user["password"])
         app = RJLoveApplication(config, config_path)
         app.save_config()
+        if args.backup:
+            try:
+                print(f"Backup erstellt: {app.backup(None if args.backup == 'auto' else Path(args.backup))}")
+                return 0
+            finally:
+                app.close()
         if args.reset_user:
             try:
                 password = getpass.getpass("Neues Passwort (mindestens 10 Zeichen): ")
@@ -1787,11 +2121,16 @@ def main() -> int:
         for line in sys.stdin:
             parts = line.strip().split()
             if parts == ["help"]:
-                print("Befehle: reset robin | reset raphaela | reload | help")
+                print("Befehle: reset robin | reset raphaela | reload | backup | help")
             elif len(parts) == 2 and parts[0] == "reset" and parts[1] in {"robin", "raphaela"}:
                 password = secrets.token_urlsafe(18)
                 app.reset_credentials(parts[1], password)
                 print(f"Neues einmaliges Startpasswort für {parts[1]}: {password}", flush=True)
+            elif parts == ["backup"]:
+                try:
+                    print(f"Backup erstellt: {app.backup()}", flush=True)
+                except Exception as exc:
+                    print(f"Backup fehlgeschlagen: {exc}", flush=True)
             elif parts == ["reload"]:
                 try:
                     incoming = load_config(config_path)
@@ -1804,7 +2143,7 @@ def main() -> int:
                                 if not password.startswith("scrypt$"):
                                     old["password"] = app.encode_password(password)
                                 with app.database.connect() as db:
-                                    for table in ("sessions", "devices", "nearby", "live_activities"):
+                                    for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
                                         db.execute(f"DELETE FROM {table} WHERE user_id=?", (old["id"],))
                         app.save_config()
                     app.synchronize_credential_versions()

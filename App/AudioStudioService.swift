@@ -59,6 +59,26 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
             }
         }
     }
+    #if DEBUG
+    func preparePreviewDraft() {
+        discard()
+        try? FileManager.default.createDirectory(at: AudioDraftStore.directory, withIntermediateDirectories: true)
+        let id = UUID().uuidString
+        let url = AudioDraftStore.directory.appendingPathComponent(id + ".m4a")
+        do {
+            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44100, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 96000]
+            do {
+                let file = try AVAudioFile(forWriting: url, settings: settings)
+                let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 88200)!
+                buffer.frameLength = 88200
+                if let values = buffer.floatChannelData?[0] { for i in 0..<88200 { values[i] = Float(sin(Double(i) / 44100 * 440 * 2 * .pi) * 0.1) } }
+                try file.write(from: buffer)
+            }
+            let value = FartDraft(id: id, ownerID: "robin", duration: 2, waveform: (0..<60).map { abs(sin(Double($0) * 0.3)) })
+            draft = value; mode = .review; elapsed = 2; try AudioDraftStore.save(value)
+        } catch { errorMessage = error.localizedDescription }
+    }
+    #endif
     var isRecording: Bool { mode == .recording }
     var hasRecording: Bool { mode == .recording || mode == .paused }
 
@@ -156,6 +176,17 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         draft = nil; mode = .idle; elapsed = 0; liveLevels = []; allLevels = []
         deactivateSession()
     }
+    func trimDraft(start: Double, end: Double) async throws {
+        guard let draft, mode == .review else { return }
+        stopPlayback()
+        let result = try await AudioEditing.trim(url: draft.url, start: start, end: end, waveform: draft.waveform, duration: draft.duration)
+        defer { try? FileManager.default.removeItem(at: result.url) }
+        let bytes = try Data(contentsOf: result.url)
+        try bytes.write(to: draft.url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        let next = FartDraft(id: draft.id, ownerID: draft.ownerID, duration: result.duration, waveform: result.waveform)
+        self.draft = next; elapsed = result.duration
+        try AudioDraftStore.save(next)
+    }
     func playDraft() {
         guard let draft, !hasRecording else { return }
         if playingID == draft.id { stopPlayback(); return }
@@ -199,10 +230,11 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         guard let player else { return }; player.currentTime = max(0, min(1, fraction)) * player.duration
     }
     func stopPlayback() {
+        let hadPlayback = player != nil
         loadTask?.cancel(); loadTask = nil; loadingID = nil
         playerTask?.cancel(); playerTask = nil; player?.stop(); player = nil
         playingID = nil; playbackTime = 0; playbackDuration = 0
-        if !hasRecording { deactivateSession() }
+        if hadPlayback && !hasRecording { deactivateSession() }
     }
     private func deactivateSession() { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
     private func startRecordingActivity() {

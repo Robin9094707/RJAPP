@@ -35,7 +35,6 @@ struct PresencePayload: Codable, Hashable, Sendable {
     var lowPowerMode: Bool?
     var networkType: String?
     var wifiName: String?
-    var focusActive: Bool?
     var motion: String?
     var steps: Int?
     var sleepMinutes: Int?
@@ -58,7 +57,6 @@ struct PresencePayload: Codable, Hashable, Sendable {
         case lowPowerMode = "low_power_mode"
         case networkType = "network_type"
         case wifiName = "wifi_name"
-        case focusActive = "focus_active"
         case sleepMinutes = "sleep_minutes"
         case sleepScore = "sleep_score"
         case healthMetrics = "health_metrics"

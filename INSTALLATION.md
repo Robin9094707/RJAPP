@@ -1,4 +1,4 @@
-# RJ Love 2.1 einrichten
+# RJ Love 2.2 einrichten
 
 ## 1. Python-Server
 
@@ -76,4 +76,8 @@ Bewertungen sind dem Gegenüber vorbehalten. Du kannst eigene Aufnahmen löschen
 
 Unter **Liebe**: Date-Ideen auslosen und als Wunsch merken, persönliche Gutscheine verschenken/einlösen und Wertschätzung teilen. Unter **Momente** bleibt die Fotogalerie erreichbar.
 
-Beim Update von 2.0: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Für diesen Funktionszuwachs ist keine manuelle Datenmigration notwendig. App und Backend jeweils auf 2.1 aktualisieren.
+Beim Update von 2.0: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Für diesen Funktionszuwachs ist keine manuelle Datenmigration notwendig. App und Backend jeweils auf 2.2 aktualisieren.
+
+## Update 2.2
+
+Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk puffert Audio und Texte höchstens zehn Minuten auf eurem eigenen Server.

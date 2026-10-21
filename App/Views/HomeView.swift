@@ -18,6 +18,16 @@ struct HomeView: View {
                 connection
                 heartSpace
                 partnerCard
+                Button { appState.showingRadio = true } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "antenna.radiowaves.left.and.right").font(.title2).foregroundStyle(LovePalette.violet)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Deine Stimme. Ganz nah.").font(.headline)
+                            Text(appState.radio.enabled ? appState.radio.status : "Walkie-Talkie öffnen").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(); Image(systemName: "chevron.right").font(.caption.bold())
+                    }.loveCard()
+                }.buttonStyle(.plain)
                 quickActions
                 HStack(spacing: 12) {
                     action("Duftpost", "Euer privates Furzstudio", "wind", LovePalette.violet) { appState.selectedTab = .moments; appState.experienceSection = .farts }

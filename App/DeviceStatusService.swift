@@ -1,6 +1,5 @@
 import CoreMotion
 import Foundation
-import Intents
 import Network
 import NetworkExtension
 import UIKit
@@ -14,7 +13,6 @@ final class DeviceStatusService: ObservableObject {
     @Published private(set) var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
     @Published private(set) var networkType = "offline"
     @Published private(set) var wifiName: String?
-    @Published private(set) var focusActive: Bool?
     @Published private(set) var motion = "Unbekannt"
     @Published private(set) var motionAuthorization = CMMotionActivityManager.authorizationStatus()
 
@@ -66,8 +64,7 @@ final class DeviceStatusService: ObservableObject {
             }
         }
         pathMonitor.start(queue: DispatchQueue(label: "eu.rjuhas.rjlove.network"))
-        startMotionUpdates()
-        refreshFocus()
+        if motionAuthorization == .authorized { startMotionUpdates() }
     }
 
     @objc private func batteryChanged() {
@@ -104,22 +101,15 @@ final class DeviceStatusService: ObservableObject {
         }
     }
 
-    func requestFocusAuthorization() async {
-        await withCheckedContinuation { continuation in
-            INFocusStatusCenter.default.requestAuthorization { _ in
+    func requestMotionAccess() async {
+        guard CMMotionActivityManager.isActivityAvailable() else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            motionManager.queryActivityStarting(from: .now.addingTimeInterval(-60), to: .now, to: .main) { _, _ in
                 continuation.resume()
             }
         }
-        refreshFocus()
-    }
-
-    func refreshFocus() {
-        let status = INFocusStatusCenter.default.authorizationStatus
-        guard String(describing: status).lowercased().contains("authorized") else {
-            focusActive = nil
-            return
-        }
-        focusActive = INFocusStatusCenter.default.focusStatus.isFocused
+        motionAuthorization = CMMotionActivityManager.authorizationStatus()
+        startMotionUpdates()
     }
 
     func startMotionUpdates() {

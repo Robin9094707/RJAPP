@@ -1,6 +1,6 @@
-# RJ Love 2.1 — Robin & Raphaela
+# RJ Love 2.2 — Robin & Raphaela
 
-Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.1.0 (210)**, für iOS 26.1 oder neuer. Ein frischer Start ohne Datenübernahme ist vorgesehen.
+Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.2.0 (220)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
 
 Die neue Wir-Seite verbindet warme Rosé-Farben, ruhige Typografie, native Liquid-Glass-Flächen und einen interaktiven Herzgedanken. Dazu kommen privater Chat mit Tagesfrage, Wunschliste, besondere Tage mit Countdown, Gefühle, Karte, Nahbereichssuche, gemeinsame Notizen, Termine, Erinnerungen und Fotomomente.
 
@@ -76,7 +76,7 @@ GitHub Actions baut bei Änderungen an `main` und manuell. Der Workflow prüft d
 Der grüne Build prüft Compiler, Paketstruktur und Backend-Verträge. HealthKit, UWB, APNs, AlarmKit und die konkrete ArcticSign-Signierung müssen zusätzlich auf realen Geräten geprüft werden.
 
 
-## Neu in 2.1: Euer Spielplatz
+## Neu in 2.2: Euer Spielplatz
 
 - **Duftpost**: echter M4A/AAC-Recorder mit Pegelanzeige, Pause/Fortsetzen, maximal 60 Sekunden, lokalem Entwurf, Vorschau und explizitem Teilen.
 - Eigene Aufnahmen löschen, gegenseitig 1–5 Sterne in Gesamtkunstwerk/Wumms/Stil vergeben, Jury-Kommentar, Emoji-Reaktionen, Herz-Favoriten und Best-of-Sortierung.
@@ -87,3 +87,7 @@ Der grüne Build prüft Compiler, Paketstruktur und Backend-Verträge. HealthKit
 - Neues KI-generiertes RJ-Icon mit gläsernem Herz und einer kleinen Duftwolke. Alle iPhone-/iPad-Größen werden eingebettet. Der Paketcheck prüft die tatsächlichen Icon-Dateien und `Assets.car` in der IPA.
 
 Für das Update die Python-Datei ersetzen und den Server neu starten. Bestehende Konten und geteilte Daten bleiben erhalten; neue Tabellen werden automatisch hinzugefügt. Die neue App und das neue Backend gehören zusammen.
+
+## Neu in 2.2
+
+Duftpost lässt sich ohne Namenseingabe senden und vor oder nach dem Teilen schneiden. Geführte Einrichtung ohne Fokus-Status, Freigaben zunächst eingeschaltet, Walkie-Talkie mit Apples PushToTalk, Sprachausgabe, Funk-Widget sowie versioniertes Medienarchiv mit konsistenten Backups. Einrichtung und konkrete Systemgrenzen: [RELEASE-2.2.md](RELEASE-2.2.md).

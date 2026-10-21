@@ -324,6 +324,88 @@ class RJLoveBackendTests(unittest.TestCase):
         body.update(overrides)
         return body, self.request("/v1/farts", "POST", body, token), audio
 
+    def test_unnamed_audio_edit_versions_backups_and_ownership(self):
+        import uuid, tarfile
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        body, (_, clip), audio = self.upload_clip(token, title="")
+        self.assertEqual(clip["title"], "Ein kleines Meisterwerk")
+        with self.app.database.connect() as db:
+            row = db.execute("SELECT * FROM fart_clips WHERE id=?", (clip["id"],)).fetchone()
+            original = self.app.media_path(row["audio_path"])
+            self.assertEqual(bytes(row["audio"]), b"")
+            self.assertEqual(original.read_bytes(), audio)
+            self.assertIn("/media/duftpost/robin/", str(original))
+        self.request("/v1/farts/" + clip["id"] + "/rating", "POST", {"overall":5,"power":4,"style":3}, partner)
+        edit = dict(body, title="Geschnitten", duration=1.0, base_revision=1, edit_id=str(uuid.uuid4()))
+        endpoint = "/v1/farts/" + clip["id"] + "/edit"
+        self.assertEqual(self.request_error(endpoint, "POST", edit, partner)[0], 403)
+        _, changed = self.request(endpoint, "POST", edit, token)
+        self.assertEqual(changed["revision"], 2)
+        self.assertEqual(changed["ratings"][0]["overall"], 5)
+        self.assertEqual(self.request(endpoint, "POST", edit, token)[1]["revision"], 2)
+        self.assertEqual(self.app.storage_usage("robin"), len(audio) * 2)
+        stale = dict(edit, edit_id=str(uuid.uuid4()))
+        self.assertEqual(self.request_error(endpoint, "POST", stale, token)[0], 409)
+        manifest = json.loads((original.parent / "metadata.json").read_text())
+        self.assertEqual(len(manifest["versions"]), 2)
+        self.assertEqual(manifest["revision"], 2)
+        archive = self.app.backup()
+        with tarfile.open(archive) as backup:
+            names = backup.getnames()
+            self.assertIn("rjlove_data/rjlove.sqlite3", names)
+            self.assertIn("rjapp_config.json", names)
+            self.assertEqual(len([n for n in names if n.endswith(".m4a")]), 2)
+        self.request("/v1/farts/" + clip["id"], "DELETE", token=token)
+        self.assertFalse(original.parent.exists())
+        self.assertEqual(self.app.storage_usage("robin"), 0)
+
+    def test_legacy_blob_migrates_without_losing_ratings(self):
+        import uuid
+        token = self.login()
+        _, (_, clip), audio = self.upload_clip(token)
+        with self.app.database.connect() as db:
+            row = db.execute("SELECT * FROM fart_clips WHERE id=?", (clip["id"],)).fetchone()
+            self.app.media_path(row["audio_path"]).unlink()
+            db.execute("UPDATE fart_clips SET audio=?,audio_path='' WHERE id=?", (audio,clip["id"]))
+            db.execute("DELETE FROM audio_versions WHERE clip_id=?", (clip["id"],))
+        restarted = SERVER.RJLoveApplication(self.config, self.config_path)
+        try:
+            with restarted.database.connect() as db:
+                row = db.execute("SELECT * FROM fart_clips WHERE id=?", (clip["id"],)).fetchone()
+                self.assertEqual(restarted.media_path(row["audio_path"]).read_bytes(), audio)
+                self.assertEqual(row["revision"], 1)
+                self.assertEqual(bytes(row["audio"]), b"")
+        finally:
+            restarted.close()
+
+    def test_radio_half_duplex_ordered_audio_text_and_revocation(self):
+        import uuid, base64
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        tx = str(uuid.uuid4())
+        body = {"transmission_id": tx}
+        self.assertEqual(self.request_error("/v1/radio/begin", "POST", body, token)[0], 409)
+        for auth in (token, partner):
+            self.assertEqual(self.request("/v1/radio/join", "POST", {}, auth)[0], 200)
+        self.request("/v1/radio/begin", "POST", body, token)
+        self.assertEqual(self.request_error("/v1/radio/begin", "POST", {"transmission_id":str(uuid.uuid4())}, partner)[0], 409)
+        audio = base64.b64encode(b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 40).decode()
+        chunk = dict(body, chunk_index=0, audio_base64=audio)
+        self.assertEqual(self.request_error("/v1/radio/audio", "POST", dict(chunk, chunk_index=1), token)[0], 409)
+        for _ in range(2):
+            self.assertEqual(self.request("/v1/radio/audio", "POST", chunk, token)[0], 200)
+        feed = self.request("/v1/radio/feed?after=0", token=partner)[1]
+        self.assertEqual(len(feed["events"]), 1)
+        self.assertEqual(feed["events"][0]["audio_base64"], audio)
+        self.assertEqual(feed["speaker_id"], "robin")
+        self.request("/v1/radio/end", "POST", dict(body,chunk_index=1), token)
+        self.request("/v1/radio/text", "POST", {"transmission_id":str(uuid.uuid4()),"text":"Ich liebe dich"}, partner)
+        feed = self.request("/v1/radio/feed?after=0", token=token)[1]
+        self.assertEqual(feed["events"][0]["text"], "Ich liebe dich")
+        self.request("/v1/auth/logout", "POST", {}, partner)
+        with self.app.database.connect() as db:
+            self.assertIsNone(db.execute("SELECT * FROM radio_members WHERE user_id='raphaela'").fetchone())
+        self.assertEqual(self.request_error("/v1/radio/feed?after=0", token=partner)[0], 401)
+
     def test_private_audio_upload_roundtrip_and_metadata_only_bootstrap(self):
         token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
         body, (status, clip), audio = self.upload_clip(token)

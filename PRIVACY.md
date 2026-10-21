@@ -1,26 +1,37 @@
 # Datenschutz — RJ Love 2.2
 
-RJ Love ist für genau zwei konfigurierte Konten vorgesehen. Kein Tracking-SDK, keine Werbung, keine Analyseplattform.
+RJ Love ist für Robin und Raphaela vorgesehen. Kein Tracking-SDK, keine Werbung und keine Analyseplattform. Inhalte sind nicht Ende-zu-Ende-verschlüsselt; der Betreiber eures eigenen Servers kann sie lesen. HTTPS schützt die Übertragung.
 
-- Health- und Standortfreigaben sind bei frischer Installation aus. Health erlaubt getrennte Weitergabe von Aktivität, Schlaf und Vitalwerten. Keine Kalender werden im Hintergrund ausgelesen und hochgeladen.
-- Der Server speichert die bewusst geteilten Zusammenfassungen, Fotos, Inhalte und Positionen in einer lokalen SQLite-Datei. Inhalte sind nicht Ende-zu-Ende verschlüsselt; der Serverbetreiber kann sie lesen. Im Internet HTTPS verwenden. Datenbank und Sicherungen selbst verschlüsseln bzw. Zugriffe absichern.
-- Ein neuer vollständiger Status ersetzt den alten: Beim Abschalten einer Kategorie entfernt der nächste erfolgreiche Upload zuvor geteilte Werte dieser Kategorie. Bereits offline angezeigte Kopien verschwinden erst beim nächsten Abgleich und können nicht aus der Ferne aus einem ausgeschalteten Gerät gelöscht werden.
-- Passwörter werden beim regulären Serverstart und bei Änderungen als gesalzene scrypt-Hashes gespeichert. Sitzungstokens liegen serverseitig nur gehasht. Auf dem iPhone wird das Sitzungstoken im Schlüsselbund gespeichert; Offline-Snapshots nutzen iOS-Dateischutz. Face ID/Gerätecode ist optional.
-- Eine neue Anmeldung widerruft vorherige Tokens desselben Kontos. Alte Geräte erhalten beim nächsten Serverkontakt HTTP 401 und löschen ihre lokale Sitzung sowie Widget-Snapshot. Offlinedaten können bis zu diesem Kontakt noch sichtbar sein.
-- UWB-Discovery-Tokens werden nur an das verbundene Gegenüber vermittelt und nach 20 Sekunden nicht mehr ausgeliefert. Beim Beenden der Suche werden sie aktiv gelöscht. Login-Wechsel entfernt sie ebenfalls. Entfernen aus dem Datenbestand erfolgt auch beim nächsten Upload oder bei Abmeldung.
-- Optionale APNs-Mitteilungen nutzen Apple. Optionale ntfy-Hinweise nutzen den konfigurierten Betreiber; sie enthalten nur einen allgemeinen Hinweis, keine Koordinaten, Health-Werte oder Nachrichtentexte. Geheime Topics vertraulich halten.
-- Geteilte Einträge können in der App gelöscht werden. Serverseitig ist dies eine Löschmarkierung; zur vollständigen Entfernung alter Daten und Sicherungen ist der Serverbetreiber zuständig. Derzeit existiert kein automatischer Lösch-/Export-Assistent.
-- Die Konfigurationsdatei, Logs, Konsolen-Reset-Ausgaben und Sicherungen sind vertraulich und dürfen nicht ins öffentliche GitHub-Repository gelangen.
+## Einrichtung und Freigaben
 
+Die geführte Einrichtung fragt die benötigten Systemberechtigungen einzeln ab. Danach sind Standort, Health-Kategorien und WLAN-Name als App-Freigaben eingeschaltet. iOS entscheidet weiterhin, welche Daten tatsächlich zugänglich sind; eine Ablehnung wird nicht umgangen. Einstellungen lassen sich jederzeit einzeln ausschalten und werden bei späteren Starts beibehalten. Health erlaubt getrennte Weitergabe von Aktivität, Schlaf und Vitalwerten. Kalender werden nicht vollständig ausgelesen oder hochgeladen. Fotos werden über Apples geschützten Systembildwähler ausgewählt. Die Nahbereichssuche fragt erst bei der tatsächlichen Verbindung beider Geräte nach ihrer Freigabe. Fokus-Status wird weder angefragt noch geteilt.
 
-## Private Audioaufnahmen
+Ein neuer vollständiger Status ersetzt den alten. Abschalten einer Kategorie entfernt deren zuvor geteilte Werte beim nächsten erfolgreichen Upload. Bereits offline gespeicherte Kopien verschwinden beim nächsten Abgleich; ein ausgeschaltetes Gerät kann nicht aus der Ferne bereinigt werden.
 
-Mikrofonzugriff wird erst nach einer Aufnahmeaktion abgefragt. Der Recorder ist sichtbar; iOS zeigt den Mikrofonindikator. Ein Widget kann die App direkt in die Aufnahmeansicht öffnen. Es werden nur ausdrücklich gestartete Clips bis 60 Sekunden aufgenommen. Pause, Stopp und Verwerfen stehen bereit. Beim Verlassen in den Hintergrund wird gestoppt.
+## Zugang und private Daten
 
-Ein Entwurf liegt mit iOS-Dateischutz lokal im App-Ordner. Erst die Senden-Aktion lädt ihn auf den eigenen Server hoch. Anhören lädt Audio nur nach Nutzeraktion; es gibt keinen öffentlichen Audio-Link und kein automatisches Abspielen eingehender Clips. Die aktive App-Anmeldung ist bei jedem Download erforderlich. Playback nutzt einen flüchtigen Speicherpuffer. Bei Abmeldung werden lokale Entwürfe gelöscht. Aufnahmen sind für beide Konten sichtbar. Nur der Ersteller kann sie löschen; nur das Gegenüber kann bewerten. Audio/zugehörige Wertungen werden beim Löschen aus den aktiven Tabellen entfernt. Serverseitige SQLite-Freiseiten und eigene Sicherungen können frühere Bytes enthalten; deren sichere Löschung liegt beim Serverbetreiber. Keine Ende-zu-Ende-Verschlüsselung.
+Passwörter liegen serverseitig als gesalzene scrypt-Hashes, Sitzungstokens als Hashes vor. Auf dem iPhone liegt das Token im gerätegebundenen Schlüsselbund, für Hintergrundempfang nach dem ersten Entsperren zugänglich. Offline-Snapshots nutzen iOS-Dateischutz. Face ID/Gerätecode wird während der Einrichtung angeboten und kann später deaktiviert werden.
 
-Die Aufnahme-Live-Aktivität zeigt nur den laufenden Recorder, keine geteilten Audioinhalte. Optionale Push-Dienste erhalten nur einen allgemeinen Hinweis auf neue Duftpost. Sterne sind manuelle Spaßbewertungen; Wellenformen sind Aufnahmepegel, keine objektive Geruchs- oder Qualitätsmessung.
+Eine neue Anmeldung widerruft die alte Sitzung desselben Kontos und entfernt deren Push-, Funk- und Nahbereichsregistrierungen. Beim nächsten Kontakt erhält das alte Gerät HTTP 401 und löscht seine lokale Sitzung sowie den Widget-Snapshot. Bis dahin können vorhandene Offlinedaten noch sichtbar sein.
 
-## Update 2.2
+Geteilte Inhalte, Bilder und Positionen liegen in SQLite auf eurem Server; Audiodateien im separaten Medienverzeichnis. APNs nutzt Apple; Walkie-Talkie-Pushes enthalten den Sprechernamen und die Übertragungsnummer, keine Audiodaten. Optionale ntfy-Hinweise enthalten nur einen allgemeinen App-Hinweis, keine Koordinaten, Health-Werte oder Nachrichtentexte. Geheime Topics, APNs-Schlüssel, Konfiguration, Logs und Backups vertraulich behandeln.
 
-Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk puffert Audio und Texte höchstens zehn Minuten auf eurem eigenen Server.
+UWB-Tokens werden dem Gegenüber bis zu 20 Sekunden vermittelt und beim Beenden der Suche oder Sitzungswechsel entfernt. Normale gemeinsame Einträge verwenden serverseitig eine Löschmarkierung. Frühere SQLite-Seiten und externe Sicherungen können gelöschte Bytes weiter enthalten.
+
+## Duftpost und Schnittarchiv
+
+Das Mikrofon wird in der Einrichtung oder beim ersten Aufnehmen angefragt. Die sichtbare Aufnahme startet nur durch deine Aktion; iOS zeigt den Mikrofonindikator. Das Widget öffnet die App und startet nach Freigabe eine Aufnahme. Clips sind auf 60 Sekunden begrenzt, beim Wechsel in den Hintergrund wird gestoppt. Ein Entwurf bleibt mit Dateischutz lokal. Erst „Duftpost senden“ lädt ihn hoch. Ein Upload-Fehler behält den Entwurf.
+
+Audio wird authentifiziert geladen; es gibt keine öffentlichen Audio-Links. Geteilte Duftpost wird nicht automatisch abgespielt. Nur der Eigentümer darf schneiden, umbenennen und löschen; nur das Gegenüber darf bewerten. Das Original und jede spätere Schnittversion bleiben bewusst im Serverarchiv erhalten. „Löschen“ entfernt das gesamte aktive Aufnahmeverzeichnis einschließlich aller Fassungen sowie Bewertungen und Reaktionen aus den Tabellen. Bestehende Backups bleiben erhalten. Schnittvorschauen verwenden vorübergehende lokale Dateien, die beim Schließen entfernt werden. Abmeldung entfernt lokale Recorder-Entwürfe.
+
+Sterne sind Spaßbewertungen; die Wellenform zeigt Aufnahmepegel, keinen objektiven Geruch oder Qualitätswert. Die Aufnahme-Live-Aktivität zeigt nur den Recorderstatus.
+
+## Walkie-Talkie und Vorlesen
+
+Nach der Einrichtung sind Funkempfang und Vorlesen eingeschaltet. Eingehendes Audio oder Funktexte können dann auch bei gesperrtem Bildschirm laut ausgegeben werden. Beide Schalter sind getrennt abschaltbar; „Kanal verlassen“ beendet den Empfang. Das Mikrofon sendet ausschließlich während betätigter Sprechtaste, höchstens 30 Sekunden. Es wird kein fremdes Mikrofon aus der Ferne aktiviert.
+
+Kurze Audioteile und Funktexte bleiben höchstens zehn Minuten als Übertragungspuffer im Server-Datenbestand verfügbar; der minütliche Bereinigungslauf entfernt alte Einträge auch ohne weitere Funkaktionen. Ein Backup kann solche flüchtigen Daten als Teil des Datenbank-Snapshots enthalten. Funktexte in der App werden nur für die laufende Sitzung angezeigt und nicht als dauerhafter Chat gespeichert. iOS-Sprachausgabe erzeugt das Vorlesen lokal. Systemkanal, Hintergrundlaufzeit und Push sind abhängig von iOS, Signierprofil und APNs-Konfiguration.
+
+## Backups
+
+Der integrierte Backup-Befehl erstellt ein Archiv aus konsistentem Datenbank-Snapshot, Mediendateien und Konfiguration. Es ist nicht zusätzlich verschlüsselt und kann sensible Inhalte und Zugangskonfiguration enthalten. Der Betreiber bestimmt Speicherort, Aufbewahrung und externe Verschlüsselung. Extern abgelegte APNs-Privatschlüssel separat sichern. Details: [RELEASE-2.2.md](RELEASE-2.2.md).

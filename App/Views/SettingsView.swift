@@ -1,4 +1,5 @@
 import AlarmKit
+import AVFoundation
 import CoreLocation
 import CoreMotion
 import EventKit
@@ -14,6 +15,7 @@ struct SettingsView: View {
     @ObservedObject private var calendar = CalendarService.shared
     @ObservedObject private var privacyLock = PrivacyLockService.shared
     @State private var logoutConfirmation = false
+    @State private var microphone = AVAudioApplication.shared.recordPermission
 
     var body: some View {
         @Bindable var state = appState
@@ -58,6 +60,10 @@ struct SettingsView: View {
             }
 
             Section("Berechtigungen") {
+                PermissionRow(title: "Mikrofon", status: microphone == .granted ? "Erlaubt" : microphone == .denied ? "Abgelehnt" : "Nicht gefragt", symbol: "mic.fill", tint: microphone == .granted ? .green : .orange, actionTitle: microphone == .granted ? nil : microphone == .denied ? "Einstellungen" : "Erlauben") {
+                    if microphone == .denied { openSettings() }
+                    else { Task { _ = await AVAudioApplication.requestRecordPermission(); microphone = AVAudioApplication.shared.recordPermission } }
+                }
                 PermissionRow(
                     title: "Standort beim Verwenden",
                     status: locationStatus,
@@ -123,6 +129,8 @@ struct SettingsView: View {
                     tint: calendar.authorizationStatus == .fullAccess ? .green : .orange,
                     actionTitle: calendar.authorizationStatus == .fullAccess ? nil : "Erlauben"
                 ) { Task { _ = await calendar.requestAccess() } }
+                Button("iPhone-Einstellungen öffnen", systemImage: "arrow.up.right.square") { openSettings() }
+                Text("Abgelehnte Zugriffe kannst du dort ändern. Die Health-Leseauswahl verwaltest du in Apple Health. Eine Freigabe in der App ersetzt keine iOS-Erlaubnis.").font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Privatsphäre") {
@@ -194,12 +202,13 @@ struct SettingsView: View {
         }
         .task {
             await notifications.refreshStatus()
+            microphone = AVAudioApplication.shared.recordPermission
         }
-        .onChange(of: health.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
-        .onChange(of: location.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
-        .onChange(of: appState.shareWiFiName) { _, _ in appState.queuePresenceUpload(force: true) }
     }
 
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+    }
     private var locationStatus: String {
         switch location.authorizationStatus {
         case .authorizedAlways: "Immer erlaubt"

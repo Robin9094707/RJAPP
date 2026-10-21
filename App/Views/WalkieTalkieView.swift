@@ -26,6 +26,7 @@ struct WalkieTalkieView: View {
                             .frame(width: 148, height: 148).shadow(color: LovePalette.violet.opacity(0.28), radius: 25, y: 12)
                             .overlay { Image(systemName: radio.receiving ? "speaker.wave.2.fill" : "mic.fill").font(.system(size: 46)).foregroundStyle(.white).symbolEffect(.variableColor, isActive: radio.transmitting || radio.receiving) }
                             .overlay { Circle().stroke(.white.opacity(0.45), lineWidth: 1.5) }
+                            .glassEffect(.regular.tint(LovePalette.violet.opacity(0.18)).interactive(), in: Circle())
                             .scaleEffect(pressed && !reduceMotion ? 0.94 : 1)
                             .gesture(DragGesture(minimumDistance: 0).onChanged { _ in
                                 guard !pressed, radio.enabled, !radio.connecting, !radio.receiving else { return }

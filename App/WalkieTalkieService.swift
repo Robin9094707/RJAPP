@@ -45,6 +45,7 @@ struct RadioFeed: Decodable {
     private(set) var transmitting = false
     private(set) var receiving = false
     private(set) var connecting = false
+    private(set) var connected = false
     private(set) var status = "Walkie-Talkie ist aus"
     private(set) var systemMessage: String?
     private(set) var lastTexts: [RadioEvent] = []
@@ -94,6 +95,7 @@ struct RadioFeed: Decodable {
         await prepareSystemChannel()
         do {
             let result = try await api.radioJoin(token: ephemeralToken)
+            connected = true
             if !receiving { cursor = max(cursor, result.cursor) }; backgroundPushConfigured = result.backgroundPushConfigured
             startReceiving()
             if manager?.activeChannelUUID == channelID {
@@ -102,8 +104,7 @@ struct RadioFeed: Decodable {
             updateStatus()
         } catch {
             // A signing entitlement failure must not prevent foreground conversation.
-            systemMessage = "iOS-Systemkanal nicht verfügbar: " + error.localizedDescription
-            if receiveTask == nil { errorMessage = error.localizedDescription }
+            connected = false; errorMessage = error.localizedDescription
             updateStatus()
         }
     }
@@ -113,7 +114,7 @@ struct RadioFeed: Decodable {
         if studioPaused || receiveTask == nil { await enable(api: api) }
     }
     func disable() {
-        enabled = false; UserDefaults.standard.set(false, forKey: "rjlove.radio-enabled")
+        enabled = false; connected = false; UserDefaults.standard.set(false, forKey: "rjlove.radio-enabled")
         operation = UUID(); wantsToTalk = false
         finishTalking(); stopReceiving(); receiveTask?.cancel(); receiveTask = nil
         manager?.leaveChannel(channelUUID: channelID)
@@ -221,6 +222,7 @@ struct RadioFeed: Decodable {
                 do {
                     let feed = try await api.radioFeed(after: self.cursor)
                     guard !Task.isCancelled else { return }
+                    self.connected = true
                     self.backgroundPushConfigured = feed.backgroundPushConfigured
                     self.cursor = feed.cursor
                     for event in feed.events {
@@ -246,7 +248,7 @@ struct RadioFeed: Decodable {
                     }
                 } catch {
                     if Task.isCancelled { return }
-                    self.errorMessage = error.localizedDescription
+                    self.connected = false; self.errorMessage = error.localizedDescription; self.updateStatus()
                     if let apiError = error as? APIClientError, case .server(let code, _) = apiError, code == 401 { self.disable(); return }
                 }
                 try? await Task.sleep(for: .milliseconds(300))
@@ -288,6 +290,7 @@ struct RadioFeed: Decodable {
     private func updateStatus() {
         if !enabled { status = "Walkie-Talkie ist aus" }
         else if studioPaused { status = "Für das Duftstudio pausiert" }
+        else if !connected { status = "Verbindung zum Funkserver fehlt" }
         else if !transmitting && !receiving { status = joinedSystem && backgroundPushConfigured ? "Systemkanal bereit · Hintergrund-Push konfiguriert" : "Bereit in der geöffneten App" }
     }
     nonisolated private func descriptor() -> PTChannelDescriptor { PTChannelDescriptor(name: "Robin & Raphaela", image: UIImage(systemName: "heart.fill")) }
@@ -321,7 +324,9 @@ struct RadioFeed: Decodable {
     }
     func channelManager(_ channelManager: PTChannelManager, didActivate audioSession: AVAudioSession) {
         systemAudioActive = true
-        if wantsToTalk { startTransmitting() } else { receiving = true; startReceiving(); playNext() }
+        if wantsToTalk { startTransmitting() }
+        else if !playIncoming { stopReceiving() }
+        else { receiving = true; startReceiving(); playNext() }
     }
     func channelManager(_ channelManager: PTChannelManager, didDeactivate audioSession: AVAudioSession) {
         systemAudioActive = false; wantsToTalk = false; recorder?.stop(); transmitting = false
@@ -330,12 +335,13 @@ struct RadioFeed: Decodable {
     func channelManager(_ channelManager: PTChannelManager, failedToBeginTransmittingInChannel channelUUID: UUID, error: Error) { wantsToTalk = false; errorMessage = error.localizedDescription }
     func channelManager(_ channelManager: PTChannelManager, failedToStopTransmittingInChannel channelUUID: UUID, error: Error) { if transmitting { errorMessage = error.localizedDescription } }
     nonisolated func incomingPushResult(channelManager: PTChannelManager, channelUUID: UUID, pushPayload: [String: Any]) -> PTPushResult {
-        guard UserDefaults.standard.bool(forKey: "rjlove.radio-enabled"), UserDefaults.standard.object(forKey: "rjlove.radio-play-incoming") as? Bool ?? true,
+        guard UserDefaults.standard.bool(forKey: "rjlove.radio-enabled"),
               let speaker = pushPayload["speaker"] as? String else { return .leaveChannel }
         let sequence = pushPayload["sequence"] as? Int
         Task { @MainActor in
             if let sequence { cursor = min(cursor, max(0, sequence - 1)) }
             receiving = true; receiveDeadline = .now.addingTimeInterval(15); startReceiving()
+            if !playIncoming { stopReceiving() }
         }
         return .activeRemoteParticipant(PTParticipant(name: speaker, image: nil))
     }

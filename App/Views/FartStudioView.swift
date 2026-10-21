@@ -5,6 +5,7 @@ enum ExperienceSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 struct ExperienceView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppState.self) private var appState
     var body: some View {
         @Bindable var state = appState
@@ -17,7 +18,7 @@ struct ExperienceView: View {
             case .love: LovePlayView()
             case .moments: MomentsView()
             }
-        }.background(LoveBackground())
+        }.background(LoveBackground()).animation(reduceMotion ? nil : .snappy(duration: 0.25), value: state.experienceSection)
     }
 }
 private enum FartFilter: String, CaseIterable { case all = "Alle", mine = "Meine", partner = "Deine", favorites = "Lieblinge", best = "Best of" }
@@ -215,6 +216,7 @@ struct FartRecorderView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let autoStart: Bool
     @State private var title = ""
     @State private var trimStart = 0.0
@@ -231,6 +233,13 @@ struct FartRecorderView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    HStack(spacing: 8) {
+                        stage("1", "Aufnehmen", selected: studio.mode != .review)
+                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                        stage("2", "Schneiden", selected: studio.mode == .review)
+                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                        stage("3", "Senden", selected: saving)
+                    }.frame(maxWidth: .infinity)
                     LoveEyebrow(text: studio.hasRecording ? "Das Mikrofon ist für euch offen" : studio.mode == .review ? "Ein kleines Meisterwerk ist geboren" : "Wenn die Natur ruft: Aufnahme.")
                     PuffMascot(active: studio.isRecording).frame(height: 130)
                     Text(studio.mode == .review ? "Bereit für die Duftpost?" : studio.mode == .paused ? "Kurze Atempause." : studio.isRecording ? "Lass es raus." : "Bühne frei.")
@@ -251,6 +260,7 @@ struct FartRecorderView: View {
                 Button("Behalten", role: .cancel) {}
             }
         }.interactiveDismissDisabled(saving)
+        .animation(reduceMotion ? nil : .snappy, value: studio.mode)
         .task {
             guard let ownerID = appState.me?.id else { return }
             studio.prepare(ownerID: ownerID)
@@ -262,6 +272,12 @@ struct FartRecorderView: View {
         .onChange(of: studio.mode) { _, mode in if mode == .review { trimStart = 0; trimEnd = studio.draft?.duration ?? 0.2 } }
         .onChange(of: scenePhase) { _, phase in if phase == .background { studio.finishRecording() } }
         .onDisappear { studio.finishRecording(); studio.stopPlayback() }
+    }
+    private func stage(_ number: String, _ title: String, selected: Bool) -> some View {
+        HStack(spacing: 5) { Text(number).font(.caption.bold()); Text(title).font(.caption2) }
+            .foregroundStyle(selected ? LovePalette.violet : Color.secondary)
+            .padding(.horizontal, 9).padding(.vertical, 8)
+            .glassEffect(.regular.tint(selected ? LovePalette.violet.opacity(0.14) : .clear), in: Capsule())
     }
     private var recordingControls: some View {
         HStack(spacing: 25) {
@@ -279,6 +295,7 @@ struct FartRecorderView: View {
                 } label: {
                     Group { if starting { ProgressView().tint(.white) } else { Image(systemName: "mic.fill").font(.system(size: 32)) } }
                         .foregroundStyle(.white).frame(width: 88, height: 88).background(LovePalette.pink.gradient, in: Circle())
+                        .glassEffect(.regular.tint(LovePalette.pink.opacity(0.3)).interactive(), in: Circle())
                         .shadow(color: LovePalette.pink.opacity(0.25), radius: 18, y: 8)
                 }.disabled(starting).accessibilityLabel("Aufnahme starten")
             }

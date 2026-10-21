@@ -406,6 +406,31 @@ class RJLoveBackendTests(unittest.TestCase):
             self.assertIsNone(db.execute("SELECT * FROM radio_members WHERE user_id='raphaela'").fetchone())
         self.assertEqual(self.request_error("/v1/radio/feed?after=0", token=partner)[0], 401)
 
+    def test_radio_native_push_headers_and_short_term_retention(self):
+        import uuid, datetime, types
+        from unittest.mock import patch
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        self.request("/v1/radio/join", "POST", {"token":"ab" * 32, "environment":"production"}, partner)
+        self.app.config["apns"]["enabled"] = True
+        with patch.object(self.app.apns, "provider_token", return_value="test-jwt"), patch.object(SERVER.subprocess, "run", return_value=types.SimpleNamespace(returncode=0,stdout=b"200")) as send, patch.object(SERVER.threading, "Thread", side_effect=lambda target, daemon: types.SimpleNamespace(start=target)):
+            self.app.push_radio("robin", 42)
+            args, kwargs = send.call_args
+            command = args[0]
+            self.assertIn("apns-push-type: pushtotalk", command)
+            self.assertIn("apns-topic: eu.rjuhas.rjlove.voip-ptt", command)
+            self.assertIn("apns-expiration: 0", command)
+            payload = json.loads(kwargs["input"])
+            self.assertEqual(payload["sequence"], 42)
+            self.assertNotIn("audio", payload)
+        self.app.config["apns"]["enabled"] = False
+        old = (SERVER.utc_now() - datetime.timedelta(minutes=11)).isoformat().replace("+00:00", "Z")
+        with self.app.database.connect() as db:
+            db.execute("INSERT INTO radio_events(transmission_id,chunk_index,user_id,kind,text,created_at) VALUES(?,0,'robin','text','old',?)", (str(uuid.uuid4()),old))
+        self.assertEqual(self.request("/v1/radio/feed?after=0", token=partner)[1]["events"], [])
+        self.app.cleanup()
+        with self.app.database.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM radio_events").fetchone()[0], 0)
+
     def test_private_audio_upload_roundtrip_and_metadata_only_bootstrap(self):
         token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
         body, (status, clip), audio = self.upload_clip(token)

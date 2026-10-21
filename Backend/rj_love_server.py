@@ -636,7 +636,7 @@ class RJLoveApplication:
         try:
             with self.media_lock, tempfile.TemporaryDirectory() as staging:
                 snapshot = Path(staging) / "rjlove.sqlite3"
-                with self.database.connect() as source, sqlite3.connect(snapshot) as target:
+                with self.database.connect() as source, contextlib.closing(sqlite3.connect(snapshot)) as target:
                     source.backup(target)
                 with tarfile.open(temporary, "w:gz") as archive:
                     archive.add(snapshot, arcname="rjlove_data/rjlove.sqlite3")
@@ -1225,7 +1225,7 @@ class RJLoveApplication:
             db.execute("DELETE FROM records WHERE deleted_at IS NOT NULL AND deleted_at < ?", (old_events.isoformat(),))
 
     def _cleanup_loop(self) -> None:
-        while not self._cleanup_stop.wait(3600):
+        while not self._cleanup_stop.wait(60):
             with contextlib.suppress(Exception):
                 self.cleanup()
 
@@ -1857,11 +1857,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.send_json(200, self.app.fart_clip(clip_id))
 
     def _fart_audio(self, clip_id: str) -> None:
-        with self.app.database.connect() as db:
+        with self.app.media_lock, self.app.database.connect() as db:
             row = db.execute("SELECT audio_path FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
-        if row is None:
-            raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
-        data = self.app.media_path(row["audio_path"]).read_bytes()
+            if row is None:
+                raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
+            data = self.app.media_path(row["audio_path"]).read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", "audio/mp4")
         self.send_header("Content-Length", str(len(data)))

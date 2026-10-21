@@ -1,74 +1,76 @@
-# RJ Love
+# RJ Love 2.0 — Robin & Raphaela
 
-RJ Love ist eine private, native iOS-Partner-App für Robin und Raphaela. Sie kombiniert eine „Wo ist?“-inspirierte Partnerkarte mit AlarmKit-Weckrufen, gemeinsamen Notizen, Erinnerungen, ausgewählten Kalenderterminen, einer privaten Momentgalerie, Health-Zusammenfassungen, Widgets und Live-Aktivitäten. Alle gemeinsamen Daten liegen auf dem eigenen Python-Server.
+Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.0.0 (200)**, für iOS 26.1 oder neuer. Ein frischer Start ohne Datenübernahme ist vorgesehen.
 
-## Projektaufbau
+Die neue Wir-Seite verbindet warme Rosé-Farben, ruhige Typografie, native Liquid-Glass-Flächen und einen interaktiven Herzgedanken. Dazu kommen privater Chat mit Tagesfrage, Wunschliste, besondere Tage mit Countdown, Gefühle, Karte, Nahbereichssuche, gemeinsame Notizen, Termine, Erinnerungen und Fotomomente.
+
+## Direkt loslegen
+
+Die vollständige Anleitung steht in **[INSTALLATION.md](INSTALLATION.md)**. Das Build-Paket enthält die unsignierte IPA, die einzelne Python-Datei und alle Anleitungen.
+
+```sh
+python3 Backend/rj_love_server.py
+```
+
+Der erste Start erzeugt `rjapp_config.json` mit zwei zufälligen Startpasswörtern und beendet sich. Lies die Passwörter und richte den Server ein, dann starte erneut. Ab dann werden Passwörter als gesalzene scrypt-Hashes gespeichert. Keine `pip`-Abhängigkeiten; Python 3.11+ genügt. Für Internetbetrieb HTTPS konfigurieren.
+
+## Zwei unabhängige Zugänge
+
+Standardkonten: `robin` und `raphaela`. Eine neue Anmeldung beendet atomar die vorherige Sitzung desselben Kontos und entfernt deren Push- und Nahbereichstokens. Das andere Konto bleibt angemeldet. In **Mehr → Meinen Zugang ändern** können beide ihren eigenen Benutzernamen und ihr Passwort ändern. Danach ist eine Neuanmeldung nötig.
+
+Die laufende Serverkonsole versteht:
 
 ```text
-App/                 Native SwiftUI-App und Apple-Dienste
-Shared/              Modelle, AlarmKit-Metadaten und App Intents
-WidgetExtension/     Zwei Home-Screen-Widgets und zwei Live Activities
-Backend/             Einzeldatei-Python-Server ohne Python-Pakete
-Tests/               Backend-Integrationstests
-Scripts/             Projekt-/Build-Validierung
-.github/workflows/   Unsigned-IPA-Build
-project.yml          XcodeGen Source of Truth
+help
+reset robin
+reset raphaela
+reload
 ```
 
-## Python-Server starten
+`reset` erzeugt ein starkes neues Passwort und zeigt es einmal in der lokalen Konsole an. `reload` übernimmt geänderte Zugangsdaten aus der JSON-Datei und widerruft Sitzungen betroffener Konten. Serverparameter wie Port oder TLS werden erst nach einem Neustart übernommen. Alternativ: Server stoppen und `python3 rj_love_server.py --reset-user robin` ausführen; das Passwort wird verdeckt abgefragt.
 
-Voraussetzung: Python 3.11 oder neuer. Es werden keine `pip`-Pakete benötigt.
+## Was enthalten ist
 
-1. `Backend/rj_love_server.py` in deine CubeCoders-Instanz kopieren.
-2. Als Startdatei `rj_love_server.py` und als Interpreter `python3` wählen.
-3. Einmal starten. Das Skript erzeugt neben sich `rjapp_config.json` und beendet sich absichtlich.
-4. In der erzeugten Datei Benutzername, Passwort, Port und auf Wunsch Speicherlimit ändern.
-5. Erneut starten. Standardmäßig lauscht der Server auf `0.0.0.0:8765`.
-6. In RJ Love `http://SERVER-IP:8765` oder die öffentliche HTTPS-Domain eingeben.
+| Bereich | Funktion |
+| --- | --- |
+| Wir | Herzgedanken, Partnerstatus, Akku/Bewegung, Schnellaktionen, gemeinsame Zeit |
+| Für uns | Privater Chat, Tagesfragen, Wünsche mit Erledigt-Status, Countdown, Gefühle |
+| Gemeinsamer Alltag | Notizen, Erinnerungen, gemeinsame Termine; einzelne Termine bestätigt in Apple Kalender übernehmen |
+| Momente | Gemeinsame Fotogalerie, Kommentare und Reaktionen |
+| Karte | Freiwilliger Standort, Orte/Geofences, Bewegung, Entfernung |
+| Dich finden | Nearby Interaction: UWB-Entfernung und Richtung bei verfügbarer Hardware/Signalqualität |
+| Health | Schritte, Weg, Aktivenergie, Trainingsminuten, Etagen, Schlaf, Puls, Ruhepuls, HRV, SpO₂ und Atmung |
+| Widgets | Herzgedanke, Partnerstatus, Wohlgefühl, Unsere Zeit sowie drei Sperrbildschirm-Formate |
+| Live-Aktivitäten | Sperrbildschirm, Dynamic Island, Weckrufe; optionale APNs-Aktualisierung |
+| Schutz | Face ID/Gerätecode, Keychain, einzelne Freigaben, scrypt-Passwörter, Sitzungsaustausch |
 
-Die erzeugte Konfiguration enthält bereits zufällige, starke Startpasswörter. Sie kann direkt verwendet oder geändert werden. `storage_limit_mb: 0` bedeutet unbegrenzt. Daten landen standardmäßig in `Backend/rjlove_data/rjlove.sqlite3`; WAL sorgt dafür, dass Neustarts und kurze Unterbrechungen nichts verlieren.
+## Apple-Funktionen und Signierung
 
-Die iOS-App hält zusätzlich einen durch iOS-Dateischutz abgesicherten Offline-Snapshot vor. Bereits synchronisierte Karten-, Status- und Gemeinschaftsdaten bleiben dadurch nach einem App- oder Serverneustart sichtbar. Herzgedanken werden bei fehlender Verbindung lokal vorgemerkt und beim nächsten erfolgreichen Sync zuverlässig nachgesendet.
+Die IPA wird **unsigniert** gebaut. ArcticSign/Feather muss die Haupt-App **und** die eingebettete Widget-Extension passend signieren. Ein vorhandener Zahlungsbeleg allein beschreibt nicht, welche Apple-Capabilities das Provisioningprofil freigibt.
 
-### HTTPS
+- App Group: `group.eu.rjuhas.rjlove` für App und Extension identisch erhalten.
+- HealthKit: passendes Entitlement/Profil, danach Zustimmung in Apple Health. Alle Weitergabe-Schalter sind beim frischen Installieren aus.
+- APNs: Profil mit Push plus eigener APNs-Schlüssel/Team-ID/Key-ID auf dem Server. Release nutzt `production`. APNs-Schlüssel niemals committen.
+- Live-Aktivitäten: lokal möglich, Server-Aktualisierungen brauchen ActivityKit-Push-Token und APNs. iOS kann Aktualisierungen beschränken. Veraltete Zustände werden markiert.
+- Widgets: iOS bestimmt Aktualisierungszeitpunkte. Der Herzknopf merkt Gedanken vor; die App sendet sie beim nächsten Sync. Keine falsche Sofort-Zustellung.
+- UWB: beide suchen aktiv in der geöffneten App; der Server vermittelt kurzlebige Discovery-Tokens. Es werden keine Entfernungen erfunden. Das Feature ersetzt keine Fernortung. Generationenübergreifende Funktionsprüfung muss auf den beiden realen iPhones erfolgen.
+- Apple Health gibt keinen beliebigen Zugriff auf alle Daten frei. Nicht vorhandene/abgelehnte Messwerte bleiben leer. Der RJ-Schlafbalance-Wert ist ein eigener Vergleich der erfassten Schlafdauer mit acht Stunden, **kein offizieller Apple-Schlafscore**.
+- Kritische Mitteilungen werden nicht angefordert. Kein künstlicher Dauerbetrieb im Hintergrund.
 
-Empfohlen ist ein Reverse Proxy (NGINX, Caddy, Cloudflare Tunnel) vor dem internen HTTP-Port. Alternativ kann der Server selbst TLS aktivieren:
+**Mehr → Funktionen & Signatur** zeigt unter anderem App-Group-Erreichbarkeit, APNs-Gerätetoken und UWB-Hardwarestatus.
 
-```json
-"tls": {
-  "enabled": true,
-  "certificate_file": "/pfad/fullchain.pem",
-  "private_key_file": "/pfad/privkey.pem"
-}
+## Mitteilungen ohne eigenes APNs
+
+Der optionale `ntfy`-Block sendet ausschließlich allgemeine Hinweise ohne Nachrichteninhalt, Health-Werte oder Koordinaten. Dazu braucht jedes iPhone die separate ntfy-App mit eigenem privaten Topic. Das ist ein Hinweisweg zur App, kein Mechanismus, um RJ Love dauerhaft auszuführen. Empfang und Hintergrundzustellung hängen von ntfy, dessen iOS-Konfiguration und iOS ab.
+
+## Entwicklung und Build
+
+```sh
+python3 Scripts/validate_project.py
+python3 -m unittest -v Tests/test_backend.py
+xcodegen generate
 ```
 
-HTTP darf nur in einem vertrauenswürdigen lokalen Netz verwendet werden, weil Zugangsdaten und private Inhalte sonst auf dem Transportweg mitgelesen werden könnten.
+GitHub Actions baut bei Änderungen an `main` und manuell. Der Workflow prüft den Server, baut die unsignierte IPA und erstellt das Komplettpaket. Ein zweiter Job baut die Simulator-App und erzeugt echte UI-Vorschauen. Diese nutzen ausschließlich synthetische Daten in einer nur im Debug-Build vorhandenen Vorschaufunktion. Release-Builds enthalten diesen Einstieg nicht.
 
-### Native Push-Mitteilungen (optional)
-
-Ohne Push funktioniert RJ Love weiterhin über Vordergrund-Sync, Standortereignisse und von iOS gewährte Hintergrundläufe. Für APNs werden zusätzlich benötigt:
-
-- ein Signatur-/Provisioningprofil mit Push Notifications für `eu.rjuhas.rjlove`;
-- eine Apple-APNs-Schlüsseldatei (`.p8`), Team-ID und Key-ID;
-- `curl` mit HTTP/2 und `openssl` auf dem Server;
-- passende Werte im `apns`-Block der Konfiguration.
-
-Die Python-Datei erzeugt das ES256-Provider-JWT selbst und benötigt dafür keine Python-Bibliothek. APNs-Schlüssel gehören niemals ins Repository.
-
-## Unsigned IPA bauen
-
-GitHub → **Actions** → **Build RJ Love unsigned IPA** → **Run workflow**. Der macOS-26-Runner verwendet Xcode 26.5 und XcodeGen. Nach Erfolg liegt `RJ-Love-unsigned.ipa` im Artifact `RJ-Love-unsigned-IPA`. Bei einem Compilerfehler wird `RJ-Love-build.log` als eigenes Artifact gesichert.
-
-Die IPA ist absichtlich unsigniert. Beim späteren Signieren müssen die eingebettete Widget-Extension und ihre App-Group mit signiert werden. Push, HealthKit, App Groups und WLAN-Information funktionieren nur, wenn das verwendete Provisioningprofil die jeweiligen Entitlements akzeptiert.
-
-## Datenschutz
-
-- kein Analytics-SDK und keine Drittanbieter-Abhängigkeit;
-- Passwort und Sitzungstoken im iOS-Schlüsselbund;
-- freiwillige Freigaben einzeln schaltbar;
-- Health teilt nur Schritte, Schlafminuten und den app-eigenen Dauer-Score;
-- alle gemeinsamen Einträge sind in der App löschbar;
-- einzelne Galeriekommentare sind mit Bestätigung löschbar;
-- keine Zugangsdaten, Zertifikate oder persönlichen Serverdaten im Git-Repository.
-
-Weitere Details stehen in [FEATURES.md](FEATURES.md), [BUILD-NOTES.md](BUILD-NOTES.md) und [PRIVACY.md](PRIVACY.md).
+Der grüne Build prüft Compiler, Paketstruktur und Backend-Verträge. HealthKit, UWB, APNs, AlarmKit und die konkrete ArcticSign-Signierung müssen zusätzlich auf realen Geräten geprüft werden.

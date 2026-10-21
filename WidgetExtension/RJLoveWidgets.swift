@@ -191,7 +191,7 @@ struct ConnectionLiveActivityWidget: Widget {
                     .foregroundStyle(.pink)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(context.attributes.partnerName).font(.headline)
-                    Text("\(context.state.motion) · gerade aktualisiert")
+                    Text(context.isStale ? "Stand veraltet · App öffnen" : context.state.motion)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -311,6 +311,9 @@ struct RJLoveWidgetBundle: WidgetBundle {
     var body: some Widget {
         RJLoveThoughtWidget()
         RJLoveStatusWidget()
+        RJLoveHealthWidget()
+        RJLoveCountdownWidget()
+        RJLoveLockWidget()
         ConnectionLiveActivityWidget()
         RJLoveAlarmLiveActivityWidget()
     }

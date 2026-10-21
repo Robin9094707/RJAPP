@@ -10,6 +10,10 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
     var myThoughts = 0
     var partnerThoughts = 0
     var lastSync: String?
+    var partnerSteps: Int?
+    var partnerSleepMinutes: Int?
+    var milestoneTitle: String?
+    var milestoneDate: String?
 }
 
 enum WidgetSharedStore {

@@ -11,3 +11,8 @@ Payload/
 RJLove.xcodeproj/
 xcuserdata/
 DerivedData/
+
+__pycache__/
+*.pyc
+.sim-derived/
+Preview-*.png

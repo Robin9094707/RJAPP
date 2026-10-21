@@ -1,9 +1,5 @@
-# RJ Love Python Server
+# Neuer Einzeldatei-Server
 
-Start: `python3 rj_love_server.py`
+`python3 rj_love_server.py` (Python 3.11+). Beim ersten Start wird die lokale Konfiguration mit zwei zufälligen Zugangsdaten erzeugt. Einstellungen prüfen, Passwörter notieren, erneut starten. Kein pip notwendig.
 
-Der erste Start erzeugt `rjapp_config.json` und endet. Datei bearbeiten, danach erneut starten. Keine Installation mit `pip` erforderlich. Datenbank, WAL-Dateien und Logs landen im konfigurierten `data_directory`.
-
-Healthcheck: `GET /health`
-
-Konfiguration per anderer Datei ist optional über die Umgebungsvariable `RJLOVE_CONFIG=/absoluter/pfad/config.json` möglich. Für CubeCoders genügt normalerweise die automatisch neben dem Skript erzeugte Datei.
+Vollständige Einrichtung, HTTPS, Zugänge, APNs, ntfy und Feather/ArcticSign: [INSTALLATION.md](../INSTALLATION.md).

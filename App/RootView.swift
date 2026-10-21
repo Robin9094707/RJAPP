@@ -33,7 +33,13 @@ struct RootView: View {
                 .loveGlass(in: RoundedRectangle(cornerRadius: 32, style: .continuous))
             case .authenticated:
                 if appState.privacyLock.isUnlocked {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--preview-health") {
+                        NavigationStack { HealthDashboardView() }
+                    } else { MainTabView() }
+                    #else
                     MainTabView()
+                    #endif
                 } else {
                     PrivacyLockView()
                 }
@@ -84,13 +90,13 @@ struct MainTabView: View {
 
         TabView(selection: $state.selectedTab) {
             NavigationStack { HomeView() }
-                .tabItem { Label("Zuhause", systemImage: "heart.fill") }
+                .tabItem { Label("Wir", systemImage: "heart.fill") }
                 .tag(AppTab.home)
             NavigationStack { PartnerMapView() }
                 .tabItem { Label("Karte", systemImage: "location.fill") }
                 .tag(AppTab.map)
-            NavigationStack { TogetherView() }
-                .tabItem { Label("Gemeinsam", systemImage: "person.2.fill") }
+            NavigationStack { LoveHubView() }
+                .tabItem { Label("Für uns", systemImage: "person.2.fill") }
                 .tag(AppTab.together)
             NavigationStack { MomentsView() }
                 .tabItem { Label("Momente", systemImage: "photo.stack.fill") }

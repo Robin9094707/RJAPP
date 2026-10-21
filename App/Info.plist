@@ -53,7 +53,7 @@
 	<key>NSMotionUsageDescription</key>
 	<string>Bewegung &amp; Fitness erkennt energiesparend, ob du läufst, Fahrrad oder Auto fährst, und zeigt diesen freiwillig geteilten Status deinem Partner.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>RJ Love liest nur mit deiner Zustimmung Schritte und Schlafphasen, um eine kleine freiwillige Zusammenfassung mit deinem Partner zu teilen.</string>
+	<string>RJ Love liest nach deiner Auswahl Aktivität, Schlaf und Vitalwerte. Welche Zusammenfassungen Raphaela oder Robin sehen darf, legst du getrennt in der App fest.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>RJ Love greift nur nach Bestätigung auf deinen Kalender zu, wenn du einen ausgewählten gemeinsamen Termin in deinen iOS-Kalender übernehmen möchtest.</string>
 	<key>NSFaceIDUsageDescription</key>
@@ -88,5 +88,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>Wenn ihr beide die Nahbereichssuche öffnet, misst RJ Love per Ultra-Breitband eure Entfernung und Richtung.</string>
 </dict>
 </plist>

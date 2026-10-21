@@ -46,6 +46,7 @@ final class AppState {
     }
 
     let api = APIClient()
+    let nearby = NearbyService()
     let location = LocationService.shared
     let deviceStatus = DeviceStatusService.shared
     let health = HealthService.shared
@@ -70,6 +71,9 @@ final class AppState {
         profile = Self.loadProfile()
         configureCallbacks()
         restoreSession()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") { loadPreview() }
+        #endif
     }
 
     var partner: PartnerSnapshot? { partners.first }
@@ -94,6 +98,9 @@ final class AppState {
     var isUsingHTTPS: Bool { profile?.baseURL.lowercased().hasPrefix("https://") == true }
 
     func activate() async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") { return }
+        #endif
         if privacyLock.isEnabled, !privacyLock.isUnlocked {
             _ = await privacyLock.unlock()
         }
@@ -103,6 +110,7 @@ final class AppState {
             return
         }
         isActivated = true
+        liveActivity.restorePushObservers()
         deviceStatus.start()
         location.start()
         await notifications.refreshStatus()
@@ -128,6 +136,7 @@ final class AppState {
     }
 
     func deactivateForeground() {
+        nearby.stop(api: api)
         pollTask?.cancel()
         pollTask = nil
         privacyLock.lock()
@@ -158,6 +167,7 @@ final class AppState {
                 _ = await notifications.requestAuthorization()
             }
             await syncNow(showErrors: true)
+            if let token = UserDefaults.standard.string(forKey: NotificationCoordinator.deviceTokenKey) { await registerDeviceToken(token) }
             startPolling()
         } catch {
             phase = .setup
@@ -168,6 +178,8 @@ final class AppState {
     }
 
     func logout() async {
+        nearby.stop(api: api)
+        await liveActivity.stop()
         await api.logout()
         KeychainStore.delete(Self.tokenKey)
         phase = .setup
@@ -213,8 +225,9 @@ final class AppState {
             return true
         } catch let error as APIClientError {
             if case .server(let status, _) = error, status == 401 {
-                KeychainStore.delete(Self.tokenKey)
-                phase = .setup
+                await logout()
+                connectionMessage = "Auf einem anderen Gerät angemeldet oder Zugang geändert."
+                return false
             }
             connectionMessage = "Offline · Daten bleiben erhalten"
             if showErrors { alert = AppAlert(title: "Synchronisierung fehlgeschlagen", message: error.localizedDescription) }
@@ -330,9 +343,10 @@ final class AppState {
         payload.focusActive = shareFocus ? deviceStatus.focusActive : nil
         payload.motion = deviceStatus.motion
         if health.sharingEnabled {
-            payload.steps = health.steps
-            payload.sleepMinutes = health.sleepMinutes
-            payload.sleepScore = health.sleepScore
+            payload.steps = health.shareActivity ? health.steps : nil
+            payload.sleepMinutes = health.shareSleep ? health.sleepMinutes : nil
+            payload.sleepScore = health.shareSleep ? health.sleepScore : nil
+            payload.healthMetrics = health.sharedMetrics
             payload.healthUpdatedAt = health.lastUpdated?.rjISO8601
         }
         payload.statusMessage = statusMessage
@@ -347,6 +361,11 @@ final class AppState {
     }
 
     private func configureCallbacks() {
+        liveActivity.onPushToken = { [weak self] id, token in
+            guard let self, self.phase == .authenticated else { return }
+            do { try await self.api.registerLiveActivity(id: id, token: token, environment: "production") }
+            catch { DebugLogger.shared.log("Live-Push: \(error.localizedDescription)", category: "Push") }
+        }
         location.onLocation = { [weak self] _ in
             Task { @MainActor in self?.queuePresenceUpload() }
         }
@@ -455,7 +474,7 @@ final class AppState {
     }
 
     private func updateWidgetSnapshot() {
-        let value = WidgetSnapshot(
+        var value = WidgetSnapshot(
             partnerName: partner?.displayName ?? "Schatzi",
             partnerBattery: partner?.presence?.batteryLevel,
             partnerBatteryState: partner?.presence?.batteryState,
@@ -466,6 +485,11 @@ final class AppState {
             partnerThoughts: partnerThoughtCount,
             lastSync: Date.now.rjISO8601
         )
+        value.partnerSteps = partner?.presence?.steps
+        value.partnerSleepMinutes = partner?.presence?.sleepMinutes
+        let milestone = records.filter { $0.kind == .milestone }.sorted { ($0.payload.startAt ?? "") < ($1.payload.startAt ?? "") }.first
+        value.milestoneTitle = milestone?.payload.title
+        value.milestoneDate = milestone?.payload.startAt
         WidgetSharedStore.saveSnapshot(value)
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -476,7 +500,7 @@ final class AppState {
         case "map": selectedTab = .map
         case "together": selectedTab = .together
         case "moments": selectedTab = .moments
-        case "settings": selectedTab = .settings
+        case "settings", "health": selectedTab = .settings
         default: selectedTab = .home
         }
     }
@@ -569,3 +593,27 @@ final class AppState {
         UserDefaults.standard.set(data, forKey: profileKey)
     }
 }
+
+#if DEBUG
+extension AppState {
+    func loadPreview() {
+        phase = .authenticated
+        me = UserProfile(id: "robin", displayName: "Robin", accent: "cyan", storageLimitMB: 0)
+        var presence = PresencePayload()
+        presence.batteryLevel = 82; presence.batteryState = "unplugged"
+        presence.motion = "Zu Fuß"; presence.statusMessage = "Mit dir ist jeder Tag ein bisschen schöner."
+        presence.steps = 6840; presence.sleepMinutes = 462; presence.sleepScore = 96
+        presence.updatedAt = Date.now.rjISO8601; presence.healthUpdatedAt = Date.now.rjISO8601
+        presence.healthMetrics = ["distance_km": 4.6, "active_kcal": 318, "heart_rate": 72, "resting_heart_rate": 61, "hrv_ms": 48, "exercise_minutes": 24, "flights": 7, "oxygen_percent": 98, "respiratory_rate": 15]
+        partners = [PartnerSnapshot(id: "raphaela", displayName: "Raphaela", accent: "pink", storageLimitMB: 0, presence: presence)]
+        thoughts = ["robin": 4, "raphaela": 7]; lastSync = .now; connectionMessage = "Vorschau"
+        let now = Date.now.rjISO8601
+        records = [
+            SharedRecord(id: UUID().uuidString, kind: .chat, ownerID: "raphaela", payload: RecordPayload(text: "Ich freue mich schon auf dich. 💗"), createdAt: now, updatedAt: now),
+            SharedRecord(id: UUID().uuidString, kind: .chat, ownerID: "robin", payload: RecordPayload(text: "Noch einen Spaziergang zusammen, bevor die Sonne untergeht?"), createdAt: now, updatedAt: now),
+            SharedRecord(id: UUID().uuidString, kind: .milestone, ownerID: "robin", payload: RecordPayload(title: "Unser nächstes Wochenende", startAt: Date.now.addingTimeInterval(3 * 86400).rjISO8601), createdAt: now, updatedAt: now)
+        ]
+        if ProcessInfo.processInfo.arguments.contains("--preview-hub") { selectedTab = .together }
+    }
+}
+#endif

@@ -28,14 +28,17 @@ final class CalendarService: ObservableObject {
         if authorizationStatus != .fullAccess, !(await requestAccess()) {
             throw CalendarError.permissionDenied
         }
-        let event = EKEvent(eventStore: store)
+        let key = "rjlove.calendar-event." + record.id
+        let savedID = UserDefaults.standard.string(forKey: key)
+        let event = savedID.flatMap { store.event(withIdentifier: $0) } ?? EKEvent(eventStore: store)
         event.title = record.payload.title ?? "Gemeinsamer Termin"
         event.startDate = start
         event.endDate = max(end, start.addingTimeInterval(60))
         event.notes = record.payload.notes
         event.location = record.payload.location
-        event.calendar = store.defaultCalendarForNewEvents
+        if event.calendar == nil { event.calendar = store.defaultCalendarForNewEvents }
         try store.save(event, span: .thisEvent, commit: true)
+        UserDefaults.standard.set(event.eventIdentifier, forKey: key)
     }
 }
 

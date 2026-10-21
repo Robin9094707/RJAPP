@@ -6,6 +6,7 @@ enum RecordKind: String, Codable, CaseIterable, Sendable {
     case moment
     case geofence
     case calendar
+    case chat, wish, milestone, checkin
 }
 
 struct UserProfile: Codable, Identifiable, Hashable, Sendable {
@@ -39,6 +40,7 @@ struct PresencePayload: Codable, Hashable, Sendable {
     var steps: Int?
     var sleepMinutes: Int?
     var sleepScore: Int?
+    var healthMetrics: [String: Double]?
     var healthUpdatedAt: String?
     var locationSharing: Bool?
     var statusMessage: String?
@@ -59,6 +61,7 @@ struct PresencePayload: Codable, Hashable, Sendable {
         case focusActive = "focus_active"
         case sleepMinutes = "sleep_minutes"
         case sleepScore = "sleep_score"
+        case healthMetrics = "health_metrics"
         case healthUpdatedAt = "health_updated_at"
         case locationSharing = "location_sharing"
         case statusMessage = "status_message"

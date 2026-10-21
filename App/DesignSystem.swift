@@ -2,31 +2,23 @@ import SwiftUI
 import UIKit
 
 enum LovePalette {
-    static let cyan = Color(red: 0.12, green: 0.84, blue: 1.0)
+    static let cyan = Color(red: 0.15, green: 0.61, blue: 0.64)
     static let blue = Color(red: 0.18, green: 0.42, blue: 1.0)
-    static let pink = Color(red: 1.0, green: 0.25, blue: 0.55)
+    static let pink = Color(red: 0.85, green: 0.24, blue: 0.43)
     static let coral = Color(red: 1.0, green: 0.48, blue: 0.42)
-    static let violet = Color(red: 0.62, green: 0.33, blue: 1.0)
+    static let violet = Color(red: 0.49, green: 0.40, blue: 0.75)
 }
 
 struct LoveBackground: View {
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         ZStack {
-            Color(uiColor: .systemBackground)
-            RadialGradient(
-                colors: [LovePalette.cyan.opacity(0.16), .clear],
-                center: .topLeading,
-                startRadius: 8,
-                endRadius: 520
-            )
-            RadialGradient(
-                colors: [LovePalette.pink.opacity(0.15), .clear],
-                center: .bottomTrailing,
-                startRadius: 8,
-                endRadius: 560
-            )
-        }
-        .ignoresSafeArea()
+            (scheme == .dark ? Color(red: 0.065, green: 0.055, blue: 0.085) : Color(red: 0.985, green: 0.965, blue: 0.95))
+            Ellipse().fill(LovePalette.pink.opacity(scheme == .dark ? 0.16 : 0.10))
+                .frame(width: 430, height: 500).blur(radius: 90).offset(x: 160, y: -230)
+            Ellipse().fill(LovePalette.violet.opacity(0.12))
+                .frame(width: 460, height: 460).blur(radius: 90).offset(x: -180, y: 240)
+        }.ignoresSafeArea()
     }
 }
 
@@ -41,9 +33,10 @@ extension View {
     }
 
     func loveCard() -> some View {
-        padding(18)
+        padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .loveGlass(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .loveGlass(in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .shadow(color: LovePalette.violet.opacity(0.045), radius: 18, y: 10)
     }
 }
 
@@ -169,5 +162,28 @@ enum Haptics {
 extension View {
     func dismissKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+struct LoveEyebrow: View {
+    let text: String
+    var body: some View {
+        Text(text.uppercased()).font(.system(size: 10, weight: .bold, design: .rounded))
+            .tracking(2.4).foregroundStyle(LovePalette.pink)
+    }
+}
+struct LoveMetric: View {
+    let title: String
+    let value: String
+    let symbol: String
+    var tint: Color = LovePalette.pink
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(tint)
+            Text(value).font(.system(.title2, design: .rounded, weight: .bold)).minimumScaleFactor(0.6).lineLimit(1)
+            Text(title).font(.caption).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(17)
+            .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 22))
+            .accessibilityElement(children: .combine)
     }
 }

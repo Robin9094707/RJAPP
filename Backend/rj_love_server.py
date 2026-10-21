@@ -18,6 +18,11 @@ import base64
 import binascii
 import contextlib
 import datetime as dt
+import math
+import re
+import getpass
+import argparse
+import urllib.request
 import hashlib
 import hmac
 import json
@@ -42,9 +47,9 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "2.0.0"
 CONFIG_FILENAME = "rjapp_config.json"
-ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar"}
+ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
 
 
@@ -148,9 +153,10 @@ def default_config() -> dict[str, Any]:
             "notify_when_charging_starts": True,
             "notify_when_charging_stops": True,
         },
+        "ntfy": {"enabled": False, "server_url": "https://ntfy.sh", "access_token": "", "topics": {"robin": "", "raphaela": ""}},
         "apns": {
             "enabled": False,
-            "environment": "sandbox",
+            "environment": "production",
             "team_id": "",
             "key_id": "",
             "bundle_id": "eu.rjuhas.rjlove",
@@ -178,8 +184,8 @@ def load_config(path: Path) -> dict[str, Any]:
             raise RuntimeError(f"Konfiguration unvollständig: '{key}' fehlt.")
 
     users = config["users"]
-    if not isinstance(users, list) or len(users) < 2:
-        raise RuntimeError("Mindestens zwei Benutzer müssen konfiguriert sein.")
+    if not isinstance(users, list) or len(users) != 2:
+        raise RuntimeError("Genau zwei Benutzer müssen konfiguriert sein.")
 
     seen_ids: set[str] = set()
     seen_names: set[str] = set()
@@ -242,6 +248,8 @@ class Database:
             db.execute("PRAGMA synchronous=NORMAL")
             db.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS live_activities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, environment TEXT NOT NULL, updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS nearby (user_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sessions (
                     token_hash TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -479,6 +487,7 @@ class RJLoveApplication:
     def __init__(self, config: dict[str, Any], config_path: Path):
         self.config = config
         self.config_path = config_path
+        self.credentials_lock = threading.RLock()
         data_value = config["server"].get("data_directory", "./rjlove_data")
         self.data_directory = self.resolve_config_path(data_value)
         self.data_directory.mkdir(parents=True, exist_ok=True)
@@ -486,6 +495,8 @@ class RJLoveApplication:
         self.logger = self._make_logger()
         self.login_limiter = LoginLimiter(config["security"].get("login_attempts_per_10_minutes", 10))
         self.apns = APNSProvider(self)
+        self.live_push_lock = threading.Lock()
+        self.last_live_push = {}
         self.timezone = ZoneInfo(config["server"].get("timezone", "Europe/Berlin"))
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
@@ -538,6 +549,8 @@ class RJLoveApplication:
                 "notify_on_enter", "notify_on_exit",
             },
             "calendar": {"title", "start_at", "end_at", "location", "notes"},
+            "chat": {"text"}, "wish": {"title", "text", "completed"},
+            "milestone": {"title", "start_at", "text"}, "checkin": {"title", "text", "message"},
         }[kind]
         unknown = set(payload) - allowed_fields
         if unknown:
@@ -571,7 +584,20 @@ class RJLoveApplication:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_target", "Der ausgewählte Benutzer existiert nicht.")
             clean["target_id"] = target
 
-        if kind == "note":
+        if kind in {"chat", "wish", "milestone", "checkin"}:
+            text_field("text", 4000, required=kind == "chat")
+            if kind != "chat":
+                text_field("title", 120, required=True)
+            if kind == "wish":
+                boolean_field("completed")
+            if kind == "checkin":
+                text_field("message", 24)
+            if kind == "milestone":
+                text_field("start_at", 80, required=True)
+                if parse_iso(clean.get("start_at")) is None:
+                    raise APIError(400, "invalid_date", "Datum ungültig.")
+
+        elif kind == "note":
             text_field("title", 120, required=True)
             text_field("text", 20_000)
 
@@ -674,12 +700,52 @@ class RJLoveApplication:
 
         return clean
 
+    @staticmethod
+    def encode_password(password: str) -> str:
+        salt = secrets.token_bytes(16)
+        digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
+        return "scrypt$" + salt.hex() + "$" + digest.hex()
+
     def password_matches(self, user: dict[str, Any], candidate: str) -> bool:
-        secret = self.config["security"]["server_secret"].encode("utf-8")
-        salt = hmac.new(secret, user["username"].encode("utf-8"), hashlib.sha256).digest()[:16]
-        expected = hashlib.scrypt(user["password"].encode("utf-8"), salt=salt, n=2**14, r=8, p=1)
-        actual = hashlib.scrypt(candidate.encode("utf-8"), salt=salt, n=2**14, r=8, p=1)
-        return hmac.compare_digest(expected, actual)
+        stored = user["password"]
+        if stored.startswith("scrypt$"):
+            try:
+                _, salt, expected = stored.split("$")
+                actual = hashlib.scrypt(candidate.encode(), salt=bytes.fromhex(salt), n=2**14, r=8, p=1)
+                return hmac.compare_digest(bytes.fromhex(expected), actual)
+            except (ValueError, TypeError):
+                return False
+        return hmac.compare_digest(stored.encode(), candidate.encode())
+
+    def save_config(self) -> None:
+        temporary = self.config_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(self.config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.chmod(0o600)
+        temporary.replace(self.config_path)
+
+    def reset_credentials(self, user_id: str, password: str, username: str | None = None) -> None:
+        if not 10 <= len(password) <= 500:
+            raise APIError(400, "weak_password", "Das Passwort muss 10 bis 500 Zeichen lang sein.")
+        with self.credentials_lock:
+            user = self.user_by_id(user_id)
+            if user is None:
+                raise APIError(404, "unknown_user", "Benutzer unbekannt.")
+            name = safe_text(username or user["username"], 80, allow_empty=False).strip().lower()
+            other = self.user_by_username(name)
+            if other is not None and other["id"] != user_id:
+                raise APIError(409, "username_taken", "Benutzername bereits vergeben.")
+            previous = dict(user)
+            user.update(username=name, password=self.encode_password(password))
+            try:
+                self.save_config()
+            except Exception:
+                user.clear()
+                user.update(previous)
+                raise
+            with self.database.connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                for table in ("sessions", "devices", "nearby", "live_activities"):
+                    db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
 
     def issue_session(self, user_id: str, device_id: str) -> tuple[str, str]:
         token = secrets.token_urlsafe(36)
@@ -687,11 +753,77 @@ class RJLoveApplication:
         created = utc_now()
         expires = created + dt.timedelta(days=int(self.config["server"].get("session_days", 30)))
         with self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for table in ("sessions", "devices", "nearby", "live_activities"):
+                db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
             db.execute(
                 "INSERT INTO sessions(token_hash,user_id,device_id,created_at,expires_at,last_seen_at) VALUES(?,?,?,?,?,?)",
                 (token_hash, user_id, device_id, created.isoformat(), expires.isoformat(), created.isoformat()),
             )
         return token, expires.isoformat().replace("+00:00", "Z")
+
+    def push_live_updates(self) -> None:
+        if not self.apns.enabled:
+            return
+        with self.live_push_lock:
+            now = time.time()
+            if now - self.last_live_push.get("all", 0) < 15:
+                return
+            self.last_live_push["all"] = now
+        def deliver() -> None:
+            try:
+                bearer = self.apns.provider_token()
+                config = self.config["apns"]
+                with self.database.connect() as db:
+                    activities = db.execute("SELECT * FROM live_activities").fetchall()
+                for activity in activities:
+                    snapshot = self.bootstrap(activity["user_id"])
+                    partner = snapshot["partners"][0]
+                    presence = partner.get("presence") or {}
+                    updated = parse_iso(presence.get("updated_at"))
+                    state = {"battery": presence.get("battery_level"), "motion": presence.get("motion") or "Noch kein Status",
+                             "lastUpdate": (updated.timestamp() if updated else time.time()) - 978307200,
+                             "myThoughts": snapshot["thoughts"].get(activity["user_id"], 0),
+                             "partnerThoughts": snapshot["thoughts"].get(partner["id"], 0)}
+                    payload = {"aps": {"timestamp": int(time.time()), "event": "update", "content-state": state,
+                                       "stale-date": int(time.time()) + 120}}
+                    host = "api.push.apple.com" if activity["environment"] == "production" else "api.sandbox.push.apple.com"
+                    command = ["curl", "--silent", "--show-error", "--http2", "--max-time", "15", "--output", "/dev/null", "--write-out", "%{http_code}",
+                               "--header", "authorization: bearer " + bearer,
+                               "--header", "apns-topic: " + config.get("bundle_id", "eu.rjuhas.rjlove") + ".push-type.liveactivity",
+                               "--header", "apns-push-type: liveactivity", "--header", "apns-priority: 5", "--data-binary", "@-",
+                               "https://" + host + "/3/device/" + activity["token"]]
+                    result = subprocess.run(command, input=json_bytes(payload), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+                    status = result.stdout.decode(errors="replace").strip()
+                    if status == "410":
+                        with self.database.connect() as db:
+                            db.execute("DELETE FROM live_activities WHERE id=?", (activity["id"],))
+                    elif status != "200":
+                        self.logger.warning("Live-Aktivität konnte nicht aktualisiert werden (HTTP %s)", status)
+            except Exception:
+                self.logger.warning("Live-Aktivitäts-Push fehlgeschlagen")
+        threading.Thread(target=deliver, daemon=True).start()
+
+    def send_ntfy(self, user_id: str, event: dict[str, Any]) -> None:
+        config = self.config.get("ntfy", {})
+        topic = config.get("topics", {}).get(user_id, "")
+        if not config.get("enabled") or not topic:
+            return
+        def deliver() -> None:
+            try:
+                url = str(config.get("server_url", "")).rstrip("/")
+                if not url.startswith("https://") or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", topic):
+                    raise ValueError("ntfy benötigt HTTPS und einen privaten Topic-Namen mit mindestens 16 Zeichen")
+                # No health values, coordinates or message contents leave the private server.
+                data = json_bytes({"topic": topic, "title": "RJ Love", "message": "Eine neue Nachricht wartet in eurer App.", "tags": ["heart"]})
+                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+                if config.get("access_token"):
+                    req.add_header("Authorization", "Bearer " + config["access_token"])
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    response.read(1024)
+            except Exception:
+                self.logger.warning("ntfy-Zustellung fehlgeschlagen")
+        threading.Thread(target=deliver, daemon=True).start()
 
     def authenticate(self, authorization: str | None) -> str:
         if not authorization or not authorization.startswith("Bearer "):
@@ -772,6 +904,7 @@ class RJLoveApplication:
             if owns_connection:
                 connection.close()
         self.apns.send_to_user(target_id, event)
+        self.send_ntfy(target_id, event)
         return event
 
     def broadcast_event(
@@ -953,6 +1086,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/v1/bootstrap":
                 self.send_json(HTTPStatus.OK, self.app.bootstrap(self.current_user()))
                 return
+            if path == "/v1/nearby":
+                user_id = self.current_user()
+                with self.app.database.connect() as db:
+                    row = db.execute("SELECT token FROM nearby WHERE user_id<>? AND expires_at>?", (user_id, iso_now())).fetchone()
+                self.send_json(200, {"token": row["token"] if row else None})
+                return
             if len(parts) == 4 and parts[:2] == ["v1", "moments"] and parts[3] == "image":
                 self._get_moment_image(self.current_user(), parts[2])
                 return
@@ -975,7 +1114,35 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
-            if path == "/v1/presence":
+            if path == "/v1/auth/credentials":
+                self._change_credentials(user_id)
+            elif path == "/v1/live-activities":
+                body = self.read_json()
+                activity_id = safe_text(body.get("activity_id", ""), 128, allow_empty=False)
+                token = safe_text(body.get("token", ""), 512).lower()
+                environment = body.get("environment", "production")
+                if environment not in {"sandbox", "production"} or (token and (len(token) < 32 or any(c not in "0123456789abcdef" for c in token))):
+                    raise APIError(400, "invalid_live_token", "Ungültiger Live-Aktivitäts-Token.")
+                with self.app.database.connect() as db:
+                    db.execute("DELETE FROM live_activities WHERE user_id=?", (user_id,))
+                    if token:
+                        db.execute("INSERT INTO live_activities VALUES(?,?,?,?,?)", (activity_id, user_id, token, environment, iso_now()))
+                self.send_empty()
+            elif path == "/v1/nearby":
+                body = self.read_json()
+                token = safe_text(body.get("token", ""), 16000)
+                if token:
+                    try:
+                        base64.b64decode(token, validate=True)
+                    except (ValueError, binascii.Error) as exc:
+                        raise APIError(400, "invalid_token", "Ungültiger Nahbereichstoken.") from exc
+                with self.app.database.connect() as db:
+                    db.execute("DELETE FROM nearby WHERE user_id=?", (user_id,))
+                    if token:
+                        expires = (utc_now() + dt.timedelta(seconds=20)).isoformat().replace("+00:00", "Z")
+                        db.execute("INSERT INTO nearby VALUES(?,?,?)", (user_id, token, expires))
+                self.send_empty()
+            elif path == "/v1/presence":
                 self._presence(user_id)
             elif path == "/v1/thoughts":
                 self._thought(user_id)
@@ -1028,17 +1195,30 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.app.login_limiter.fail(key)
             raise APIError(HTTPStatus.UNAUTHORIZED, "invalid_credentials", "Benutzername oder Passwort ist falsch.")
         user = self.app.user_by_username(username)
-        if user is None or not self.app.password_matches(user, password):
-            self.app.login_limiter.fail(key)
-            time.sleep(0.35)
-            raise APIError(HTTPStatus.UNAUTHORIZED, "invalid_credentials", "Benutzername oder Passwort ist falsch.")
-        self.app.login_limiter.success(key)
-        token, expires = self.app.issue_session(user["id"], device_id)
-        self.app.logger.info("Login successful for %s from %s", user["id"], key)
+        with self.app.credentials_lock:
+            if user is None or not self.app.password_matches(user, password):
+                self.app.login_limiter.fail(key)
+                raise APIError(401, "invalid_credentials", "Benutzername oder Passwort falsch.")
+            self.app.login_limiter.success(key)
+            token, expires = self.app.issue_session(user["id"], device_id)
         self.send_json(
             HTTPStatus.OK,
             {"token": token, "expires_at": expires, "user": self.app.public_user(user), "server_version": APP_VERSION},
         )
+
+    def _change_credentials(self, user_id: str) -> None:
+        body = self.read_json()
+        with self.app.credentials_lock:
+            user = self.app.user_by_id(user_id)
+            current = safe_text(body.get("current_password", ""), 500, allow_empty=False)
+            self.app.login_limiter.check("credentials:" + user_id)
+            if not self.app.password_matches(user, current):
+                self.app.login_limiter.fail("credentials:" + user_id)
+                raise APIError(401, "invalid_password", "Aktuelles Passwort falsch.")
+            password = safe_text(body.get("password", ""), 500, allow_empty=False)
+            self.app.reset_credentials(user_id, password, body.get("username"))
+            self.app.login_limiter.success("credentials:" + user_id)
+        self.send_empty()
 
     def _logout(self) -> None:
         authorization = self.headers.get("Authorization", "")
@@ -1055,7 +1235,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "latitude", "longitude", "horizontal_accuracy", "altitude", "speed",
             "course", "location_timestamp", "battery_level", "battery_state",
             "low_power_mode", "network_type", "wifi_name", "focus_active",
-            "motion", "steps", "sleep_minutes", "sleep_score", "health_updated_at",
+            "motion", "steps", "sleep_minutes", "sleep_score", "health_updated_at", "health_metrics",
             "location_sharing", "status_message", "device_name", "app_version",
         }
         payload = {key: value for key, value in body.items() if key in allowed}
@@ -1075,13 +1255,24 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             payload["status_message"] = safe_text(payload["status_message"], 120)
         if "wifi_name" in payload and payload["wifi_name"] is not None:
             payload["wifi_name"] = safe_text(str(payload["wifi_name"]), 80)
+        if "health_metrics" in payload:
+            metrics = payload["health_metrics"]
+            allowed_metrics = {"distance_km", "active_kcal", "exercise_minutes", "flights", "heart_rate", "resting_heart_rate", "hrv_ms", "oxygen_percent", "respiratory_rate"}
+            if not isinstance(metrics, dict) or any(k not in allowed_metrics or isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 or v > 100000 for k, v in metrics.items()):
+                raise APIError(400, "invalid_health", "Ungültige Health-Zusammenfassung.")
+        for key, maximum in (("steps", 200000), ("sleep_minutes", 1440), ("sleep_score", 100)):
+            if key in payload and (isinstance(payload[key], bool) or not isinstance(payload[key], int) or not 0 <= payload[key] <= maximum):
+                raise APIError(400, "invalid_health", "Ungültiger Health-Wert.")
+        if payload.get("location_sharing") is False:
+            for key in ("latitude", "longitude", "horizontal_accuracy", "altitude", "speed", "course", "location_timestamp"):
+                payload.pop(key, None)
         payload["reported_at"] = iso_now()
 
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             previous_row = db.execute("SELECT payload FROM presence WHERE user_id=?", (user_id,)).fetchone()
             previous = json.loads(previous_row["payload"]) if previous_row else {}
-            merged = previous | payload
+            merged = payload
             now = iso_now()
             db.execute(
                 "INSERT INTO presence(user_id,payload,updated_at) VALUES(?,?,?) "
@@ -1113,6 +1304,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     user_id, "charging_stopped", f"{sender['display_name']} lädt nicht mehr",
                     f"Akku: {int(new_battery)} %" if isinstance(new_battery, (int, float)) else "Das iPhone wurde vom Strom getrennt.",
                 )
+        self.app.push_live_updates()
         self.send_json(HTTPStatus.OK, {"updated_at": now})
 
     def _thought(self, user_id: str) -> None:
@@ -1134,6 +1326,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             user_id, "thought", f"{sender['display_name']} denkt an dich 💗",
             f"Heute schon {count}× an dich gedacht.", {"count": count, "day": day},
         )
+        self.app.push_live_updates()
         self.send_json(HTTPStatus.OK, {"day": day, "count": count})
 
     def _upsert_record(self, user_id: str) -> None:
@@ -1167,6 +1360,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     "Der Typ eines vorhandenen Eintrags kann nicht geändert werden.",
                 )
             owner_id = str(old["owner_id"]) if old else user_id
+            if old and kind in {"chat", "checkin"} and owner_id != user_id:
+                raise APIError(403, "not_owner", "Du kannst fremde Nachrichten oder Gefühle nicht ändern.")
             if old and owner_id != user_id:
                 # Both partners may edit shared records, but quota remains charged to the creator.
                 previous_size = int(old["size_bytes"])
@@ -1189,6 +1384,10 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "moment": ("Neuer gemeinsamer Moment 💞", "hat einen Moment geteilt."),
             "geofence": ("Gemeinsamer Ort", "hat einen Ort aktualisiert."),
             "calendar": ("Gemeinsamer Termin", "hat einen Termin geteilt."),
+            "chat": ("Ein paar Worte für dich 💌", "hat dir geschrieben."),
+            "wish": ("Unsere Wunschliste", "hat einen Wunsch geteilt."),
+            "milestone": ("Unsere Zeit", "hat einen besonderen Tag geteilt."),
+            "checkin": ("Ein Gefühl für dich", "hat ein Gefühl geteilt."),
         }
         title, phrase = labels[kind]
         self.app.broadcast_event(user_id, f"record_{kind}", title, f"{sender['display_name']} {phrase}", {"record_id": record_id})
@@ -1285,6 +1484,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             raise APIError(HTTPStatus.BAD_REQUEST, "invalid_environment", "Ungültige APNs-Umgebung.")
         device_id = safe_text(body.get("device_id", str(uuid.uuid4())), 100, allow_empty=False)
         with self.app.database.connect() as db:
+            auth_hash = hashlib.sha256(self.headers.get("Authorization", "")[7:].strip().encode()).hexdigest()
+            active = db.execute("SELECT device_id FROM sessions WHERE token_hash=? AND user_id=?", (auth_hash, user_id)).fetchone()
+            if active is None or active["device_id"] != device_id:
+                raise APIError(401, "device_revoked", "Dieses Gerät ist nicht mehr angemeldet.")
+            db.execute("DELETE FROM devices WHERE user_id=? OR device_token=?", (user_id, token))
             db.execute(
                 "INSERT INTO devices(id,user_id,device_token,environment,updated_at) VALUES(?,?,?,?,?) "
                 "ON CONFLICT(device_token) DO UPDATE SET user_id=excluded.user_id,environment=excluded.environment,updated_at=excluded.updated_at",
@@ -1358,6 +1562,9 @@ def config_path_from_environment() -> Path:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="RJ Love 2.0 – privater Partner-Server")
+    parser.add_argument("--reset-user", choices=["robin", "raphaela"], help="Passwort sicher zurücksetzen und alle Sitzungen widerrufen")
+    args = parser.parse_args()
     config_path = config_path_from_environment()
     if not config_path.exists():
         write_first_run_config(config_path)
@@ -1368,6 +1575,20 @@ def main() -> int:
     try:
         config = load_config(config_path)
         app = RJLoveApplication(config, config_path)
+        for user in config["users"]:
+            if not user["password"].startswith("scrypt$"):
+                user["password"] = app.encode_password(user["password"])
+        app.save_config()
+        if args.reset_user:
+            try:
+                password = getpass.getpass("Neues Passwort (mindestens 10 Zeichen): ")
+                if password != getpass.getpass("Passwort wiederholen: "):
+                    raise ValueError("Passwörter stimmen nicht überein.")
+                app.reset_credentials(args.reset_user, password)
+                print("Zugang zurückgesetzt. Alle bisherigen Anmeldungen wurden widerrufen.")
+                return 0
+            finally:
+                app.close()
         server = build_server(app)
     except Exception as exc:
         print(f"RJ Love kann nicht starten: {exc}", file=sys.stderr)
@@ -1377,6 +1598,34 @@ def main() -> int:
     host, port = server.server_address[:2]
     app.logger.info("RJ Love Server %s listening on %s://%s:%s", APP_VERSION, scheme, host, port)
 
+    def console() -> None:
+        for line in sys.stdin:
+            parts = line.strip().split()
+            if parts == ["help"]:
+                print("Befehle: reset robin | reset raphaela | reload | help")
+            elif len(parts) == 2 and parts[0] == "reset" and parts[1] in {"robin", "raphaela"}:
+                password = secrets.token_urlsafe(18)
+                app.reset_credentials(parts[1], password)
+                print(f"Neues einmaliges Startpasswort für {parts[1]}: {password}", flush=True)
+            elif parts == ["reload"]:
+                try:
+                    incoming = load_config(config_path)
+                    with app.credentials_lock:
+                        for candidate in incoming["users"]:
+                            old = app.user_by_id(candidate["id"])
+                            if old and (old["password"] != candidate["password"] or old["username"] != candidate["username"]):
+                                password = candidate["password"]
+                                old.update(candidate)
+                                if not password.startswith("scrypt$"):
+                                    old["password"] = app.encode_password(password)
+                                with app.database.connect() as db:
+                                    for table in ("sessions", "devices", "nearby", "live_activities"):
+                                        db.execute(f"DELETE FROM {table} WHERE user_id=?", (old["id"],))
+                        app.save_config()
+                    print("Zugänge neu geladen; geänderte Konten abgemeldet.", flush=True)
+                except Exception as exc:
+                    print(f"Reload fehlgeschlagen: {exc}", flush=True)
+    threading.Thread(target=console, daemon=True).start()
     stopping = threading.Event()
 
     def stop_server(signum: int, _frame: Any) -> None:

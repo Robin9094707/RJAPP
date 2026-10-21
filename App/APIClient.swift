@@ -194,6 +194,25 @@ final class APIClient: @unchecked Sendable {
         )
     }
 
+    func changeCredentials(currentPassword: String, username: String, password: String) async throws {
+        let body = ["current_password": currentPassword, "username": username, "password": password]
+        _ = try await execute(try request(path: "/v1/auth/credentials", method: "POST", body: encoder.encode(body)), as: EmptyResponse.self)
+    }
+
+    func publishNearbyToken(_ token: String) async throws {
+        _ = try await execute(try request(path: "/v1/nearby", method: "POST", body: encoder.encode(["token": token])), as: EmptyResponse.self)
+    }
+
+    func partnerNearbyToken() async throws -> String? {
+        struct Response: Decodable { let token: String? }
+        return try await execute(try request(path: "/v1/nearby", method: "GET"), as: Response.self).token
+    }
+
+    func registerLiveActivity(id: String, token: String, environment: String) async throws {
+        let body = ["activity_id": id, "token": token, "environment": environment]
+        _ = try await execute(try request(path: "/v1/live-activities", method: "POST", body: encoder.encode(body)), as: EmptyResponse.self)
+    }
+
     func logout() async {
         guard let request = try? request(path: "/v1/auth/logout", method: "POST", body: Data("{}".utf8)) else { return }
         _ = try? await execute(request, as: EmptyResponse.self)

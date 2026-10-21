@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
 @MainActor
 final class NotificationCoordinator: ObservableObject {
+    var deviceTokenAvailable: Bool { UserDefaults.standard.string(forKey: Self.deviceTokenKey) != nil }
     static let shared = NotificationCoordinator()
     static let deviceTokenKey = "rjlove.apns-device-token"
 

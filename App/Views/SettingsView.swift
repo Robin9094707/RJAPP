@@ -20,6 +20,12 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
+            Section("Euer privater Raum · 2.0") {
+                NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }
+                NavigationLink { HealthDashboardView() } label: { Label("Health & Freigaben", systemImage: "heart.text.square.fill") }
+                NavigationLink { CapabilitiesView() } label: { Label("Funktionen & Signatur", systemImage: "checkmark.seal.fill") }
+            }
+
             Section("Verbindung") {
                 LabeledContent("Server", value: appState.profile?.baseURL ?? "–")
                     .lineLimit(1)
@@ -48,7 +54,7 @@ struct SettingsView: View {
             } header: {
                 Text("Was ich teile")
             } footer: {
-                Text("Health teilt nur Schritte, Schlafdauer und die von RJ Love berechnete Schlafbalance – keine Rohdaten. iOS gibt Apps keinen Namen des aktiven Fokus frei.")
+                Text("Wähle unter Health & Freigaben getrennt aus, ob du Aktivität, Schlaf oder Vitalwerte teilst. iOS gibt Apps keinen Namen des aktiven Fokus frei.")
             }
 
             Section("Berechtigungen") {
@@ -185,6 +191,10 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(LoveBackground())
+        .onChange(of: health.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
+        .onChange(of: location.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
+        .onChange(of: appState.shareWiFiName) { _, _ in appState.queuePresenceUpload(force: true) }
+        .onChange(of: appState.shareFocus) { _, _ in appState.queuePresenceUpload(force: true) }
         .navigationTitle("Mehr")
         .confirmationDialog("Wirklich abmelden?", isPresented: $logoutConfirmation, titleVisibility: .visible) {
             Button("Abmelden", role: .destructive) { Task { await appState.logout() } }

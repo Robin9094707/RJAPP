@@ -15,7 +15,7 @@ final class LiveActivityService {
         isRunning = !Activity<ConnectionActivityAttributes>.activities.isEmpty
     }
 
-    func start(partnerName: String, battery: Int?, motion: String, mine: Int, partner: Int) async throws {
+    func start(partnerName: String, battery: Int?, motion: String, mine: Int, partner: Int, updatedAt: Date? = nil) async throws {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             throw LiveActivityError.disabled
         }
@@ -26,31 +26,31 @@ final class LiveActivityService {
         let state = ConnectionActivityAttributes.ContentState(
             battery: battery,
             motion: motion,
-            lastUpdate: .now,
+            lastUpdate: updatedAt ?? .distantPast,
             myThoughts: mine,
             partnerThoughts: partner
         )
         let activity: Activity<ConnectionActivityAttributes>
         do {
-            activity = try Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: .now.addingTimeInterval(120)), pushType: .token)
+            activity = try Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: updatedAt?.addingTimeInterval(120) ?? .now), pushType: .token)
         } catch {
             // Local activities are useful even when a sideload profile cannot support APNs.
-            activity = try Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: .now.addingTimeInterval(120)))
+            activity = try Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: updatedAt?.addingTimeInterval(120) ?? .now))
         }
         observeTokens(activity)
         isRunning = true
     }
 
-    func update(battery: Int?, motion: String, mine: Int, partner: Int) async {
+    func update(battery: Int?, motion: String, mine: Int, partner: Int, updatedAt: Date? = nil) async {
         let content = ActivityContent(
             state: ConnectionActivityAttributes.ContentState(
                 battery: battery,
                 motion: motion,
-                lastUpdate: .now,
+                lastUpdate: updatedAt ?? .distantPast,
                 myThoughts: mine,
                 partnerThoughts: partner
             ),
-            staleDate: .now.addingTimeInterval(120)
+            staleDate: updatedAt?.addingTimeInterval(120) ?? .now
         )
         for activity in Activity<ConnectionActivityAttributes>.activities {
             await activity.update(content)

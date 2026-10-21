@@ -248,6 +248,7 @@ class Database:
             db.execute("PRAGMA synchronous=NORMAL")
             db.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS credential_versions (user_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_activities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, environment TEXT NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS nearby (user_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -492,6 +493,7 @@ class RJLoveApplication:
         self.data_directory = self.resolve_config_path(data_value)
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.database = Database(self.data_directory / "rjlove.sqlite3")
+        self.synchronize_credential_versions()
         self.logger = self._make_logger()
         self.login_limiter = LoginLimiter(config["security"].get("login_attempts_per_10_minutes", 10))
         self.apns = APNSProvider(self)
@@ -723,6 +725,20 @@ class RJLoveApplication:
         temporary.chmod(0o600)
         temporary.replace(self.config_path)
 
+    def credential_fingerprint(self, user: dict[str, Any]) -> str:
+        return hashlib.sha256(json_bytes([user["username"], user["password"]])).hexdigest()
+
+    def synchronize_credential_versions(self) -> None:
+        with self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for user in self.config["users"]:
+                fingerprint = self.credential_fingerprint(user)
+                row = db.execute("SELECT fingerprint FROM credential_versions WHERE user_id=?", (user["id"],)).fetchone()
+                if row is None or row["fingerprint"] != fingerprint:
+                    for table in ("sessions", "devices", "nearby", "live_activities"):
+                        db.execute(f"DELETE FROM {table} WHERE user_id=?", (user["id"],))
+                    db.execute("INSERT INTO credential_versions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET fingerprint=excluded.fingerprint", (user["id"], fingerprint))
+
     def reset_credentials(self, user_id: str, password: str, username: str | None = None) -> None:
         if not 10 <= len(password) <= 500:
             raise APIError(400, "weak_password", "Das Passwort muss 10 bis 500 Zeichen lang sein.")
@@ -746,6 +762,7 @@ class RJLoveApplication:
                 db.execute("BEGIN IMMEDIATE")
                 for table in ("sessions", "devices", "nearby", "live_activities"):
                     db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
+                db.execute("INSERT INTO credential_versions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET fingerprint=excluded.fingerprint", (user_id, self.credential_fingerprint(user)))
 
     def issue_session(self, user_id: str, device_id: str) -> tuple[str, str]:
         token = secrets.token_urlsafe(36)
@@ -782,11 +799,11 @@ class RJLoveApplication:
                     presence = partner.get("presence") or {}
                     updated = parse_iso(presence.get("updated_at"))
                     state = {"battery": presence.get("battery_level"), "motion": presence.get("motion") or "Noch kein Status",
-                             "lastUpdate": (updated.timestamp() if updated else time.time()) - 978307200,
+                             "lastUpdate": (updated.timestamp() if updated else 0) - 978307200,
                              "myThoughts": snapshot["thoughts"].get(activity["user_id"], 0),
                              "partnerThoughts": snapshot["thoughts"].get(partner["id"], 0)}
                     payload = {"aps": {"timestamp": int(time.time()), "event": "update", "content-state": state,
-                                       "stale-date": int(time.time()) + 120}}
+                                       "stale-date": int(updated.timestamp() if updated else 0) + 120}}
                     host = "api.push.apple.com" if activity["environment"] == "production" else "api.sandbox.push.apple.com"
                     command = ["curl", "--silent", "--show-error", "--http2", "--max-time", "15", "--output", "/dev/null", "--write-out", "%{http_code}",
                                "--header", "authorization: bearer " + bearer,
@@ -929,7 +946,9 @@ class RJLoveApplication:
             thoughts = {row["user_id"]: int(row["count"]) for row in thought_rows}
             record_rows = db.execute(
                 "SELECT id,kind,owner_id,payload,created_at,updated_at FROM records "
-                "WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 500"
+                "WHERE id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind='chat' ORDER BY created_at DESC LIMIT 200) "
+                "OR id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind<>'chat' ORDER BY updated_at DESC LIMIT 500) "
+                "ORDER BY updated_at DESC"
             ).fetchall()
             command_rows = db.execute(
                 "SELECT * FROM commands WHERE target_id=? AND acknowledged_at IS NULL ORDER BY created_at LIMIT 50",
@@ -991,6 +1010,7 @@ class RJLoveApplication:
         old_commands = now - dt.timedelta(days=14)
         with self.database.connect() as db:
             db.execute("DELETE FROM sessions WHERE expires_at < ?", (now.isoformat(),))
+            db.execute("DELETE FROM nearby WHERE expires_at < ?", (iso_now(),))
             db.execute("DELETE FROM events WHERE read_at IS NOT NULL AND created_at < ?", (old_events.isoformat(),))
             db.execute("DELETE FROM commands WHERE acknowledged_at IS NOT NULL AND created_at < ?", (old_commands.isoformat(),))
             db.execute("DELETE FROM records WHERE deleted_at IS NOT NULL AND deleted_at < ?", (old_events.isoformat(),))
@@ -1222,11 +1242,14 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     def _logout(self) -> None:
         authorization = self.headers.get("Authorization", "")
-        self.current_user()
+        user_id = self.current_user()
         token = authorization.removeprefix("Bearer ").strip()
         token_hash = hashlib.sha256(token.encode("ascii", errors="ignore")).hexdigest()
         with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+            for table in ("devices", "nearby", "live_activities"):
+                db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
         self.send_empty()
 
     def _presence(self, user_id: str) -> None:
@@ -1250,7 +1273,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             payload["latitude"] = latitude
             payload["longitude"] = longitude
         if "battery_level" in payload:
-            payload["battery_level"] = min(100, max(0, int(payload["battery_level"])))
+            if isinstance(payload["battery_level"], bool) or not isinstance(payload["battery_level"], int) or not 0 <= payload["battery_level"] <= 100:
+                raise APIError(400, "invalid_battery", "Ungültiger Akkuwert.")
         if "status_message" in payload:
             payload["status_message"] = safe_text(payload["status_message"], 120)
         if "wifi_name" in payload and payload["wifi_name"] is not None:
@@ -1574,10 +1598,10 @@ def main() -> int:
 
     try:
         config = load_config(config_path)
-        app = RJLoveApplication(config, config_path)
         for user in config["users"]:
             if not user["password"].startswith("scrypt$"):
-                user["password"] = app.encode_password(user["password"])
+                user["password"] = RJLoveApplication.encode_password(user["password"])
+        app = RJLoveApplication(config, config_path)
         app.save_config()
         if args.reset_user:
             try:
@@ -1622,6 +1646,7 @@ def main() -> int:
                                     for table in ("sessions", "devices", "nearby", "live_activities"):
                                         db.execute(f"DELETE FROM {table} WHERE user_id=?", (old["id"],))
                         app.save_config()
+                    app.synchronize_credential_versions()
                     print("Zugänge neu geladen; geänderte Konten abgemeldet.", flush=True)
                 except Exception as exc:
                     print(f"Reload fehlgeschlagen: {exc}", flush=True)

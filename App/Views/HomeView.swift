@@ -180,7 +180,7 @@ struct HomeView: View {
                 Task {
                     do {
                         if appState.liveActivity.isRunning { await appState.liveActivity.stop() }
-                        else { try await appState.liveActivity.start(partnerName: partnerName, battery: appState.partner?.presence?.batteryLevel, motion: appState.partner?.presence?.motion ?? "Noch kein Status", mine: appState.myThoughtCount, partner: appState.partnerThoughtCount) }
+                        else { try await appState.liveActivity.start(partnerName: partnerName, battery: appState.partner?.presence?.batteryLevel, motion: appState.partner?.presence?.motion ?? "Noch kein Status", mine: appState.myThoughtCount, partner: appState.partnerThoughtCount, updatedAt: appState.partner?.presence?.updatedAt?.rjDate) }
                     } catch { appState.alert = AppAlert(title: "Live-Aktivität", message: error.localizedDescription) }
                 }
             }.buttonStyle(.bordered).tint(LovePalette.pink)

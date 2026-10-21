@@ -155,7 +155,16 @@ final class AppState {
         do {
             let response = try await api.login(username: newProfile.username, password: password, deviceID: deviceID)
             try KeychainStore.set(response.token, for: Self.tokenKey)
-            if profile != newProfile { AppCache.clear() }
+            if profile != newProfile {
+                AppCache.clear()
+                health.sharingEnabled = false
+                health.shareActivity = false; health.shareSleep = false; health.shareVitals = false
+                location.sharingEnabled = false
+                shareWiFiName = false; shareFocus = false
+                WidgetSharedStore.clearPendingThoughts()
+                WidgetSharedStore.saveSnapshot(WidgetSnapshot())
+                UserDefaults.standard.removeObject(forKey: "rjlove.chat-draft")
+            }
             profile = newProfile
             Self.saveProfile(newProfile)
             me = response.user
@@ -187,6 +196,9 @@ final class AppState {
         partners = []
         records = []
         thoughts = [:]
+        UserDefaults.standard.removeObject(forKey: "rjlove.chat-draft")
+        queuedPresenceTask?.cancel()
+        location.stop()
         storageUsedBytes = 0
         features = nil
         lastSync = nil
@@ -483,7 +495,7 @@ final class AppState {
             partnerLastSeen: partner?.presence?.updatedAt ?? partner?.presence?.reportedAt,
             myThoughts: myThoughtCount,
             partnerThoughts: partnerThoughtCount,
-            lastSync: Date.now.rjISO8601
+            lastSync: lastSync?.rjISO8601
         )
         value.partnerSteps = partner?.presence?.steps
         value.partnerSleepMinutes = partner?.presence?.sleepMinutes
@@ -511,7 +523,8 @@ final class AppState {
             battery: partner?.presence?.batteryLevel,
             motion: partner?.presence?.motion ?? "Unbekannt",
             mine: myThoughtCount,
-            partner: partnerThoughtCount
+            partner: partnerThoughtCount,
+            updatedAt: partner?.presence?.updatedAt?.rjDate
         )
     }
 

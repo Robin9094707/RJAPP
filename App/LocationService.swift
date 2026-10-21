@@ -35,7 +35,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     private override init() {
         authorizationStatus = manager.authorizationStatus
         accuracyAuthorization = manager.accuracyAuthorization
-        sharingEnabled = UserDefaults.standard.object(forKey: "rjlove.location-sharing") as? Bool ?? true
+        sharingEnabled = UserDefaults.standard.object(forKey: "rjlove.location-sharing") as? Bool ?? false
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
@@ -65,6 +65,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         guard sharingEnabled else { return }
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
+            manager.allowsBackgroundLocationUpdates = manager.authorizationStatus == .authorizedAlways
             manager.startUpdatingLocation()
             manager.startMonitoringSignificantLocationChanges()
         case .notDetermined:
@@ -77,6 +78,8 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     func stop() {
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
+        manager.allowsBackgroundLocationUpdates = false
+        for region in manager.monitoredRegions where region.identifier.hasPrefix("rjlove.") { manager.stopMonitoring(for: region) }
     }
 
     func updateActivity(_ motion: String) {
@@ -89,7 +92,8 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     }
 
     func synchronizeGeofences(_ places: [MonitoredLovePlace]) {
-        let desired = Dictionary(uniqueKeysWithValues: places.prefix(20).map { ("rjlove.\($0.id)", $0) })
+        let permitted = sharingEnabled ? places : []
+        let desired = Dictionary(uniqueKeysWithValues: permitted.prefix(20).map { ("rjlove.\($0.id)", $0) })
         placeNames = Dictionary(uniqueKeysWithValues: desired.map { ($0.key, $0.value.name) })
 
         for region in manager.monitoredRegions where region.identifier.hasPrefix("rjlove.") && desired[region.identifier] == nil {
@@ -131,12 +135,12 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
-        guard region.identifier.hasPrefix("rjlove.") else { return }
+        guard sharingEnabled, region.identifier.hasPrefix("rjlove.") else { return }
         onGeofenceEvent?(String(region.identifier.dropFirst("rjlove.".count)), placeNames[region.identifier] ?? "Ort", "enter")
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
-        guard region.identifier.hasPrefix("rjlove.") else { return }
+        guard sharingEnabled, region.identifier.hasPrefix("rjlove.") else { return }
         onGeofenceEvent?(String(region.identifier.dropFirst("rjlove.".count)), placeNames[region.identifier] ?? "Ort", "exit")
     }
 }

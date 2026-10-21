@@ -9,7 +9,7 @@ final class NearbyService: NSObject, NISessionDelegate {
     private(set) var distance: Float?
     private(set) var angle: Double?
     private(set) var message = "Findet euch. Auch ganz nah."
-    var supported: Bool { NISession.deviceCapabilities?.supportsPreciseDistanceMeasurement == true }
+    var supported: Bool { NISession.deviceCapabilities.supportsPreciseDistanceMeasurement }
     private var session: NISession?
     private var task: Task<Void, Never>?
     private var peerToken: String?

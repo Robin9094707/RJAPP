@@ -294,6 +294,29 @@ class RJLoveBackendTests(unittest.TestCase):
         with self.app.database.connect() as db:
             self.assertEqual(db.execute("SELECT count(*) FROM live_activities").fetchone()[0], 0)
 
+    def test_file_password_reset_invalidates_sessions_on_restart(self):
+        token = self.login()
+        changed = json.loads(self.config_path.read_text())
+        changed["users"][0]["password"] = "file-reset-password"
+        self.config_path.write_text(json.dumps(changed))
+        restarted = SERVER.RJLoveApplication(SERVER.load_config(self.config_path), self.config_path)
+        try:
+            with self.assertRaises(SERVER.APIError):
+                restarted.authenticate("Bearer " + token)
+            self.assertTrue(restarted.password_matches(restarted.user_by_id("robin"), "file-reset-password"))
+        finally:
+            restarted.close()
+
+    def test_logout_clears_remote_delivery_tokens(self):
+        token = self.login()
+        self.request("/v1/devices", "POST", {"device_id": "test-device", "device_token": "ab" * 32, "environment": "production"}, token)
+        self.request("/v1/nearby", "POST", {"token": "aGVsbG8="}, token)
+        self.request("/v1/live-activities", "POST", {"activity_id": "live-1", "token": "ab" * 40}, token)
+        self.assertEqual(self.request("/v1/auth/logout", "POST", {}, token)[0], 204)
+        with self.app.database.connect() as db:
+            for table in ("devices", "nearby", "live_activities", "sessions"):
+                self.assertEqual(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

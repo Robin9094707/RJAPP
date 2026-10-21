@@ -128,9 +128,19 @@ jobs:
           retention-days: 14
 
   preview:
-    name: Verify simulator and capture interface
+    name: Verify ${{ matrix.device }} layout
     runs-on: macos-26
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: iPhone 14 Pro
+            slug: iPhone14Pro
+          - device: iPhone SE (3rd generation)
+            slug: iPhoneSE3rdgeneration
+          - device: iPhone 15 Plus
+            slug: iPhone15Plus
     steps:
       - uses: actions/checkout@v4
       - name: Build simulator app
@@ -140,11 +150,11 @@ jobs:
           set -o pipefail
           xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Simulator-build.log
       - name: Capture preview
-        run: python3 Scripts/capture_preview.py
+        run: python3 Scripts/capture_preview.py --device "${{ matrix.device }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: RJ-Love-interface-preview
+          name: RJ-Love-interface-preview-${{ matrix.slug }}
           path: |
             Preview-*.png
             Simulator-build.log

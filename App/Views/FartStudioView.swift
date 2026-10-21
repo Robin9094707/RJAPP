@@ -241,10 +241,10 @@ struct FartRecorderView: View {
                         stage("3", "Senden", selected: saving)
                     }.frame(maxWidth: .infinity)
                     LoveEyebrow(text: studio.hasRecording ? "Das Mikrofon ist für euch offen" : studio.mode == .review ? "Ein kleines Meisterwerk ist geboren" : "Wenn die Natur ruft: Aufnahme.")
-                    PuffMascot(active: studio.isRecording).frame(height: 130)
+                    PuffMascot(active: studio.isRecording).frame(height: studio.mode == .review ? 66 : 130)
                     Text(studio.mode == .review ? "Bereit für die Duftpost?" : studio.mode == .paused ? "Kurze Atempause." : studio.isRecording ? "Lass es raus." : "Bühne frei.")
                         .font(.system(size: 31, weight: .medium, design: .serif)).multilineTextAlignment(.center)
-                    Text(String(format: "%02d:%02d", Int(studio.elapsed) / 60, Int(studio.elapsed) % 60)).font(.system(size: 48, weight: .light, design: .rounded)).monospacedDigit()
+                    Text(String(format: "%02d:%02d", Int(studio.elapsed) / 60, Int(studio.elapsed) % 60)).font(.system(size: studio.mode == .review ? 32 : 48, weight: .light, design: .rounded)).monospacedDigit()
                     AudioWaveform(values: studio.mode == .review ? studio.draft?.waveform ?? [] : studio.liveLevels).frame(height: 75).padding(.horizontal, 12)
                     recordingControls.disabled(saving)
                     if studio.mode == .review { reviewForm }
@@ -254,6 +254,15 @@ struct FartRecorderView: View {
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(24)
             }.background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom) {
+                if studio.mode == .review {
+                    VStack(spacing: 7) {
+                        sendButton
+                        Text(String(format: "Dein Ausschnitt: %.1f s · Name optional", max(0.2, trimEnd - trimStart)))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }.padding(.horizontal, 20).padding(.vertical, 12).background(.ultraThinMaterial)
+                }
+            }
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Schließen") { dismiss() }.disabled(saving) } }
             .confirmationDialog("Aufnahme wirklich verwerfen?", isPresented: $discard, titleVisibility: .visible) {
                 Button("Verwerfen", role: .destructive) { studio.discard(); failedUpload = false }
@@ -301,17 +310,7 @@ struct FartRecorderView: View {
             }
         }.frame(maxWidth: .infinity)
     }
-    private var reviewForm: some View {
-        VStack(alignment: .leading, spacing: 17) {
-            TextField("Name (optional)", text: $title).font(.headline)
-            TextField("Eine Duftnote dazu?", text: $caption, axis: .vertical).lineLimit(2...4)
-            Text("Ohne Namen heißt deine Aufnahme automatisch „Ein kleines Meisterwerk“.").font(.caption).foregroundStyle(.secondary)
-            if let draft = studio.draft {
-                AudioTrimControls(url: draft.url, duration: draft.duration, waveform: draft.waveform, start: $trimStart, end: $trimEnd)
-            }
-            if let trimError { Text(trimError).font(.footnote).foregroundStyle(.orange) }
-            if title.count > 100 || caption.count > 500 { Text("Name: maximal 100 Zeichen. Duftnote: maximal 500 Zeichen.").font(.caption).foregroundStyle(.orange) }
-            Picker("Kategorie", selection: $category) { ForEach(FartCategory.allCases) { Text("\($0.emoji) \($0.rawValue)").tag($0) } }
+    private var sendButton: some View {
             Button {
                 saving = true; studio.stopPlayback()
                 Task {
@@ -329,6 +328,19 @@ struct FartRecorderView: View {
                 .buttonStyle(.borderedProminent).tint(LovePalette.violet).controlSize(.large)
                 .disabled(saving || studio.draft == nil || title.count > 100 || caption.count > 500)
                 .accessibilityIdentifier("duftpost-send")
+    }
+
+    private var reviewForm: some View {
+        VStack(alignment: .leading, spacing: 17) {
+            TextField("Name (optional)", text: $title).font(.headline)
+            TextField("Eine Duftnote dazu?", text: $caption, axis: .vertical).lineLimit(2...4)
+            Text("Ohne Namen heißt deine Aufnahme automatisch „Ein kleines Meisterwerk“.").font(.caption).foregroundStyle(.secondary)
+            if let draft = studio.draft {
+                AudioTrimControls(url: draft.url, duration: draft.duration, waveform: draft.waveform, start: $trimStart, end: $trimEnd)
+            }
+            if let trimError { Text(trimError).font(.footnote).foregroundStyle(.orange) }
+            if title.count > 100 || caption.count > 500 { Text("Name: maximal 100 Zeichen. Duftnote: maximal 500 Zeichen.").font(.caption).foregroundStyle(.orange) }
+            Picker("Kategorie", selection: $category) { ForEach(FartCategory.allCases) { Text("\($0.emoji) \($0.rawValue)").tag($0) } }
             Button("Entwurf verwerfen", role: .destructive) { discard = true }.font(.caption).disabled(saving)
         }.loveCard()
     }

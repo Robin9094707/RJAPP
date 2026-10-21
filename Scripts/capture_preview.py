@@ -11,6 +11,20 @@ def run(*args, timeout=120, capture=False):
     return subprocess.run(args, check=True, text=True, capture_output=capture, timeout=timeout)
 
 
+def launch_preview(device, arguments):
+    for attempt in range(2):
+        try:
+            run('xcrun', 'simctl', 'launch', device, 'eu.rjuhas.rjlove', '--preview', *arguments, timeout=180)
+            return
+        except subprocess.TimeoutExpired:
+            if attempt:
+                raise
+            # A fresh VM can finish migration before LaunchServices is ready.
+            # Restart this sample app once, then require a successful real launch.
+            subprocess.run(['xcrun', 'simctl', 'terminate', device, 'eu.rjuhas.rjlove'], timeout=30)
+            run('xcrun', 'simctl', 'bootstatus', device, '-b', timeout=180)
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', choices=['iPhone 14 Pro', 'iPhone SE (3rd generation)', 'iPhone 15 Plus'])
 args = parser.parse_args()
@@ -46,7 +60,7 @@ try:
             if name == 'iPhone 14 Pro':
                 screens += [('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Liebe', ['--preview-love']), ('Grossschrift', ['--preview-radio', '--preview-accessibility'])]
             for title, arguments in screens:
-                run('xcrun', 'simctl', 'launch', device, 'eu.rjuhas.rjlove', '--preview', *arguments)
+                launch_preview(device, arguments)
                 time.sleep(3)
                 run('xcrun', 'simctl', 'io', device, 'screenshot', f'Preview-{slug}-{title}.png')
                 run('xcrun', 'simctl', 'terminate', device, 'eu.rjuhas.rjlove')

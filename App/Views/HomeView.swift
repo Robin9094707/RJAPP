@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showingWakeComposer = false
     @State private var showingStatusEditor = false
     @State private var heartPulse = false
@@ -18,6 +19,9 @@ struct HomeView: View {
                 connection
                 heartSpace
                 partnerCard
+                NavigationLink { DeliveryCenterView() } label: {
+                    Label("Push, Wecker & Hintergrund prüfen", systemImage: "checkmark.shield.fill").font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .leading).padding(17).loveGlass(in: RoundedRectangle(cornerRadius: 22))
+                }.buttonStyle(.plain)
                 Button { appState.showingRadio = true } label: {
                     HStack(spacing: 14) {
                         Image(systemName: "antenna.radiowaves.left.and.right").font(.title2).foregroundStyle(LovePalette.violet)
@@ -53,7 +57,7 @@ struct HomeView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 7) {
                 LoveEyebrow(text: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                Text("Euer kleines Wir.").font(.system(size: 34, weight: .medium, design: .serif)).tracking(-1)
+                Text("Euer kleines Wir.").font(.system(size: 32, weight: .medium, design: .serif)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-home-title")
             }
             Spacer(minLength: 4)
             Button { appState.selectedTab = .settings } label: {
@@ -96,7 +100,7 @@ struct HomeView: View {
                         .shadow(color: LovePalette.pink.opacity(0.3), radius: 22, y: 10)
                         .scaleEffect(heartPulse && !reduceMotion ? 1.12 : 1)
                 }.buttonStyle(.plain).accessibilityLabel("Herzgedanken an \(partnerName) senden")
-            }.frame(height: 220)
+            }.frame(maxWidth: .infinity).frame(height: 220).accessibilityIdentifier("rj-heart-space")
             Text("Ein Tipp. Ein Ich-denke-an-dich.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 thoughtCount("Von dir", appState.myThoughtCount)
@@ -138,7 +142,7 @@ struct HomeView: View {
     }
 
     private var quickActions: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.adaptive(minimum: 145))], spacing: 12) {
             action("Dich finden", "Ganz in eurer Nähe", "location.north.circle.fill", LovePalette.cyan) { showingNearby = true }
             action("Ein paar Worte", "Euer privater Chat", "bubble.left.and.bubble.right.fill", LovePalette.violet) { appState.selectedTab = .together }
             action("Sanft wecken", "Ein lieber Weckruf", "sunrise.fill", LovePalette.coral) { showingWakeComposer = true }
@@ -206,6 +210,8 @@ private struct WakeComposerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var message = "Guten Morgen, mein Schatz 💗"
     @State private var confirming = false
+    @State private var scheduled = false
+    @State private var dueAt = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now.addingTimeInterval(3600)
     @State private var sending = false
 
     var body: some View {
@@ -214,6 +220,11 @@ private struct WakeComposerView: View {
                 Section("Wecknachricht") {
                     TextField("Nachricht", text: $message, axis: .vertical)
                         .lineLimit(3...6)
+                }
+                Section("Zeitpunkt") {
+                    Toggle("Weckruf im Voraus planen", isOn: $scheduled)
+                    if scheduled { DatePicker("Weckzeit", selection: $dueAt, in: Date.now.addingTimeInterval(10)...Date.now.addingTimeInterval(30 * 86400)).datePickerStyle(.compact) }
+                    Text("Vorab empfangene Wecker werden sofort auf dem anderen iPhone eingeplant und können später auch ohne Netz klingeln. Den Planungsstatus siehst du unter Push & Wecker.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section {
                     Label("AlarmKit kann den Systemwecker erst auslösen, wenn das andere iPhone den Befehl per Push oder Synchronisierung empfangen hat.", systemImage: "info.circle.fill")
@@ -234,10 +245,10 @@ private struct WakeComposerView: View {
                 isPresented: $confirming,
                 titleVisibility: .visible
             ) {
-                Button("Ja, jetzt wecken", role: .destructive) {
+                Button(scheduled ? "Weckruf für diese Zeit senden" : "Ja, jetzt wecken", role: .destructive) {
                     sending = true
                     Task {
-                        if await appState.sendWake(message: message) { dismiss() }
+                        if await appState.sendWake(message: message, dueAt: scheduled ? dueAt : .now.addingTimeInterval(2)) { dismiss() }
                         sending = false
                     }
                 }

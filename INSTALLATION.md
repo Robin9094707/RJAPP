@@ -1,4 +1,4 @@
-# RJ Love 2.2 einrichten
+# RJ Love 2.3 einrichten
 
 ## 1. Python-Server
 
@@ -39,7 +39,7 @@ Pro Konto bleibt nur die neueste Anmeldung gültig. Ein altes Gerät verliert de
 
 ## 5. Optionales APNs
 
-Im `apns`-Block aktivieren, Team-ID, Key-ID, Bundle-ID und Pfad zur privaten `.p8`-Datei eintragen. Server benötigt `curl` mit HTTP/2 und `openssl`. Release verwendet Production-APNs. Schlüssel und Profile müssen zu derselben App passen. Ein Zertifikat des Signaturdienstes ersetzt keinen verfügbaren APNs-Provider-Schlüssel. Ohne passende Schlüssel bleiben diese Felder deaktiviert.
+Am einfachsten mit `python3 rj_love_server.py --configure-push` einrichten und mit `--check-push` prüfen. Alternativ im `apns`-Block aktivieren, Team-ID, Key-ID, Bundle-ID und Pfad zur privaten `.p8`-Datei eintragen. Server benötigt `curl` mit HTTP/2 und `openssl`. Die APNs-Umgebung wird aus dem installierten Provisioningprofil gelesen; ohne auslesbares Profil verwendet Release Production. Schlüssel und Profile müssen zu derselben App passen. Ein Zertifikat des Signaturdienstes ersetzt keinen verfügbaren APNs-Provider-Schlüssel. Ohne passende Schlüssel bleiben diese Felder deaktiviert.
 
 Die App registriert Geräte- und Live-Aktivitätstokens automatisch, wenn iOS dies erlaubt. Der Server aktualisiert Live-Aktivitäten höchstens alle 15 Sekunden bei neuen Status-/Herzereignissen; zusätzliche Apple-Limits sind möglich.
 
@@ -81,3 +81,7 @@ Beim Update von 2.0: Server stoppen, Python-Datei ersetzen, erneut starten. Konf
 ## Update 2.2
 
 Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk hält Audio und Texte zehn Minuten abrufbar; der anschließende Minutenlauf löscht sie.
+
+## 2.3: Hintergrundwecker und Signatur prüfen
+
+Unter **Wir → Push, Wecker & Hintergrund prüfen** Profil, tatsächliches APNs-Topic und Serverantworten prüfen. Bei wichtigen Weckrufen im Voraus planen und die Bestätigung „Auf dem iPhone eingeplant“ abwarten. Hintergrundpushes sind durch iOS nicht garantiert. Eine fremde Bundle-ID übernimmt keine Rechte eines anderen Apple-Teams. Weitere Schritte: [RELEASE-2.3.md](RELEASE-2.3.md).

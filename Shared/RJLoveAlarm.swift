@@ -37,11 +37,9 @@ enum RJLoveAlarmFactory {
     }
 
     static func schedule(id: UUID, title: String, senderName: String, fireDate: Date) async throws {
-        let duration = max(1, fireDate.timeIntervalSinceNow)
-        let countdown = Alarm.CountdownDuration(preAlert: duration, postAlert: max(60, duration))
         let configuration = AlarmManager.AlarmConfiguration(
-            countdownDuration: countdown,
-            schedule: nil,
+            countdownDuration: nil,
+            schedule: .fixed(fireDate),
             attributes: attributes(id: id, title: title, senderName: senderName),
             stopIntent: StopLoveAlarmIntent(alarmID: id.uuidString),
             secondaryIntent: nil,

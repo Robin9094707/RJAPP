@@ -33,11 +33,11 @@ final class APIClient: @unchecked Sendable {
     private var _baseURL: URL?
     private var _token: String?
 
-    init() {
+    init(background: Bool = false) {
         let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 45
-        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = background ? 8 : 20
+        configuration.timeoutIntervalForResource = background ? 18 : 45
+        configuration.waitsForConnectivity = !background
         configuration.httpAdditionalHeaders = ["Accept": "application/json"]
         session = URLSession(configuration: configuration)
     }
@@ -117,6 +117,28 @@ final class APIClient: @unchecked Sendable {
         try await execute(try request(path: "/v1/bootstrap", method: "GET"), as: BootstrapResponse.self)
     }
 
+    func backgroundSnapshot() async throws -> BackgroundSnapshot {
+        try await execute(try request(path: "/v1/background", method: "GET"), as: BackgroundSnapshot.self)
+    }
+    func commandReceipt(id: String, status: String, reason: String) async throws {
+        do {
+            _ = try await execute(try request(path: "/v1/commands/\(id)/receipt", method: "POST", body: encoder.encode(["status": status, "reason": reason])), as: EmptyResponse.self)
+        } catch let error as APIClientError {
+            if case .server(let code, _) = error, code == 404, status == "scheduled" || status == "expired" { try await acknowledgeCommand(id: id) }
+            else { throw error }
+        }
+    }
+    func commandDeliveries() async throws -> [CommandDelivery] {
+        struct Response: Decodable { let deliveries: [CommandDelivery] }
+        return try await execute(try request(path: "/v1/commands/delivery", method: "GET"), as: Response.self).deliveries
+    }
+    func pushReadiness() async throws -> PushReadiness {
+        try await execute(try request(path: "/v1/push/status", method: "GET"), as: PushReadiness.self)
+    }
+    func testPush() async throws {
+        _ = try await execute(try request(path: "/v1/push/test", method: "POST", body: Data("{}".utf8)), as: EmptyResponse.self)
+    }
+
     func postPresence(_ payload: PresencePayload) async throws {
         let data = try encoder.encode(payload)
         _ = try await execute(try request(path: "/v1/presence", method: "POST", body: data), as: UpdatedAtResponse.self)
@@ -187,14 +209,18 @@ final class APIClient: @unchecked Sendable {
             let deviceToken: String
             let deviceID: String
             let environment: String
+            let bundleID: String
+            let teamID: String?
             enum CodingKeys: String, CodingKey {
                 case environment
+                case bundleID = "bundle_id"
+                case teamID = "team_id"
                 case deviceToken = "device_token"
                 case deviceID = "device_id"
             }
         }
         _ = try await execute(
-            try request(path: "/v1/devices", method: "POST", body: encoder.encode(Body(deviceToken: token, deviceID: deviceID, environment: environment))),
+            try request(path: "/v1/devices", method: "POST", body: encoder.encode(Body(deviceToken: token, deviceID: deviceID, environment: environment, bundleID: SigningProfile.current.bundleID, teamID: SigningProfile.current.teamID))),
             as: EmptyResponse.self
         )
     }
@@ -248,11 +274,7 @@ final class APIClient: @unchecked Sendable {
     }
 
     func radioJoin(token: String) async throws -> RadioJoin {
-        #if DEBUG
-        let environment = "sandbox"
-        #else
-        let environment = "production"
-        #endif
+        let environment = SigningProfile.current.pushEnvironment
         return try await execute(try request(path: "/v1/radio/join", method: "POST", body: encoder.encode(["token": token, "environment": environment])), as: RadioJoin.self)
     }
     func radioFeed(after cursor: Int) async throws -> RadioFeed {

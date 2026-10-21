@@ -100,9 +100,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-2.2-Komplettpaket
+          name: RJ-Love-2.3-Komplettpaket
           path: |
-            RJ-Love-2.2-Komplettpaket.zip
+            RJ-Love-2.3-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -130,7 +130,7 @@ jobs:
   preview:
     name: Verify simulator and capture interface
     runs-on: macos-26
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Build simulator app
@@ -149,5 +149,5 @@ jobs:
             Preview-*.png
             Simulator-build.log
             UI-backend.log
-            RecorderFlow.xcresult
+            Layout-*.xcresult
           if-no-files-found: warn

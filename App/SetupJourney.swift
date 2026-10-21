@@ -53,7 +53,7 @@ struct SetupJourneyView: View {
                         .symbolEffect(.bounce, value: journey.finished)
                     LoveEyebrow(text: "Euer Raum. Einmal richtig einrichten.")
                     Text(journey.finished ? "Bereit für euer Wir." : "Alles, was euch verbindet.")
-                        .font(.system(size: 34, weight: .medium, design: .serif))
+                        .font(.system(size: 32, weight: .medium, design: .serif)).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-setup-title")
                     Text("RJ Love fragt die benötigten iPhone-Berechtigungen nacheinander ab und schaltet eure Freigaben ein: Standort, Aktivität, Schlaf, Vitalwerte und WLAN-Name. Walkie-Talkie-Empfang und Vorlesen sind zunächst eingeschaltet. Unter „Mehr“ kannst du alles einzeln ausschalten.")
                         .font(.subheadline).foregroundStyle(.secondary)
                     VStack(spacing: 16) {

@@ -14,7 +14,7 @@ struct WalkieTalkieView: View {
             VStack(alignment: .leading, spacing: 24) {
                 VStack(spacing: 18) {
                     LoveEyebrow(text: "Eure private Frequenz")
-                    Text("Sag’s mir ganz nah.").font(.system(size: 34, weight: .medium, design: .serif)).multilineTextAlignment(.center)
+                    Text("Sag’s mir ganz nah.").font(.system(size: 32, weight: .medium, design: .serif)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-radio-title")
                     Text(radio.status).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     ZStack {
                         ForEach(0..<3) { index in
@@ -77,6 +77,7 @@ struct WalkieTalkieView: View {
                     Label(radio.joinedSystem ? "iOS-Push-to-Talk-Kanal verbunden" : "Vordergrundbetrieb", systemImage: radio.joinedSystem ? "checkmark.circle.fill" : "info.circle")
                     Label(radio.backgroundPushConfigured ? "Server meldet APNs als konfiguriert" : "APNs auf dem Server noch nicht eingerichtet", systemImage: "server.rack")
                     if let message = radio.systemMessage { Text(message).foregroundStyle(.orange) }
+                    NavigationLink { DeliveryCenterView() } label: { Label("Fehlergrund & Signatur prüfen", systemImage: "stethoscope") }.buttonStyle(.bordered)
                     Text("Apple zeigt den aktiven Kanal in der Systemsteuerung am oberen Bildschirmrand bzw. auf dem Sperrbildschirm. Verfügbarkeit und Platzierung bestimmt iOS. Hintergrundempfang braucht ein Signierprofil mit Push-to-Talk und Push sowie passende APNs-Schlüssel. Ohne diese bleibt der Funk bei geöffneter App nutzbar.")
                 }.font(.footnote).foregroundStyle(.secondary).loveCard()
             }.padding(22)

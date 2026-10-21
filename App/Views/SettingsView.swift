@@ -21,7 +21,8 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
-            Section("Euer privater Raum · 2.2") {
+            Section("Euer privater Raum · 2.3") {
+                NavigationLink { DeliveryCenterView() } label: { Label("Push, Wecker & Hintergrund", systemImage: "checkmark.shield.fill") }
                 Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
                 NavigationLink { WalkieTalkieView() } label: { Label("Walkie-Talkie & Vorlesen", systemImage: "antenna.radiowaves.left.and.right") }
                 NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }

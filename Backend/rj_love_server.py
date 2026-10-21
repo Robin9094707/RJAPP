@@ -50,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
@@ -313,6 +313,8 @@ class Database:
                     clip_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL,
                     PRIMARY KEY(clip_id,user_id,emoji)
                 );
+                CREATE TABLE IF NOT EXISTS command_receipts (command_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS push_deliveries (id TEXT PRIMARY KEY, target_id TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS radio_members (user_id TEXT PRIMARY KEY, token TEXT NOT NULL, environment TEXT NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS radio_floor (id INTEGER PRIMARY KEY CHECK(id=1), user_id TEXT NOT NULL, transmission_id TEXT NOT NULL, expires_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS radio_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, transmission_id TEXT NOT NULL, chunk_index INTEGER NOT NULL, user_id TEXT NOT NULL, kind TEXT NOT NULL, audio BLOB, text TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(transmission_id,chunk_index));
@@ -391,6 +393,10 @@ class Database:
                 """
             )
 
+            device_columns = {r["name"] for r in db.execute("PRAGMA table_info(devices)")}
+            for name, declaration in {"bundle_id": "TEXT", "team_id": "TEXT"}.items():
+                if name not in device_columns:
+                    db.execute(f"ALTER TABLE devices ADD COLUMN {name} {declaration}")
             columns = {r["name"] for r in db.execute("PRAGMA table_info(fart_clips)")}
             for name, declaration in {"audio_path": "TEXT NOT NULL DEFAULT ''", "revision": "INTEGER NOT NULL DEFAULT 1", "updated_at": "TEXT", "last_edit_id": "TEXT"}.items():
                 if name not in columns:
@@ -505,57 +511,89 @@ class APNSProvider:
         thread = threading.Thread(target=self._send_worker, args=(user_id, event), daemon=True)
         thread.start()
 
-    def _send_worker(self, user_id: str, event: dict[str, Any]) -> None:
+    def issues(self) -> list[str]:
+        config = self.app.config.get("apns", {})
+        problems = []
+        if not self.enabled:
+            problems.append("APNs ist auf dem Python-Server ausgeschaltet. --configure-push startet die Einrichtung.")
+        for field, label in (("team_id", "Apple-Team-ID"), ("key_id", "APNs-Key-ID")):
+            if not re.fullmatch(r"[A-Z0-9]{10}", str(config.get(field, ""))):
+                problems.append(f"{label} fehlt oder ist ungültig (10 Großbuchstaben/Ziffern).")
+        if not config.get("private_key_file") or not self.app.resolve_config_path(config["private_key_file"]).is_file():
+            problems.append("Die APNs-.p8-Schlüsseldatei fehlt. Ein App-Signatur-.p12 ersetzt diesen Server-Schlüssel nicht.")
+        if not config.get("bundle_id") or "*" in config["bundle_id"]:
+            problems.append("Eine ausdrückliche App-Bundle-ID ist nötig; kein Wildcard-Topic.")
+        if not shutil.which("curl") or not shutil.which("openssl"):
+            problems.append("curl mit HTTP/2 und openssl müssen installiert sein.")
+        elif self.enabled:
+            try:
+                version = subprocess.run(["curl", "--version"], capture_output=True, timeout=5)
+                if b"HTTP2" not in version.stdout:
+                    problems.append("Das installierte curl unterstützt HTTP/2 nicht.")
+            except (OSError, subprocess.TimeoutExpired):
+                problems.append("curl konnte nicht geprüft werden.")
+        return problems
+
+    def record(self, user_id: str, kind: str, status: str, reason: str) -> None:
+        with self.app.database.connect() as db:
+            db.execute("INSERT INTO push_deliveries VALUES(?,?,?,?,?,?)", (str(uuid.uuid4()),user_id,kind,status,reason[:1200],iso_now()))
+
+    def deliver(self, user_id: str, device_token: str, environment: str, payload: dict[str, Any], *, topic: str, push_type: str, expiration: int = 0) -> tuple[str, str]:
+        host = "api.push.apple.com" if environment == "production" else "api.sandbox.push.apple.com"
         try:
-            token = self.provider_token()
-            config = self.app.config["apns"]
-            with self.app.database.connect() as db:
-                devices = db.execute(
-                    "SELECT id, device_token, environment FROM devices WHERE user_id=?",
-                    (user_id,),
-                ).fetchall()
-            for device in devices:
-                environment = device["environment"] or config.get("environment", "sandbox")
-                host = "api.push.apple.com" if environment == "production" else "api.sandbox.push.apple.com"
-                payload = {
-                    "aps": {
-                        "alert": {"title": event["title"], "body": event["body"]},
-                        "sound": "default",
-                        "content-available": 1,
-                    },
-                    "rj_event_id": event["id"],
-                    "rj_event_kind": event["kind"],
+            bearer = self.provider_token()
+            command = ["curl", "--silent", "--show-error", "--http2", "--max-time", "12", "--write-out", "\n%{http_code}",
+                       "--header", "authorization: bearer " + bearer, "--header", "apns-topic: " + topic,
+                       "--header", "apns-push-type: " + push_type, "--header", "apns-priority: " + ("5" if push_type == "background" else "10"),
+                       "--header", "apns-expiration: " + str(expiration), "--data-binary", "@-", f"https://{host}/3/device/{device_token}"]
+            result = subprocess.run(command, input=json_bytes(payload), capture_output=True, timeout=16)
+            response = result.stdout.decode(errors="replace").strip()
+            body, separator, status = response.rpartition("\n")
+            if not separator:
+                status, body = response, ""
+            try:
+                reason = json.loads(body).get("reason", "") if body else ""
+            except (ValueError, AttributeError):
+                reason = "Unlesbare APNs-Antwort"
+            if result.returncode:
+                reason = "Netzwerk/TLS: " + result.stderr.decode(errors="replace")[:500]
+            if status == "200" and not result.returncode:
+                self.record(user_id, push_type, "accepted", "Apple APNs hat die Nachricht angenommen. Das ist noch keine Ausführungsbestätigung des iPhones.")
+            else:
+                explanations = {
+                    "DeviceTokenNotForTopic": "Gerätetoken und Bundle-ID/Signing-Team passen nicht zusammen.",
+                    "BadDeviceToken": "Token passt nicht zur APNs-Umgebung oder ist ungültig. App neu registrieren.",
+                    "InvalidProviderToken": "APNs-Key-ID, Team-ID oder .p8-Schlüssel ist falsch.",
+                    "ExpiredProviderToken": "Provider-Token ist abgelaufen. Server-Uhr und Schlüssel prüfen.",
+                    "TopicDisallowed": "Der Server-Schlüssel darf dieses App-Topic nicht verwenden.",
+                    "BadTopic": "Die konfigurierte Bundle-ID ist kein gültiges APNs-Topic.",
+                    "Unregistered": "Dieses iPhone ist nicht mehr für diesen Token registriert.",
+                    "MissingTopic": "Auf dem Server fehlt die Bundle-ID.",
                 }
-                command = [
-                    "curl", "--silent", "--show-error", "--http2",
-                    "--max-time", "15", "--output", "/dev/null",
-                    "--write-out", "%{http_code}",
-                    "--header", f"authorization: bearer {token}",
-                    "--header", f"apns-topic: {config.get('bundle_id', 'eu.rjuhas.rjlove')}",
-                    "--header", "apns-push-type: alert",
-                    "--header", "apns-priority: 10",
-                    "--data-binary", "@-",
-                    f"https://{host}/3/device/{device['device_token']}",
-                ]
-                result = subprocess.run(
-                    command,
-                    input=json_bytes(payload),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=False,
-                    timeout=20,
-                )
-                status = result.stdout.decode(errors="replace").strip()
-                if result.returncode != 0 or status not in {"200"}:
-                    self.app.logger.warning(
-                        "APNs delivery failed for device %s (HTTP %s): %s",
-                        device["id"], status or "?", result.stderr.decode(errors="replace").strip(),
-                    )
-                    if status in {"400", "410"}:
-                        with self.app.database.connect() as db:
-                            db.execute("DELETE FROM devices WHERE id=?", (device["id"],))
+                self.record(user_id, push_type, "failed", f"HTTP {status or '?'} · {reason}. {explanations.get(reason, 'APNs-Konfiguration und Signatur prüfen.')}")
+            return status, reason
         except Exception as exc:
-            self.app.logger.warning("APNs delivery unavailable: %s", exc)
+            self.record(user_id, push_type, "failed", str(exc))
+            return "", "provider_unavailable"
+
+    def _send_worker(self, user_id: str, event: dict[str, Any]) -> None:
+        with self.app.database.connect() as db:
+            devices = db.execute("SELECT * FROM devices WHERE user_id=?", (user_id,)).fetchall()
+        if not devices:
+            self.record(user_id, "alert", "blocked", "Kein APNs-Gerät registriert. Profil, iOS-Mitteilungen und Geräteanmeldung prüfen.")
+        for device in devices:
+            aps = {"alert": {"title": event["title"], "body": event["body"]}, "sound": "default", "content-available": 1}
+            if event["kind"] == "wake_request":
+                aps["category"] = "RJ_WAKE"
+            payload = {"aps": aps, "rj_event_id": event["id"], "rj_event_kind": event["kind"]}
+            if event.get("payload", {}).get("command_id"):
+                payload["rj_command_id"] = event["payload"]["command_id"]
+            expires = parse_iso(event.get("payload", {}).get("due_at")) or utc_now()
+            status, reason = self.deliver(user_id, device["device_token"], device["environment"], payload,
+                topic=self.app.config["apns"].get("bundle_id", "eu.rjuhas.rjlove"), push_type="alert", expiration=int(expires.timestamp()) + 300)
+            if status == "410" or reason == "BadDeviceToken":
+                with self.app.database.connect() as db:
+                    db.execute("DELETE FROM devices WHERE id=? AND device_token=?", (device["id"],device["device_token"]))
 
 
 class RJLoveApplication:
@@ -978,28 +1016,15 @@ class RJLoveApplication:
         if not self.apns.enabled:
             return
         def deliver() -> None:
-            try:
-                bearer = self.apns.provider_token()
-                config = self.config["apns"]
-                with self.database.connect() as db:
-                    members = db.execute("SELECT * FROM radio_members WHERE user_id<>? AND token<>''", (sender_id,)).fetchall()
-                for member in members:
-                    host = "api.push.apple.com" if member["environment"] == "production" else "api.sandbox.push.apple.com"
-                    payload = {"aps": {}, "speaker": self.user_by_id(sender_id)["display_name"], "sequence": sequence}
-                    command = ["curl", "--silent", "--show-error", "--http2", "--max-time", "10", "--output", "/dev/null", "--write-out", "%{http_code}",
-                               "--header", "authorization: bearer " + bearer,
-                               "--header", "apns-topic: " + config.get("bundle_id", "eu.rjuhas.rjlove") + ".voip-ptt",
-                               "--header", "apns-push-type: pushtotalk", "--header", "apns-priority: 10", "--header", "apns-expiration: 0",
-                               "--data-binary", "@-", f"https://{host}/3/device/{member['token']}"]
-                    result = subprocess.run(command, input=json_bytes(payload), capture_output=True, timeout=15)
-                    status = result.stdout.decode(errors="replace").strip()
-                    if result.returncode or status != "200":
-                        self.logger.warning("PTT delivery failed for %s (HTTP %s)", member["user_id"], status)
-                        if status in {"400", "410"}:
-                            with self.database.connect() as db:
-                                db.execute("UPDATE radio_members SET token='' WHERE user_id=? AND token=?", (member["user_id"], member["token"]))
-            except Exception:
-                self.logger.exception("PTT push failed; foreground transport remains available")
+            with self.database.connect() as db:
+                members = db.execute("SELECT * FROM radio_members WHERE user_id<>? AND token<>''", (sender_id,)).fetchall()
+            for member in members:
+                payload = {"aps": {}, "speaker": self.user_by_id(sender_id)["display_name"], "sequence": sequence}
+                status, reason = self.apns.deliver(member["user_id"], member["token"], member["environment"], payload,
+                    topic=self.config["apns"].get("bundle_id", "eu.rjuhas.rjlove") + ".voip-ptt", push_type="pushtotalk")
+                if status == "410" or reason == "BadDeviceToken":
+                    with self.database.connect() as db:
+                        db.execute("UPDATE radio_members SET token='' WHERE user_id=? AND token=?", (member["user_id"],member["token"]))
         threading.Thread(target=deliver, daemon=True).start()
 
     def send_ntfy(self, user_id: str, event: dict[str, Any]) -> None:
@@ -1140,6 +1165,19 @@ class RJLoveApplication:
             ids = [r["id"] for r in db.execute("SELECT id FROM fart_clips ORDER BY created_at DESC LIMIT 100")]
             return [self.fart_clip(clip_id, db) for clip_id in ids]
 
+    def background_snapshot(self, user_id: str) -> dict[str, Any]:
+        with self.database.connect() as db:
+            commands = [dict(r) for r in db.execute("SELECT id,owner_id,target_id,kind,payload,due_at,created_at FROM commands WHERE target_id=? AND acknowledged_at IS NULL ORDER BY created_at LIMIT 10", (user_id,))]
+            reminders = [dict(r) for r in db.execute("SELECT id,owner_id,kind,payload,created_at,updated_at FROM records WHERE kind='reminder' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200")]
+        for row in commands + reminders:
+            row["payload"] = json.loads(row["payload"])
+        return {"user_id": user_id, "sender_name": self.user_by_id(self.partner_ids(user_id)[0])["display_name"], "commands": commands, "reminders": reminders}
+
+    def command_deliveries(self, user_id: str) -> list[dict[str, Any]]:
+        with self.database.connect() as db:
+            rows = db.execute("SELECT c.id,c.due_at,c.payload,r.status,r.reason,r.updated_at FROM commands c LEFT JOIN command_receipts r ON r.command_id=c.id WHERE c.owner_id=? ORDER BY c.created_at DESC LIMIT 20", (user_id,)).fetchall()
+        return [{"id":r["id"],"due_at":r["due_at"],"message":json.loads(r["payload"])["message"],"status":r["status"] or "pending","reason":r["reason"],"updated_at":r["updated_at"]} for r in rows]
+
     def bootstrap(self, user_id: str) -> dict[str, Any]:
         day = self.local_day()
         with self.database.connect() as db:
@@ -1216,6 +1254,7 @@ class RJLoveApplication:
         old_events = now - dt.timedelta(days=30)
         old_commands = now - dt.timedelta(days=14)
         with self.database.connect() as db:
+            db.execute("DELETE FROM push_deliveries WHERE created_at<?", ((now-dt.timedelta(days=7)).isoformat(),))
             db.execute("DELETE FROM radio_events WHERE created_at<?", ((now - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),))
             db.execute("DELETE FROM radio_floor WHERE expires_at<?", (iso_now(),))
             db.execute("DELETE FROM sessions WHERE expires_at < ?", (now.isoformat(),))
@@ -1315,6 +1354,21 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/health":
                 self.send_json(HTTPStatus.OK, {"status": "ok", "version": APP_VERSION, "time": iso_now()})
                 return
+            if path == "/v1/background":
+                user_id = self.current_user()
+                self.send_json(200, self.app.background_snapshot(user_id))
+                return
+            if path == "/v1/commands/delivery":
+                self.send_json(200, {"deliveries": self.app.command_deliveries(self.current_user())})
+                return
+            if path == "/v1/push/status":
+                user_id = self.current_user()
+                issues = self.app.apns.issues()
+                with self.app.database.connect() as db:
+                    devices = db.execute("SELECT COUNT(*) FROM devices WHERE user_id=?", (user_id,)).fetchone()[0]
+                    attempts = [dict(r) for r in db.execute("SELECT id,kind,status,reason,created_at FROM push_deliveries WHERE target_id=? ORDER BY created_at DESC LIMIT 15", (user_id,))]
+                self.send_json(200, {"ready": not issues and devices > 0, "issues": issues, "bundle_id": self.app.config["apns"].get("bundle_id", ""), "registered_devices": devices, "attempts": attempts})
+                return
             if path == "/v1/bootstrap":
                 self.send_json(HTTPStatus.OK, self.app.bootstrap(self.current_user()))
                 return
@@ -1354,7 +1408,22 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
-            if path.startswith("/v1/radio/"):
+            if path == "/v1/push/test":
+                problems = self.app.apns.issues()
+                if problems:
+                    raise APIError(409, "push_not_configured", " ".join(problems))
+                self.read_json()
+                with self.app.database.connect() as db:
+                    if not db.execute("SELECT 1 FROM devices WHERE user_id=?", (user_id,)).fetchone():
+                        raise APIError(409, "no_device", "Dieses Konto hat noch keinen APNs-Gerätetoken registriert.")
+                    recent = db.execute("SELECT 1 FROM events WHERE target_id=? AND kind='push_test' AND created_at>?", (user_id,(utc_now()-dt.timedelta(seconds=30)).isoformat())).fetchone()
+                if recent:
+                    raise APIError(429, "test_rate_limit", "Bitte 30 Sekunden zwischen Push-Tests warten.")
+                self.app.create_event(user_id, "push_test", "RJ Love · Push-Test", "Diese sichtbare Nachricht bestätigt den Empfang auf diesem iPhone.")
+                self.send_empty()
+            elif len(parts) == 4 and parts[:2] == ["v1", "commands"] and parts[3] == "receipt":
+                self._command_receipt(user_id, parts[2])
+            elif path.startswith("/v1/radio/"):
                 self._radio_action(user_id, parts[-1])
             elif path == "/v1/farts":
                 self._upload_fart(user_id)
@@ -1952,6 +2021,27 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             {"id": command_id, "kind": kind, "target_id": target_id, "payload": payload, "due_at": due.isoformat(), "created_at": created},
         )
 
+    def _command_receipt(self, user_id: str, command_id: str) -> None:
+        body = self.read_json()
+        status = body.get("status")
+        if status not in {"scheduled", "failed", "expired"}:
+            raise APIError(400, "invalid_receipt", "Ungültiger Weckrufstatus.")
+        reason = safe_text(body.get("reason", ""), 1200)
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            command = db.execute("SELECT * FROM commands WHERE id=? AND target_id=?", (command_id,user_id)).fetchone()
+            if not command:
+                raise APIError(404, "command_not_found", "Dieser Weckruf ist nicht für dieses Konto.")
+            previous = db.execute("SELECT status FROM command_receipts WHERE command_id=?", (command_id,)).fetchone()
+            if previous and previous["status"] in {"scheduled", "expired"}:
+                self.send_empty()
+                return
+            db.execute("INSERT INTO command_receipts VALUES(?,?,?,?,?) ON CONFLICT(command_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at", (command_id,user_id,status,reason,iso_now()))
+            if status in {"scheduled", "expired"}:
+                db.execute("UPDATE commands SET acknowledged_at=? WHERE id=?", (iso_now(),command_id))
+                db.execute("UPDATE events SET read_at=? WHERE target_id=? AND kind='wake_request' AND json_extract(payload,'$.command_id')=?", (iso_now(),user_id,command_id))
+        self.send_empty()
+
     def _ack_command(self, user_id: str, command_id: str) -> None:
         with self.app.database.connect() as db:
             cursor = db.execute(
@@ -1994,6 +2084,13 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         environment = safe_text(body.get("environment", "sandbox"), 20, allow_empty=False)
         if environment not in {"sandbox", "production"}:
             raise APIError(HTTPStatus.BAD_REQUEST, "invalid_environment", "Ungültige APNs-Umgebung.")
+        bundle_id = safe_text(body.get("bundle_id", self.app.config["apns"].get("bundle_id", "eu.rjuhas.rjlove")), 200, allow_empty=False)
+        team_id = safe_text(body.get("team_id") or "", 40)
+        if bundle_id != self.app.config["apns"].get("bundle_id", "eu.rjuhas.rjlove"):
+            raise APIError(422, "push_topic_mismatch", "Installierte Bundle-ID und apns.bundle_id auf dem Server stimmen nicht überein. Umbenennen in Zello vergibt keine fremden Push-Rechte.")
+        configured_team = self.app.config["apns"].get("team_id", "")
+        if self.app.apns.enabled and team_id and configured_team and team_id != configured_team:
+            raise APIError(422, "push_team_mismatch", "Signing-Team des iPhones und Team des APNs-Server-Schlüssels sind verschieden. Passenden Server-Schlüssel bzw. Profil beschaffen.")
         device_id = safe_text(body.get("device_id", str(uuid.uuid4())), 100, allow_empty=False)
         with self.app.database.connect() as db:
             auth_hash = hashlib.sha256(self.headers.get("Authorization", "")[7:].strip().encode()).hexdigest()
@@ -2006,6 +2103,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 "ON CONFLICT(device_token) DO UPDATE SET user_id=excluded.user_id,environment=excluded.environment,updated_at=excluded.updated_at",
                 (device_id, user_id, token, environment, iso_now()),
             )
+            db.execute("UPDATE devices SET bundle_id=?,team_id=? WHERE id=?", (bundle_id,team_id,device_id))
         self.send_empty()
 
     def _delete_device(self, user_id: str, device_id: str) -> None:
@@ -2074,7 +2172,9 @@ def config_path_from_environment() -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="RJ Love 2.2 – privater Partner-Server")
+    parser = argparse.ArgumentParser(description="RJ Love 2.3 – privater Partner-Server")
+    parser.add_argument("--configure-push", action="store_true", help="APNs mit eigenem bzw. vom Signing-Team bereitgestelltem .p8-Schlüssel einrichten")
+    parser.add_argument("--check-push", action="store_true", help="APNs-Konfiguration lokal prüfen, ohne Push zu senden")
     parser.add_argument("--reset-user", choices=["robin", "raphaela"], help="Passwort sicher zurücksetzen und alle Sitzungen widerrufen")
     parser.add_argument("--backup", nargs="?", const="auto", help="Konsistentes Archiv mit Datenbank, Medien und Konfiguration erstellen und beenden")
     args = parser.parse_args()
@@ -2092,6 +2192,34 @@ def main() -> int:
                 user["password"] = RJLoveApplication.encode_password(user["password"])
         app = RJLoveApplication(config, config_path)
         app.save_config()
+        if args.configure_push:
+            try:
+                print("Benötigt APNs-.p8-Schlüssel des Signing-Teams. Distribution-.p12 und ein fremder Bundle-Name genügen nicht.")
+                for field, label in (("team_id","Apple-Team-ID"),("key_id","APNs-Key-ID"),("private_key_file","Pfad zur APNs-.p8-Datei"),("bundle_id","Bundle-ID der signierten RJ-Love-App")):
+                    current = app.config["apns"].get(field, "")
+                    value = input(f"{label} [{current}]: ").strip()
+                    if value:
+                        app.config["apns"][field] = value
+                app.config["apns"]["enabled"] = True
+                problems = app.apns.issues()
+                if problems:
+                    print("Noch nicht gespeichert: " + " ".join(problems))
+                    return 2
+                app.apns.provider_token()
+                app.save_config()
+                print("APNs gespeichert. Laufenden Server neu starten; anschließend in der App den Push-Test auslösen.")
+                return 0
+            finally:
+                app.close()
+        if args.check_push:
+            try:
+                problems = app.apns.issues()
+                if not problems:
+                    app.apns.provider_token()
+                print("\n".join(problems) if problems else "Lokale APNs-Prüfung bestanden. Empfang am iPhone separat testen.")
+                return 2 if problems else 0
+            finally:
+                app.close()
         if args.backup:
             try:
                 print(f"Backup erstellt: {app.backup(None if args.backup == 'auto' else Path(args.backup))}")

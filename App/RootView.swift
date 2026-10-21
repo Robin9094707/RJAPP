@@ -36,6 +36,8 @@ struct RootView: View {
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {
                         FartRecorderView(autoStart: false)
+                    } else if ProcessInfo.processInfo.arguments.contains("--preview-delivery") {
+                        NavigationStack { DeliveryCenterView() }
                     } else if ProcessInfo.processInfo.arguments.contains("--preview-radio") {
                         NavigationStack { WalkieTalkieView() }
                     } else if ProcessInfo.processInfo.arguments.contains("--preview-setup") {
@@ -51,6 +53,9 @@ struct RootView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("rj-root")
+        .previewAccessibilityEnvironment()
         .task {
             await appState.activate()
         }

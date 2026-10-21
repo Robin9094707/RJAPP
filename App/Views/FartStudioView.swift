@@ -233,17 +233,20 @@ struct FartRecorderView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    HStack(spacing: 8) {
+                    ViewThatFits(in: .horizontal) {
+                      HStack(spacing: 8) {
                         stage("1", "Aufnehmen", selected: studio.mode != .review)
                         Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                         stage("2", "Schneiden", selected: studio.mode == .review)
                         Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                         stage("3", "Senden", selected: saving)
+                      }
+                      Text(studio.mode == .review ? "2 · Schneiden & senden" : "1 · Aufnehmen").font(.caption.bold()).foregroundStyle(LovePalette.violet)
                     }.frame(maxWidth: .infinity)
                     LoveEyebrow(text: studio.hasRecording ? "Das Mikrofon ist für euch offen" : studio.mode == .review ? "Ein kleines Meisterwerk ist geboren" : "Wenn die Natur ruft: Aufnahme.")
                     PuffMascot(active: studio.isRecording).frame(height: studio.mode == .review ? 66 : 130)
                     Text(studio.mode == .review ? "Bereit für die Duftpost?" : studio.mode == .paused ? "Kurze Atempause." : studio.isRecording ? "Lass es raus." : "Bühne frei.")
-                        .font(.system(size: 31, weight: .medium, design: .serif)).multilineTextAlignment(.center)
+                        .font(.system(size: 29, weight: .medium, design: .serif)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     Text(String(format: "%02d:%02d", Int(studio.elapsed) / 60, Int(studio.elapsed) % 60)).font(.system(size: studio.mode == .review ? 32 : 48, weight: .light, design: .rounded)).monospacedDigit()
                     AudioWaveform(values: studio.mode == .review ? studio.draft?.waveform ?? [] : studio.liveLevels).frame(height: 75).padding(.horizontal, 12)
                     recordingControls.disabled(saving)
@@ -289,7 +292,7 @@ struct FartRecorderView: View {
             .glassEffect(.regular.tint(selected ? LovePalette.violet.opacity(0.14) : .clear), in: Capsule())
     }
     private var recordingControls: some View {
-        HStack(spacing: 25) {
+        AdaptiveLoveRow(spacing: 16) {
             if studio.hasRecording {
                 Button { studio.togglePause() } label: { Image(systemName: studio.mode == .paused ? "play.fill" : "pause.fill").font(.title2).frame(width: 60, height: 60).loveGlass(in: Circle()) }.accessibilityLabel(studio.mode == .paused ? "Aufnahme fortsetzen" : "Aufnahme pausieren")
                 Button { studio.finishRecording() } label: { Image(systemName: "stop.fill").font(.title).foregroundStyle(.white).frame(width: 82, height: 82).background(LovePalette.pink.gradient, in: Circle()) }.accessibilityLabel("Aufnahme stoppen")

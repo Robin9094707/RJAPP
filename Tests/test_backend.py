@@ -496,6 +496,66 @@ class RJLoveBackendTests(unittest.TestCase):
         body.update(id=str(uuid.uuid4()),audio_base64=base64.b64encode(audio).decode())
         self.assertEqual(self.request_error("/v1/farts","POST",body,token)[0],507)
 
+    def test_background_wake_receipts_are_target_only_and_retryable(self):
+        import datetime, uuid
+        robin = self.login(); raphaela = self.login("raphaela", "raphaela-test-password")
+        due = (SERVER.utc_now() + datetime.timedelta(hours=8)).isoformat()
+        command = self.request("/v1/commands", "POST", {"target_id":"raphaela", "message":"Guten Morgen", "due_at":due}, robin)[1]
+        self.request("/v1/records", "POST", {"id":str(uuid.uuid4()),"kind":"note","payload":{"title":"Private Medien","text":"Kein Hintergrunddownload"}}, robin)
+        self.assertEqual(self.request_error("/v1/background")[0], 401)
+        snapshot = self.request("/v1/background", token=raphaela)[1]
+        self.assertEqual(set(snapshot), {"user_id","sender_name","commands","reminders"})
+        self.assertEqual(snapshot["commands"][0]["id"], command["id"])
+        self.assertEqual(self.request("/v1/background", token=robin)[1]["commands"], [])
+        endpoint = "/v1/commands/" + command["id"] + "/receipt"
+        self.assertEqual(self.request_error(endpoint,"POST",{"status":"scheduled"},robin)[0],404)
+        self.assertEqual(self.request_error(endpoint,"POST",{"status":"invented"},raphaela)[0],400)
+        self.request(endpoint,"POST",{"status":"failed","reason":"AlarmKit nicht freigegeben"},raphaela)
+        self.assertEqual(len(self.request("/v1/background",token=raphaela)[1]["commands"]),1)
+        self.assertEqual(self.request("/v1/commands/delivery",token=robin)[1]["deliveries"][0]["status"],"failed")
+        self.request(endpoint,"POST",{"status":"scheduled","reason":"AlarmKit bestätigt"},raphaela)
+        self.request(endpoint,"POST",{"status":"failed","reason":"Verspätete Antwort"},raphaela)
+        self.assertEqual(self.request("/v1/background",token=raphaela)[1]["commands"],[])
+        delivery = self.request("/v1/commands/delivery",token=robin)[1]["deliveries"][0]
+        self.assertEqual(delivery["status"],"scheduled")
+        self.assertEqual(delivery["reason"],"AlarmKit bestätigt")
+        self.assertEqual(self.request("/v1/commands/delivery",token=raphaela)[1]["deliveries"],[])
+
+    def test_push_diagnostics_and_signing_topic_mismatch(self):
+        token = self.login()
+        readiness = self.request("/v1/push/status",token=token)[1]
+        self.assertFalse(readiness["ready"])
+        self.assertTrue(any("ausgeschaltet" in reason for reason in readiness["issues"]))
+        self.assertEqual(self.request_error("/v1/push/test","POST",{},token)[0],409)
+        body = {"device_id":"test-device","device_token":"ab"*32,"environment":"production","bundle_id":"com.zello.client"}
+        self.assertEqual(self.request_error("/v1/devices","POST",body,token)[0],422)
+        body["bundle_id"] = self.config["apns"]["bundle_id"]
+        self.assertEqual(self.request("/v1/devices","POST",body,token)[0],204)
+        self.config["apns"].update(enabled=True,team_id="ABCDEFGHIJ")
+        body["team_id"] = "OTHERTEAM1X"
+        self.assertEqual(self.request_error("/v1/devices","POST",body,token)[0],422)
+        self.config["apns"]["enabled"] = False
+
+    def test_apns_rejection_preserves_topic_mismatch_token_and_reports_reason(self):
+        import types
+        from unittest.mock import patch
+        token = self.login()
+        self.request("/v1/devices","POST",{"device_id":"test-device","device_token":"ab"*32,"environment":"sandbox"},token)
+        self.config["apns"]["enabled"] = True
+        with patch.object(self.app.apns,"provider_token",return_value="test-jwt"), patch.object(SERVER.subprocess,"run",return_value=types.SimpleNamespace(returncode=0,stdout=b'{"reason":"DeviceTokenNotForTopic"}\n400',stderr=b"")) as send:
+            self.app.apns._send_worker("robin", {"id":"event","kind":"wake_request","title":"Weckruf","body":"Hallo","payload":{"command_id":"wake"}})
+            args, kwargs = send.call_args
+            self.assertIn("apns-push-type: alert",args[0])
+            self.assertIn("https://api.sandbox.push.apple.com/3/device/"+"ab"*32,args[0])
+            payload = json.loads(kwargs["input"])
+            self.assertEqual(payload["aps"]["content-available"],1)
+            self.assertEqual(payload["aps"]["category"],"RJ_WAKE")
+            self.assertEqual(payload["rj_command_id"],"wake")
+        self.config["apns"]["enabled"] = False
+        readiness = self.request("/v1/push/status",token=token)[1]
+        self.assertIn("DeviceTokenNotForTopic",readiness["attempts"][0]["reason"])
+        self.assertEqual(readiness["registered_devices"],1)
+
     def test_coupons_are_redeemable_without_rewriting_gift(self):
         import uuid
         token = self.login(); partner = self.login("raphaela", "raphaela-test-password")

@@ -43,6 +43,6 @@ final class BackgroundRefreshCoordinator: @unchecked Sendable {
             let success = await handler?() ?? false
             task.setTaskCompleted(success: success)
         }
-        task.expirationHandler = { work.cancel() }
+        task.expirationHandler = { work.cancel(); Task { @MainActor in BackgroundDeliveryService.shared.cancel() } }
     }
 }

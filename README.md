@@ -1,6 +1,6 @@
-# RJ Love 2.2 — Robin & Raphaela
+# RJ Love 2.3 — Robin & Raphaela
 
-Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.2.0 (220)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
+Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.3.0 (230)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
 
 Die neue Wir-Seite verbindet warme Rosé-Farben, ruhige Typografie, native Liquid-Glass-Flächen und einen interaktiven Herzgedanken. Dazu kommen privater Chat mit Tagesfrage, Wunschliste, besondere Tage mit Countdown, Gefühle, Karte, Nahbereichssuche, gemeinsame Notizen, Termine, Erinnerungen und Fotomomente.
 
@@ -49,8 +49,8 @@ reload
 Die IPA wird **unsigniert** gebaut. ArcticSign/Feather muss die Haupt-App **und** die eingebettete Widget-Extension passend signieren. Ein vorhandener Zahlungsbeleg allein beschreibt nicht, welche Apple-Capabilities das Provisioningprofil freigibt.
 
 - App Group: `group.eu.rjuhas.rjlove` für App und Extension identisch erhalten.
-- HealthKit: passendes Entitlement/Profil, danach Zustimmung in Apple Health. Alle Weitergabe-Schalter sind beim frischen Installieren aus.
-- APNs: Profil mit Push plus eigener APNs-Schlüssel/Team-ID/Key-ID auf dem Server. Release nutzt `production`. APNs-Schlüssel niemals committen.
+- HealthKit: passendes Entitlement/Profil, danach Zustimmung in Apple Health. Die Weitergabe-Schalter starten bei einer frischen Installation eingeschaltet; iOS fragt die jeweiligen Zugriffsrechte ausdrücklich ab.
+- APNs: Profil mit Push plus eigener APNs-Schlüssel/Team-ID/Key-ID auf dem Server. Die App liest Sandbox/Production aus dem installierten Provisioningprofil. APNs-Schlüssel niemals committen.
 - Live-Aktivitäten: lokal möglich, Server-Aktualisierungen brauchen ActivityKit-Push-Token und APNs. iOS kann Aktualisierungen beschränken. Veraltete Zustände werden markiert.
 - Widgets: iOS bestimmt Aktualisierungszeitpunkte. Der Herzknopf merkt Gedanken vor; die App sendet sie beim nächsten Sync. Keine falsche Sofort-Zustellung.
 - UWB: beide suchen aktiv in der geöffneten App; der Server vermittelt kurzlebige Discovery-Tokens. Es werden keine Entfernungen erfunden. Das Feature ersetzt keine Fernortung. Generationenübergreifende Funktionsprüfung muss auf den beiden realen iPhones erfolgen.
@@ -91,3 +91,7 @@ Für das Update die Python-Datei ersetzen und den Server neu starten. Bestehende
 ## Neu in 2.2
 
 Duftpost lässt sich ohne Namenseingabe senden und vor oder nach dem Teilen schneiden. Geführte Einrichtung ohne Fokus-Status, Freigaben zunächst eingeschaltet, Walkie-Talkie mit Apples PushToTalk, Sprachausgabe, Funk-Widget sowie versioniertes Medienarchiv mit konsistenten Backups. Einrichtung und konkrete Systemgrenzen: [RELEASE-2.2.md](RELEASE-2.2.md).
+
+## Neu in 2.3
+
+Automatisch passende Ansichten, Prüfung auf drei iPhone-Größen, unabhängige Hintergrund-Weckplanung, vorausgeplante AlarmKit-Wecker, Empfängerbestätigungen und ein Push-/Signatur-Diagnosezentrum. APNs-Einrichtung per `--configure-push`, Prüfung per `--check-push`. Details und Grenzen: [RELEASE-2.3.md](RELEASE-2.3.md).

@@ -1,6 +1,7 @@
 import AlarmKit
 import Foundation
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -96,7 +97,9 @@ final class AlarmService {
         authorizationState = AlarmManager.shared.authorizationState
         switch authorizationState {
         case .authorized: return true
-        case .notDetermined: return await requestAuthorization()
+        case .notDetermined:
+            guard UIApplication.shared.applicationState == .active else { return false }
+            return await requestAuthorization()
         case .denied: return false
         @unknown default: return false
         }

@@ -68,7 +68,7 @@ struct AudioTrimControls: View {
             Slider(value: Binding(get: { start }, set: { preview.stop(); start = min($0, end - 0.2) }), in: 0...max(0.001, duration - 0.2)).tint(LovePalette.pink).accessibilityLabel("Schnittanfang")
             HStack { Text("Ende"); Spacer(); Text(String(format: "%.2f s", end)).monospacedDigit() }.font(.caption)
             Slider(value: Binding(get: { end }, set: { preview.stop(); end = max($0, start + 0.2) }), in: 0.2...max(0.201, duration)).tint(LovePalette.violet).accessibilityLabel("Schnittende")
-            HStack {
+            AdaptiveLoveRow {
                 Button(preview.playing ? "Stoppen" : "Ausschnitt anhören", systemImage: preview.playing ? "stop.fill" : "play.fill") {
                     do { if preview.playing { preview.stop() } else { try preview.play(url: url, start: start, end: end) } }
                     catch { self.error = error.localizedDescription }

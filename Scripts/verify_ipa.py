@@ -9,8 +9,8 @@ with zipfile.ZipFile(root/'RJ-Love-unsigned.ipa') as archive:
     names=archive.namelist()
     app='Payload/RJ Love.app/'
     info=plistlib.loads(archive.read(app+'Info.plist'))
-    assert info['CFBundleShortVersionString']=='2.2.0'
-    assert info['CFBundleVersion']=='220'
+    assert info['CFBundleShortVersionString']=='2.3.0'
+    assert info['CFBundleVersion']=='230'
     assert app+'Assets.car' in names, 'Compiled image resources missing'
     assert info['CFBundleIcons']['CFBundlePrimaryIcon']['CFBundleIconName']=='AppIcon', 'Primary app icon missing'
     assert any(n.startswith(app+'AppIcon') and n.endswith('.png') for n in names), 'Device icon files missing'
@@ -19,4 +19,4 @@ with zipfile.ZipFile(root/'RJ-Love-unsigned.ipa') as archive:
     assert extension['CFBundleIdentifier']=='eu.rjuhas.rjlove.widgets'
     assert 'push-to-talk' in info.get('UIBackgroundModes', []), 'PTT background mode missing'
     assert info.get('NSMicrophoneUsageDescription'), 'Microphone purpose missing'
-print('IPA verified: version 2.2.0 (220), compiled app icon, resources, microphone purpose and widget extension.')
+print('IPA verified: version 2.3.0 (230), compiled app icon, resources, microphone purpose and widget extension.')

@@ -85,7 +85,7 @@ struct RadioFeed: Decodable {
             try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
             if manager == nil { manager = try await PTChannelManager.channelManager(delegate: self, restorationDelegate: self) }
             if manager?.activeChannelUUID == channelID { joinedSystem = true }
-        } catch { systemMessage = "iOS-Systemkanal nicht verfügbar: " + error.localizedDescription }
+        } catch { systemMessage = SigningProfile.current.pushToTalkError(error) }
     }
     func enable(api: APIClient) async {
         guard !connecting else { return }
@@ -136,7 +136,7 @@ struct RadioFeed: Decodable {
         else if !transmitting && !receiving { receiveTask?.cancel(); receiveTask = nil }
     }
     func beginTalking() {
-        guard enabled, !connecting, !studioPaused, !wantsToTalk, !transmitting, !receiving else { return }
+        guard enabled, !connecting, !studioPaused, !wantsToTalk, !transmitting, !receiving, transmitTask == nil else { return }
         wantsToTalk = true; errorMessage = nil
         let nonce = UUID(); operation = nonce
         Task {
@@ -314,7 +314,7 @@ struct RadioFeed: Decodable {
         if !studioPaused && enabled { disable() }
     }
     func channelManager(_ channelManager: PTChannelManager, failedToJoinChannel channelUUID: UUID, error: Error) {
-        joinedSystem = false; systemMessage = "Systemkanal: " + error.localizedDescription; updateStatus()
+        joinedSystem = false; systemMessage = SigningProfile.current.pushToTalkError(error); updateStatus()
     }
     func channelManager(_ channelManager: PTChannelManager, failedToLeaveChannel channelUUID: UUID, error: Error) { systemMessage = error.localizedDescription }
     func channelManager(_ channelManager: PTChannelManager, receivedEphemeralPushToken pushToken: Data) {

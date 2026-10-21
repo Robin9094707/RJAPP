@@ -9,16 +9,35 @@ enum LovePalette {
     static let violet = Color(red: 0.49, green: 0.40, blue: 0.75)
 }
 
+/// Decorative shapes must never participate in the intrinsic width of a screen.
+/// GeometryReader follows the actual window, including small iPhones and split view.
 struct LoveBackground: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        ZStack {
-            (scheme == .dark ? Color(red: 0.065, green: 0.055, blue: 0.085) : Color(red: 0.985, green: 0.965, blue: 0.95))
-            Ellipse().fill(LovePalette.pink.opacity(scheme == .dark ? 0.16 : 0.10))
-                .frame(width: 430, height: 500).blur(radius: 90).offset(x: 160, y: -230)
-            Ellipse().fill(LovePalette.violet.opacity(0.12))
-                .frame(width: 460, height: 460).blur(radius: 90).offset(x: -180, y: 240)
-        }.ignoresSafeArea()
+        GeometryReader { geometry in
+            ZStack {
+                (scheme == .dark ? Color(red: 0.065, green: 0.055, blue: 0.085) : Color(red: 0.985, green: 0.965, blue: 0.95))
+                Ellipse().fill(LovePalette.pink.opacity(scheme == .dark ? 0.19 : 0.11))
+                    .frame(width: geometry.size.width * 1.05, height: geometry.size.height * 0.6)
+                    .blur(radius: 70).offset(x: geometry.size.width * 0.34, y: -geometry.size.height * 0.3)
+                Ellipse().fill(LovePalette.violet.opacity(0.14))
+                    .frame(width: geometry.size.width, height: geometry.size.height * 0.65)
+                    .blur(radius: 75).offset(x: -geometry.size.width * 0.35, y: geometry.size.height * 0.3)
+            }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
+        }.ignoresSafeArea().accessibilityHidden(true)
+    }
+}
+
+/// A row that becomes a column when text or available width needs more space.
+struct AdaptiveLoveRow<Content: View>: View {
+    let spacing: CGFloat
+    @ViewBuilder var content: () -> Content
+    init(spacing: CGFloat = 12, @ViewBuilder content: @escaping () -> Content) { self.spacing = spacing; self.content = content }
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: spacing) { content().fixedSize(horizontal: true, vertical: false) }
+            VStack(alignment: .leading, spacing: spacing) { content() }.frame(maxWidth: .infinity)
+        }
     }
 }
 
@@ -168,7 +187,7 @@ extension View {
 struct LoveEyebrow: View {
     let text: String
     var body: some View {
-        Text(text.uppercased()).font(.system(size: 10, weight: .bold, design: .rounded))
+        Text(text.uppercased()).fixedSize(horizontal: false, vertical: true).font(.system(size: 10, weight: .bold, design: .rounded))
             .tracking(2.4).foregroundStyle(LovePalette.pink)
     }
 }
@@ -185,5 +204,15 @@ struct LoveMetric: View {
         }.frame(maxWidth: .infinity, alignment: .leading).padding(17)
             .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 22))
             .accessibilityElement(children: .combine)
+    }
+}
+
+extension View {
+    @ViewBuilder func previewAccessibilityEnvironment() -> some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview-accessibility") { self.dynamicTypeSize(.accessibility2) } else { self }
+        #else
+        self
+        #endif
     }
 }

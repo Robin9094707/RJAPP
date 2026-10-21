@@ -105,6 +105,7 @@ final class AppState {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") { return }
         #endif
+        guard UIApplication.shared.applicationState == .active else { return }
         if privacyLock.isEnabled, !privacyLock.isUnlocked {
             _ = await privacyLock.unlock()
         }
@@ -126,12 +127,6 @@ final class AppState {
             if let token = UserDefaults.standard.string(forKey: NotificationCoordinator.deviceTokenKey) {
                 await registerDeviceToken(token)
             }
-        }
-        BackgroundRefreshCoordinator.shared.handler = { [weak self] in
-            guard let self else { return false }
-            await self.syncNow(showErrors: false)
-            let timestamp = await self.lastSync
-            return timestamp.map { Date.now.timeIntervalSince($0) < 60 } ?? false
         }
         BackgroundRefreshCoordinator.shared.schedule()
         await radio.restoreIfEnabled(api: api)
@@ -312,10 +307,10 @@ final class AppState {
         catch { alert = AppAlert(title: "Löschen", message: error.localizedDescription) }
     }
 
-    func sendWake(message: String) async -> Bool {
+    func sendWake(message: String, dueAt: Date = .now.addingTimeInterval(2)) async -> Bool {
         guard let partner else { return false }
         do {
-            _ = try await api.sendWake(targetID: partner.id, message: message)
+            _ = try await api.sendWake(targetID: partner.id, message: message, dueAt: dueAt)
             Haptics.success()
             return true
         } catch {
@@ -358,14 +353,12 @@ final class AppState {
     func registerDeviceToken(_ token: String) async {
         guard phase == .authenticated else { return }
         do {
-            #if DEBUG
-            let environment = "sandbox"
-            #else
-            let environment = "production"
-            #endif
+            let environment = SigningProfile.current.pushEnvironment
             try await api.registerDevice(token: token, deviceID: deviceID, environment: environment)
+            PushRegistrationStatus.shared.error = nil
             DebugLogger.shared.log("APNs-Gerät registriert", category: "Push")
         } catch {
+            PushRegistrationStatus.shared.error = error.localizedDescription
             DebugLogger.shared.log("APNs-Gerät: \(error.localizedDescription)", category: "Push")
         }
     }
@@ -422,7 +415,7 @@ final class AppState {
     private func configureCallbacks() {
         liveActivity.onPushToken = { [weak self] id, token in
             guard let self, self.phase == .authenticated else { return }
-            do { try await self.api.registerLiveActivity(id: id, token: token, environment: "production") }
+            do { try await self.api.registerLiveActivity(id: id, token: token, environment: SigningProfile.current.pushEnvironment) }
             catch { DebugLogger.shared.log("Live-Push: \(error.localizedDescription)", category: "Push") }
         }
         location.onLocation = { [weak self] _ in
@@ -463,14 +456,7 @@ final class AppState {
                 await self?.registerDeviceToken(token)
             }
         })
-        notificationTasks.append(Task { [weak self] in
-            for await notification in NotificationCenter.default.notifications(named: .rjRemoteSyncRequested) {
-                let success = await self?.syncNow(showErrors: false) ?? false
-                if let completion = notification.object as? (UIBackgroundFetchResult) -> Void {
-                    completion(success ? .newData : .failed)
-                }
-            }
-        })
+
     }
 
     private func startPolling() {
@@ -490,24 +476,7 @@ final class AppState {
             await notifications.scheduleLocal(event: event)
             try? await api.acknowledgeEvent(id: event.id)
         }
-        for command in commands {
-            let sender = partners.first(where: { $0.id == command.ownerID })?.displayName ?? "Schatzi"
-            do {
-                try await alarms.schedule(command: command, senderName: sender)
-            } catch {
-                await notifications.scheduleLocal(
-                    event: RemoteEvent(
-                        id: command.id,
-                        kind: "wake_fallback",
-                        title: "Weckruf von \(sender) 💗",
-                        body: command.payload.message,
-                        createdAt: command.createdAt
-                    )
-                )
-                DebugLogger.shared.log("Weckruf-Fallback: \(error.localizedDescription)", category: "Alarm")
-            }
-            try? await api.acknowledgeCommand(id: command.id)
-        }
+        await CommandDeliveryProcessor.shared.process(commands, api: api, senderName: partner?.displayName ?? "Schatzi")
     }
 
     private func scheduleSharedReminders() async {

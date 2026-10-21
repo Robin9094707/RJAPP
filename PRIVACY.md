@@ -1,4 +1,4 @@
-# Datenschutz — RJ Love 2.2
+# Datenschutz — RJ Love 2.3
 
 RJ Love ist für Robin und Raphaela vorgesehen. Kein Tracking-SDK, keine Werbung und keine Analyseplattform. Inhalte sind nicht Ende-zu-Ende-verschlüsselt; der Betreiber eures eigenen Servers kann sie lesen. HTTPS schützt die Übertragung.
 
@@ -35,3 +35,7 @@ Kurze Audioteile und Funktexte bleiben höchstens zehn Minuten als Übertragungs
 ## Backups
 
 Der integrierte Backup-Befehl erstellt ein Archiv aus konsistentem Datenbank-Snapshot, Mediendateien und Konfiguration. Es ist nicht zusätzlich verschlüsselt und kann sensible Inhalte und Zugangskonfiguration enthalten. Der Betreiber bestimmt Speicherort, Aufbewahrung und externe Verschlüsselung. Extern abgelegte APNs-Privatschlüssel separat sichern. Details: [RELEASE-2.2.md](RELEASE-2.2.md).
+
+## Zustellungsdiagnose ab 2.3
+
+Geräteregistrierung speichert zusätzlich die Bundle-ID und, falls auslesbar, die Signing-Team-ID zur Prüfung der APNs-Zuordnung. APNs-Zustellungsdiagnosen enthalten Status, Fehlergrund und Zeitpunkt, keine Provider-Schlüssel oder Gerätetokens; sie werden nach sieben Tagen gelöscht. Weckrufbestätigungen speichern AlarmKit-Planungsstatus und Fehlergrund. Der eigenständige Hintergrundabruf lädt nur Weckaufträge und Erinnerungen. Das Profil wird ausschließlich aus dem eigenen installierten App-Bundle gelesen.

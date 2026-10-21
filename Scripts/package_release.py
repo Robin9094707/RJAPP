@@ -9,10 +9,12 @@ import zipfile
 root = Path(__file__).resolve().parents[1]
 ipa = root / 'RJ-Love-unsigned.ipa'
 assert ipa.is_file(), 'Build the IPA first'
-files = [ipa, root / 'README.md', root / 'INSTALLATION.md', root / 'FEATURES.md', root / 'PRIVACY.md', root / 'Backend/rj_love_server.py']
-manifest = {'version': '2.0.0', 'build': 200, 'commit': os.environ.get('GITHUB_SHA', 'local'), 'signing': 'unsigned; sign main app and embedded widget extension', 'sha256': {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
-with zipfile.ZipFile(root / 'RJ-Love-2.0-Komplettpaket.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+import runpy
+runpy.run_path(str(root / 'Scripts/verify_ipa.py'))
+files = [ipa, root / 'README.md', root / 'INSTALLATION.md', root / 'FEATURES.md', root / 'PRIVACY.md', root / 'Backend/rj_love_server.py', root / 'Design/RJ-AppIcon-2.1.png']
+manifest = {'version': '2.1.0', 'build': 210, 'commit': os.environ.get('GITHUB_SHA', 'local'), 'signing': 'unsigned; sign main app and embedded widget extension', 'sha256': {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
+with zipfile.ZipFile(root / 'RJ-Love-2.1-Komplettpaket.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
     for path in files:
-        archive.write(path, 'RJ-Love-2.0/' + str(path.relative_to(root)))
-    archive.writestr('RJ-Love-2.0/manifest.json', json.dumps(manifest, indent=2))
+        archive.write(path, 'RJ-Love-2.1/' + str(path.relative_to(root)))
+    archive.writestr('RJ-Love-2.1/manifest.json', json.dumps(manifest, indent=2))
 print('Complete app/backend package created.')

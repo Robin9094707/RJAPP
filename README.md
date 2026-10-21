@@ -1,6 +1,6 @@
-# RJ Love 2.0 — Robin & Raphaela
+# RJ Love 2.1 — Robin & Raphaela
 
-Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.0.0 (200)**, für iOS 26.1 oder neuer. Ein frischer Start ohne Datenübernahme ist vorgesehen.
+Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.1.0 (210)**, für iOS 26.1 oder neuer. Ein frischer Start ohne Datenübernahme ist vorgesehen.
 
 Die neue Wir-Seite verbindet warme Rosé-Farben, ruhige Typografie, native Liquid-Glass-Flächen und einen interaktiven Herzgedanken. Dazu kommen privater Chat mit Tagesfrage, Wunschliste, besondere Tage mit Countdown, Gefühle, Karte, Nahbereichssuche, gemeinsame Notizen, Termine, Erinnerungen und Fotomomente.
 
@@ -74,3 +74,16 @@ xcodegen generate
 GitHub Actions baut bei Änderungen an `main` und manuell. Der Workflow prüft den Server, baut die unsignierte IPA und erstellt das Komplettpaket. Ein zweiter Job baut die Simulator-App und erzeugt echte UI-Vorschauen. Diese nutzen ausschließlich synthetische Daten in einer nur im Debug-Build vorhandenen Vorschaufunktion. Release-Builds enthalten diesen Einstieg nicht.
 
 Der grüne Build prüft Compiler, Paketstruktur und Backend-Verträge. HealthKit, UWB, APNs, AlarmKit und die konkrete ArcticSign-Signierung müssen zusätzlich auf realen Geräten geprüft werden.
+
+
+## Neu in 2.1: Euer Spielplatz
+
+- **Duftpost**: echter M4A/AAC-Recorder mit Pegelanzeige, Pause/Fortsetzen, maximal 60 Sekunden, lokalem Entwurf, Vorschau und explizitem Teilen.
+- Eigene Aufnahmen löschen, gegenseitig 1–5 Sterne in Gesamtkunstwerk/Wumms/Stil vergeben, Jury-Kommentar, Emoji-Reaktionen, Herz-Favoriten und Best-of-Sortierung.
+- Audio wird authentifiziert bei Bedarf geladen. Es läuft nicht mit jedem normalen Sync über die Leitung. Roh-Audio wird nicht an Push-Anbieter geschickt. Hörtempo: Zeitlupe, Original, Turbo.
+- **Sofortaufnahme-Widget** in kleinen/mittleren sowie Sperrbildschirm-Formaten. Ein Tipp öffnet die App/ggf. Geräteentsperrung und startet im sichtbaren Recorder nach Mikrofonfreigabe. Vorhandene Entwürfe werden zuerst geöffnet. Der Widget-Prozess nimmt selbst kein Audio auf.
+- Aufnahme-Live-Aktivität mit Dynamic Island, falls auf dem Gerät erlaubt. Beim Wechsel in den Hintergrund wird die Aufnahme beendet und als Entwurf behalten. Keine heimliche Hintergrundaufnahme.
+- Date-Roulette mit Zuhause-/Draußen-Filter, Ideen als gemeinsamen Wunsch speichern, persönliche Liebesgutscheine verschenken/einlösen und kleine „Das mag ich an dir“-Botschaften.
+- Neues KI-generiertes RJ-Icon mit gläsernem Herz und einer kleinen Duftwolke. Alle iPhone-/iPad-Größen werden eingebettet. Der Paketcheck prüft die tatsächlichen Icon-Dateien und `Assets.car` in der IPA.
+
+Für das Update die Python-Datei ersetzen und den Server neu starten. Bestehende Konten und geteilte Daten bleiben erhalten; neue Tabellen werden automatisch hinzugefügt. Die neue App und das neue Backend gehören zusammen.

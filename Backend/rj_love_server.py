@@ -47,9 +47,9 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 CONFIG_FILENAME = "rjapp_config.json"
-ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin"}
+ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
 
 
@@ -248,6 +248,22 @@ class Database:
             db.execute("PRAGMA synchronous=NORMAL")
             db.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS fart_clips (
+                    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL,
+                    caption TEXT NOT NULL, category TEXT NOT NULL, duration REAL NOT NULL,
+                    waveform TEXT NOT NULL, audio BLOB NOT NULL, size_bytes INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS fart_clip_date ON fart_clips(created_at);
+                CREATE TABLE IF NOT EXISTS fart_ratings (
+                    clip_id TEXT NOT NULL, user_id TEXT NOT NULL, overall INTEGER NOT NULL,
+                    power INTEGER NOT NULL, style INTEGER NOT NULL, comment TEXT NOT NULL,
+                    updated_at TEXT NOT NULL, PRIMARY KEY(clip_id,user_id)
+                );
+                CREATE TABLE IF NOT EXISTS fart_reactions (
+                    clip_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL,
+                    PRIMARY KEY(clip_id,user_id,emoji)
+                );
                 CREATE TABLE IF NOT EXISTS credential_versions (user_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS live_activities (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, environment TEXT NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS nearby (user_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL);
@@ -552,6 +568,7 @@ class RJLoveApplication:
             },
             "calendar": {"title", "start_at", "end_at", "location", "notes"},
             "chat": {"text"}, "wish": {"title", "text", "completed"},
+            "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
             "milestone": {"title", "start_at", "text"}, "checkin": {"title", "text", "message"},
         }[kind]
         unknown = set(payload) - allowed_fields
@@ -586,12 +603,14 @@ class RJLoveApplication:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_target", "Der ausgewählte Benutzer existiert nicht.")
             clean["target_id"] = target
 
-        if kind in {"chat", "wish", "milestone", "checkin"}:
-            text_field("text", 4000, required=kind == "chat")
+        if kind in {"chat", "wish", "milestone", "checkin", "coupon", "gratitude"}:
+            text_field("text", 4000, required=kind in {"chat", "gratitude"})
             if kind != "chat":
                 text_field("title", 120, required=True)
-            if kind == "wish":
+            if kind in {"wish", "coupon"}:
                 boolean_field("completed")
+            if kind == "coupon":
+                target_field()
             if kind == "checkin":
                 text_field("message", 24)
             if kind == "milestone":
@@ -870,7 +889,8 @@ class RJLoveApplication:
                 "SELECT COALESCE(SUM(size_bytes),0) AS total FROM records WHERE owner_id=? AND deleted_at IS NULL",
                 (user_id,),
             ).fetchone()
-            return int(row["total"])
+            audio = connection.execute("SELECT COALESCE(SUM(size_bytes),0) AS total FROM fart_clips WHERE owner_id=?", (user_id,)).fetchone()
+            return int(row["total"]) + int(audio["total"])
         finally:
             if owns_connection:
                 connection.close()
@@ -937,6 +957,27 @@ class RJLoveApplication:
         for target_id in self.partner_ids(sender_id):
             self.create_event(target_id, kind, title, body, payload, db=db)
 
+    def fart_clip(self, clip_id: str, db: sqlite3.Connection | None = None) -> dict[str, Any]:
+        owns = db is None
+        connection = db or self.database.connect()
+        try:
+            row = connection.execute("SELECT id,owner_id,title,caption,category,duration,waveform,size_bytes,created_at FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            if row is None:
+                raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
+            result = dict(row)
+            result["waveform"] = json.loads(result["waveform"])
+            result["ratings"] = [dict(r) for r in connection.execute("SELECT user_id,overall,power,style,comment,updated_at FROM fart_ratings WHERE clip_id=?", (clip_id,))]
+            result["reactions"] = [dict(r) for r in connection.execute("SELECT user_id,emoji FROM fart_reactions WHERE clip_id=?", (clip_id,))]
+            return result
+        finally:
+            if owns:
+                connection.close()
+
+    def list_farts(self) -> list[dict[str, Any]]:
+        with self.database.connect() as db:
+            ids = [r["id"] for r in db.execute("SELECT id FROM fart_clips ORDER BY created_at DESC LIMIT 100")]
+            return [self.fart_clip(clip_id, db) for clip_id in ids]
+
     def bootstrap(self, user_id: str) -> dict[str, Any]:
         day = self.local_day()
         with self.database.connect() as db:
@@ -997,7 +1038,9 @@ class RJLoveApplication:
             "commands": commands,
             "events": events,
             "storage_used_bytes": self.storage_usage(user_id),
+            "farts": self.list_farts(),
             "features": {
+                "audio_studio_enabled": True,
                 "apns_enabled": self.apns.enabled,
                 "low_battery_threshold": int(self.config["notifications"].get("low_battery_threshold", 15)),
                 "max_request_mb": int(self.config["server"].get("max_request_mb", 10)),
@@ -1106,6 +1149,14 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/v1/bootstrap":
                 self.send_json(HTTPStatus.OK, self.app.bootstrap(self.current_user()))
                 return
+            if path == "/v1/farts":
+                self.current_user()
+                self.send_json(200, {"clips": self.app.list_farts()})
+                return
+            if len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] == "audio":
+                self.current_user()
+                self._fart_audio(parts[2])
+                return
             if path == "/v1/nearby":
                 user_id = self.current_user()
                 with self.app.database.connect() as db:
@@ -1134,7 +1185,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
-            if path == "/v1/auth/credentials":
+            if path == "/v1/farts":
+                self._upload_fart(user_id)
+            elif len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] in {"rating", "reaction"}:
+                self._fart_feedback(user_id, parts[2], parts[3])
+            elif path == "/v1/auth/credentials":
                 self._change_credentials(user_id)
             elif path == "/v1/live-activities":
                 body = self.read_json()
@@ -1191,7 +1246,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         try:
             _, parts, _ = self.route()
             user_id = self.current_user()
-            if len(parts) == 3 and parts[:2] == ["v1", "records"]:
+            if len(parts) == 3 and parts[:2] == ["v1", "farts"]:
+                self._delete_fart(user_id, parts[2])
+            elif len(parts) == 3 and parts[:2] == ["v1", "records"]:
                 self._delete_record(user_id, parts[2])
             elif len(parts) == 3 and parts[:2] == ["v1", "devices"]:
                 self._delete_device(user_id, parts[2])
@@ -1374,7 +1431,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             old = db.execute(
-                "SELECT owner_id,kind,size_bytes,created_at FROM records WHERE id=?",
+                "SELECT owner_id,kind,payload,size_bytes,created_at FROM records WHERE id=?",
                 (record_id,),
             ).fetchone()
             if old and str(old["kind"]) != kind:
@@ -1384,8 +1441,15 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     "Der Typ eines vorhandenen Eintrags kann nicht geändert werden.",
                 )
             owner_id = str(old["owner_id"]) if old else user_id
-            if old and kind in {"chat", "checkin"} and owner_id != user_id:
+            if old and kind in {"chat", "checkin", "gratitude"} and owner_id != user_id:
                 raise APIError(403, "not_owner", "Du kannst fremde Nachrichten oder Gefühle nicht ändern.")
+            if kind == "coupon":
+                if old and owner_id != user_id:
+                    prior = json.loads(old["payload"])
+                    if prior.get("target_id") not in {None, user_id} or {k: v for k, v in payload.items() if k != "completed"} != {k: v for k, v in prior.items() if k != "completed"}:
+                        raise APIError(403, "coupon_owner", "Du darfst diesen Gutschein nur einlösen, nicht umschreiben.")
+                elif payload.get("target_id") not in self.app.partner_ids(user_id):
+                    raise APIError(400, "invalid_target", "Ein Gutschein ist für dein Gegenüber bestimmt.")
             if old and owner_id != user_id:
                 # Both partners may edit shared records, but quota remains charged to the creator.
                 previous_size = int(old["size_bytes"])
@@ -1412,6 +1476,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "wish": ("Unsere Wunschliste", "hat einen Wunsch geteilt."),
             "milestone": ("Unsere Zeit", "hat einen besonderen Tag geteilt."),
             "checkin": ("Ein Gefühl für dich", "hat ein Gefühl geteilt."),
+            "coupon": ("Ein kleiner Liebesgutschein 💌", "hat einen Gutschein aktualisiert."),
+            "gratitude": ("Das mag ich an dir 💗", "hat dir liebe Worte dagelassen."),
         }
         title, phrase = labels[kind]
         self.app.broadcast_event(user_id, f"record_{kind}", title, f"{sender['display_name']} {phrase}", {"record_id": record_id})
@@ -1432,6 +1498,101 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             user_id, "record_deleted", "Gemeinsamer Eintrag gelöscht",
             f"{sender['display_name']} hat einen Eintrag entfernt.", {"record_id": record_id},
         )
+        self.send_empty()
+
+    def _upload_fart(self, user_id: str) -> None:
+        body = self.read_json()
+        clip_id = safe_text(body.get("id", ""), 64, allow_empty=False)
+        try:
+            uuid.UUID(clip_id)
+        except ValueError as exc:
+            raise APIError(400, "invalid_clip_id", "Ungültige Aufnahme-ID.") from exc
+        title = safe_text(body.get("title", ""), 100, allow_empty=False)
+        caption = safe_text(body.get("caption", ""), 500)
+        category = safe_text(body.get("category", "Naturtalent"), 40, allow_empty=False)
+        if category not in {"Naturtalent", "Donnergrollen", "Ninja", "Trompete", "Quietschente", "Liebeslüftchen"}:
+            raise APIError(400, "invalid_category", "Unbekannte Duftkategorie.")
+        duration = body.get("duration")
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or not 0.2 <= duration <= 60.5:
+            raise APIError(400, "invalid_duration", "Eine Aufnahme muss zwischen 0,2 und 60 Sekunden lang sein.")
+        wave = body.get("waveform", [])
+        if not isinstance(wave, list) or not 1 <= len(wave) <= 80 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 1 for v in wave):
+            raise APIError(400, "invalid_waveform", "Ungültige Wellenform.")
+        encoded = body.get("audio_base64")
+        if not isinstance(encoded, str) or len(encoded) > 5_600_000:
+            raise APIError(413, "audio_too_large", "Die Aufnahme überschreitet 4 MB.")
+        try:
+            audio = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise APIError(400, "invalid_audio", "Ungültige Audiodaten.") from exc
+        if not 24 <= len(audio) <= 4 * 1024 * 1024 or audio[4:8] != b"ftyp" or audio[8:12] not in {b"M4A ", b"mp42", b"isom"}:
+            raise APIError(400, "invalid_audio", "Bitte eine gültige M4A-Aufnahme verwenden.")
+        # Client IDs make retries idempotent: a connection timeout must not duplicate clips.
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            old = db.execute("SELECT owner_id FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            if old:
+                if old["owner_id"] != user_id:
+                    raise APIError(403, "not_owner", "Diese Aufnahme gehört deinem Gegenüber.")
+                self.send_json(200, self.app.fart_clip(clip_id, db))
+                return
+            self.app.enforce_quota(user_id, len(audio), db=db)
+            db.execute("INSERT INTO fart_clips VALUES(?,?,?,?,?,?,?,?,?,?)", (clip_id, user_id, title, caption, category, float(duration), json.dumps(wave), audio, len(audio), iso_now()))
+        sender = self.app.user_by_id(user_id)["display_name"]
+        self.app.broadcast_event(user_id, "fart_clip", "Neue Duftpost 💨", f"{sender} hat ein kleines Meisterwerk für dich aufgenommen.")
+        self.send_json(200, self.app.fart_clip(clip_id))
+
+    def _fart_audio(self, clip_id: str) -> None:
+        with self.app.database.connect() as db:
+            row = db.execute("SELECT audio FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+        if row is None:
+            raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
+        data = bytes(row["audio"])
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/mp4")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _fart_feedback(self, user_id: str, clip_id: str, action: str) -> None:
+        body = self.read_json()
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            clip = self.app.fart_clip(clip_id, db)
+            if action == "rating":
+                if clip["owner_id"] == user_id:
+                    raise APIError(403, "own_rating", "Dein Gegenüber ist die Jury für deine Aufnahme.")
+                values = [body.get(k) for k in ("overall", "power", "style")]
+                if any(isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 5 for v in values):
+                    raise APIError(400, "invalid_rating", "Bewertungen liegen zwischen 1 und 5 Sternen.")
+                comment = safe_text(body.get("comment", ""), 500)
+                db.execute("INSERT INTO fart_ratings VALUES(?,?,?,?,?,?,?) ON CONFLICT(clip_id,user_id) DO UPDATE SET overall=excluded.overall,power=excluded.power,style=excluded.style,comment=excluded.comment,updated_at=excluded.updated_at", (clip_id, user_id, *values, comment, iso_now()))
+            else:
+                emoji = body.get("emoji")
+                if emoji not in {"😂", "💨", "❤️", "🏆"}:
+                    raise APIError(400, "invalid_reaction", "Unbekannte Reaktion.")
+                existing = db.execute("SELECT 1 FROM fart_reactions WHERE clip_id=? AND user_id=? AND emoji=?", (clip_id, user_id, emoji)).fetchone()
+                if existing:
+                    db.execute("DELETE FROM fart_reactions WHERE clip_id=? AND user_id=? AND emoji=?", (clip_id, user_id, emoji))
+                else:
+                    db.execute("INSERT INTO fart_reactions VALUES(?,?,?)", (clip_id, user_id, emoji))
+        if action == "rating":
+            self.app.broadcast_event(user_id, "fart_rating", "Die Duftjury hat gesprochen 🏆", "Dein Meisterwerk hat eine neue Bewertung.")
+        self.send_json(200, self.app.fart_clip(clip_id))
+
+    def _delete_fart(self, user_id: str, clip_id: str) -> None:
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT owner_id FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            if row is None:
+                raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
+            if row["owner_id"] != user_id:
+                raise APIError(403, "not_owner", "Nur eigene Aufnahmen können gelöscht werden.")
+            for table in ("fart_ratings", "fart_reactions"):
+                db.execute(f"DELETE FROM {table} WHERE clip_id=?", (clip_id,))
+            db.execute("DELETE FROM fart_clips WHERE id=?", (clip_id,))
         self.send_empty()
 
     def _create_command(self, user_id: str) -> None:
@@ -1586,7 +1747,7 @@ def config_path_from_environment() -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="RJ Love 2.0 – privater Partner-Server")
+    parser = argparse.ArgumentParser(description="RJ Love 2.1 – privater Partner-Server")
     parser.add_argument("--reset-user", choices=["robin", "raphaela"], help="Passwort sicher zurücksetzen und alle Sitzungen widerrufen")
     args = parser.parse_args()
     config_path = config_path_from_environment()

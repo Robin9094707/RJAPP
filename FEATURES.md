@@ -1,4 +1,4 @@
-# RJ Love 2.0 — Funktionsstand
+# RJ Love 2.1 — Funktionsstand
 
 Implementiert: neue Wir-Oberfläche mit nativen Liquid-Glass-Flächen, Hell/Dunkel, Dynamic Type und reduzierten Herzanimationen bei entsprechender Systemeinstellung; fünf Hauptbereiche; Chat mit lokalem Entwurf und Tagesfrage; gemeinsame Wunschliste; besondere Tage mit Countdown; freiwillige Gefühls-Updates; Notizen, Erinnerungen, Kalender, Fotos/Kommentare/Reaktionen; Partnerkarte und Orte.
 
@@ -11,3 +11,6 @@ Widget-Extension: vier Home-Screen-Widgets (Herzgedanke, Status, Health, Countdo
 Backend: eine Python-Datei, SQLite/WAL, Konfiguration beim ersten Start, scrypt-Passwörter, Login-Limit, unabhängige Konten, atomarer Sitzungsaustausch, Passwort-/Benutzernamenänderung mit aktuellem Passwort, Rücksetzen per Konsole/CLI/Datei, TLS, optionale native APNs- und ActivityKit-Pushes sowie optionale allgemeine ntfy-Hinweise.
 
 Nicht zugesichert: dauerhaft laufender iOS-Hintergrundprozess, exakte Widget-Aktualisierungstakte, sofortige Zustellung ohne APNs, kritische Mitteilungen, ein offizieller Apple-Schlafscore, Freischaltung nicht erlaubter Entitlements durch Sideloading. Reale Hardware- und Signaturtests bleiben notwendig. Ein erfolgreicher Compilerlauf ist kein Hardwaretest.
+
+
+2.1 ergänzt das Duftstudio (echte private AAC-Aufnahmen, lokale Entwürfe, Vorschau, Pegel/Wellenform, Pause, 60-Sekunden-Limit), Jury-Wertungen, Kommentare, Reaktionen, Favoriten/Best-of, direkte Recorder-Widgets und eine Aufnahme-Live-Aktivität. Dazu kommen Date-Roulette, einlösbare Gutscheine und Wertschätzungsbotschaften. Das Icon und alle Bildressourcen werden direkt im fertigen IPA geprüft.

@@ -34,7 +34,9 @@ struct RootView: View {
             case .authenticated:
                 if appState.privacyLock.isUnlocked {
                     #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--preview-health") {
+                    if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {
+                        FartRecorderView(autoStart: false)
+                    } else if ProcessInfo.processInfo.arguments.contains("--preview-health") {
                         NavigationStack { HealthDashboardView() }
                     } else { MainTabView() }
                     #else
@@ -98,12 +100,15 @@ struct MainTabView: View {
             NavigationStack { LoveHubView() }
                 .tabItem { Label("Für uns", systemImage: "person.2.fill") }
                 .tag(AppTab.together)
-            NavigationStack { MomentsView() }
-                .tabItem { Label("Momente", systemImage: "photo.stack.fill") }
+            NavigationStack { ExperienceView() }
+                .tabItem { Label("Spielplatz", systemImage: "sparkles") }
                 .tag(AppTab.moments)
             NavigationStack { SettingsView() }
                 .tabItem { Label("Mehr", systemImage: "slider.horizontal.3") }
                 .tag(AppTab.settings)
+        }
+        .sheet(isPresented: $state.showingFartRecorder) {
+            FartRecorderView(autoStart: appState.quickFartRecording)
         }
     }
 }

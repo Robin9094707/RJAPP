@@ -314,6 +314,8 @@ struct RJLoveWidgetBundle: WidgetBundle {
         RJLoveHealthWidget()
         RJLoveCountdownWidget()
         RJLoveLockWidget()
+        RJLoveFartQuickWidget()
+        FartRecordingLiveWidget()
         ConnectionLiveActivityWidget()
         RJLoveAlarmLiveActivityWidget()
     }

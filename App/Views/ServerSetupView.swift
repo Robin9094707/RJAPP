@@ -11,11 +11,10 @@ struct ServerSetupView: View {
         ScrollView {
             VStack(spacing: 28) {
                 VStack(spacing: 14) {
-                    Image(systemName: "heart.circle.fill")
-                        .font(.system(size: 82))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, LovePalette.pink)
-                        .shadow(color: LovePalette.pink.opacity(0.35), radius: 24, y: 10)
+                    Image("BrandMark").resizable().scaledToFit()
+                        .frame(width: 100, height: 100)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .shadow(color: LovePalette.pink.opacity(0.25), radius: 20, y: 8)
                     Text("RJ Love")
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     Text("Euer privater Ort für Nähe, Momente und Alltag.")

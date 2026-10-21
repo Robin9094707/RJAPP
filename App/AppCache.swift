@@ -1,6 +1,7 @@
 import Foundation
 
 struct CachedAppSnapshot: Codable, Sendable {
+    var farts: [FartClip]? = nil
     let profile: ServerProfile
     let localDay: String
     let me: UserProfile

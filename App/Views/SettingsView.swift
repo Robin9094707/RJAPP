@@ -20,7 +20,7 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
-            Section("Euer privater Raum · 2.0") {
+            Section("Euer privater Raum · 2.1") {
                 NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }
                 NavigationLink { HealthDashboardView() } label: { Label("Health & Freigaben", systemImage: "heart.text.square.fill") }
                 NavigationLink { CapabilitiesView() } label: { Label("Funktionen & Signatur", systemImage: "checkmark.seal.fill") }

@@ -6,7 +6,7 @@ enum RecordKind: String, Codable, CaseIterable, Sendable {
     case moment
     case geofence
     case calendar
-    case chat, wish, milestone, checkin
+    case chat, wish, milestone, checkin, coupon, gratitude
 }
 
 struct UserProfile: Codable, Identifiable, Hashable, Sendable {
@@ -251,11 +251,13 @@ struct RemoteEvent: Codable, Identifiable, Hashable, Sendable {
 }
 
 struct ServerFeatures: Codable, Hashable, Sendable {
+    let audioStudioEnabled: Bool?
     let apnsEnabled: Bool
     let lowBatteryThreshold: Int
     let maxRequestMB: Int
 
     enum CodingKeys: String, CodingKey {
+        case audioStudioEnabled = "audio_studio_enabled"
         case apnsEnabled = "apns_enabled"
         case lowBatteryThreshold = "low_battery_threshold"
         case maxRequestMB = "max_request_mb"
@@ -263,6 +265,7 @@ struct ServerFeatures: Codable, Hashable, Sendable {
 }
 
 struct BootstrapResponse: Codable, Sendable {
+    let farts: [FartClip]?
     let serverTime: String
     let localDay: String
     let me: UserProfile
@@ -276,7 +279,7 @@ struct BootstrapResponse: Codable, Sendable {
     let features: ServerFeatures
 
     enum CodingKeys: String, CodingKey {
-        case me, partners, thoughts, records, commands, events, features
+        case me, partners, thoughts, records, commands, events, features, farts
         case serverTime = "server_time"
         case localDay = "local_day"
         case myPresence = "my_presence"

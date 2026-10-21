@@ -62,4 +62,20 @@ for path in ROOT.rglob("*"):
     if "/Users/" in content or "C:\\Users\\" in content:
         fail(f"local absolute path in {path.relative_to(ROOT)}")
 
+import struct
+icons = ROOT / "App/Resources/Assets.xcassets/AppIcon.appiconset"
+for item in json.loads((icons / "Contents.json").read_text())["images"]:
+    path = icons / item["filename"]
+    if not path.is_file():
+        fail("missing app icon " + path.name)
+    data = path.read_bytes()
+    expected = round(float(item["size"].split("x")[0]) * float(item["scale"].replace("x", "")))
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or struct.unpack(">II", data[16:24]) != (expected, expected):
+        fail("incorrect app icon dimensions " + path.name)
+if "buildPhase: resources" not in project:
+    fail("App resources must be an explicit source with resource build phase")
+with (ROOT / "App/Info.plist").open("rb") as handle:
+    if not plistlib.load(handle).get("NSMicrophoneUsageDescription"):
+        fail("microphone purpose missing")
+
 print("RJ Love project validation passed.")

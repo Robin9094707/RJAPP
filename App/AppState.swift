@@ -34,6 +34,10 @@ final class AppState {
     private(set) var lastSync: Date?
     private(set) var connectionMessage = "Verbindung wird geprüft …"
     var selectedTab: AppTab = .home
+    var experienceSection: ExperienceSection = .farts
+    var showingFartRecorder = false
+    var quickFartRecording = false
+    private(set) var farts: [FartClip] = []
     var alert: AppAlert?
     var statusMessage: String {
         didSet { UserDefaults.standard.set(statusMessage, forKey: "rjlove.status-message") }
@@ -45,6 +49,7 @@ final class AppState {
         didSet { UserDefaults.standard.set(shareFocus, forKey: "rjlove.share-focus") }
     }
 
+    let studio = AudioStudioService.shared
     let api = APIClient()
     let nearby = NearbyService()
     let location = LocationService.shared
@@ -136,6 +141,8 @@ final class AppState {
     }
 
     func deactivateForeground() {
+        studio.finishRecording()
+        studio.stopPlayback()
         nearby.stop(api: api)
         pollTask?.cancel()
         pollTask = nil
@@ -195,6 +202,9 @@ final class AppState {
         me = nil
         partners = []
         records = []
+        farts = []
+        studio.discard()
+        showingFartRecorder = false
         thoughts = [:]
         UserDefaults.standard.removeObject(forKey: "rjlove.chat-draft")
         queuedPresenceTask?.cancel()
@@ -219,6 +229,7 @@ final class AppState {
             me = snapshot.me
             partners = snapshot.partners
             records = snapshot.records
+            farts = snapshot.farts ?? []
             thoughts = snapshot.thoughts
             serverLocalDay = snapshot.localDay
             storageUsedBytes = snapshot.storageUsedBytes
@@ -262,6 +273,39 @@ final class AppState {
         }
         updateWidgetSnapshot()
         persistCache()
+    }
+
+    func openFartRecorder(quick: Bool = false) {
+        quickFartRecording = quick
+        showingFartRecorder = true
+    }
+    private func receiveFart(_ clip: FartClip) {
+        farts.removeAll { $0.id == clip.id }; farts.insert(clip, at: 0)
+        farts.sort { $0.createdAt > $1.createdAt }
+        persistCache()
+    }
+    func shareFart(title: String, caption: String, category: String) async -> Bool {
+        do {
+            guard let draft = studio.draft else { return false }
+            guard draft.ownerID == me?.id else { studio.discard(); return false }
+            let data = try Data(contentsOf: draft.url)
+            let body = FartUpload(id: draft.id, title: title, caption: caption, category: category, duration: draft.duration, waveform: draft.waveform, audioBase64: data.base64EncodedString())
+            receiveFart(try await api.uploadFart(body))
+            studio.discard(); Haptics.success()
+            return true
+        } catch { alert = AppAlert(title: "Duftpost wartet noch", message: error.localizedDescription + " Deine lokale Aufnahme bleibt erhalten."); return false }
+    }
+    func rateFart(_ clip: FartClip, overall: Int, power: Int, style: Int, comment: String) async -> Bool {
+        do { receiveFart(try await api.rateFart(id: clip.id, overall: overall, power: power, style: style, comment: comment)); Haptics.success(); return true }
+        catch { alert = AppAlert(title: "Bewertung", message: error.localizedDescription); return false }
+    }
+    func reactToFart(_ clip: FartClip, emoji: String) async {
+        do { receiveFart(try await api.reactToFart(id: clip.id, emoji: emoji)) }
+        catch { alert = AppAlert(title: "Reaktion", message: error.localizedDescription) }
+    }
+    func deleteFart(_ clip: FartClip) async {
+        do { try await api.deleteFart(id: clip.id); farts.removeAll { $0.id == clip.id }; studio.stopPlayback(); persistCache() }
+        catch { alert = AppAlert(title: "Löschen", message: error.localizedDescription) }
     }
 
     func sendWake(message: String) async -> Bool {
@@ -511,7 +555,16 @@ final class AppState {
         switch url.host?.lowercased() {
         case "map": selectedTab = .map
         case "together": selectedTab = .together
-        case "moments": selectedTab = .moments
+        case "moments": selectedTab = .moments; experienceSection = .moments
+        case "farts": selectedTab = .moments; experienceSection = .farts
+        case "dates": selectedTab = .moments; experienceSection = .love
+        case "record-fart":
+            selectedTab = .moments; experienceSection = .farts
+            quickFartRecording = true; showingFartRecorder = true
+        case "stop-recording":
+            studio.finishRecording()
+            selectedTab = .moments; experienceSection = .farts
+            quickFartRecording = false; showingFartRecorder = true
         case "settings", "health": selectedTab = .settings
         default: selectedTab = .home
         }
@@ -552,6 +605,7 @@ final class AppState {
         me = cached.me
         partners = cached.partners
         records = cached.records
+        farts = cached.farts ?? []
         thoughts = cached.localDay == WidgetSharedStore.localDayStamp() ? cached.thoughts : [:]
         storageUsedBytes = cached.storageUsedBytes
         features = cached.features
@@ -565,6 +619,7 @@ final class AppState {
         guard let profile, let me, let features, let lastSync else { return }
         AppCache.save(
             CachedAppSnapshot(
+                farts: farts,
                 profile: profile,
                 localDay: serverLocalDay,
                 me: me,
@@ -626,7 +681,16 @@ extension AppState {
             SharedRecord(id: UUID().uuidString, kind: .chat, ownerID: "robin", payload: RecordPayload(text: "Noch einen Spaziergang zusammen, bevor die Sonne untergeht?"), createdAt: now, updatedAt: now),
             SharedRecord(id: UUID().uuidString, kind: .milestone, ownerID: "robin", payload: RecordPayload(title: "Unser nächstes Wochenende", startAt: Date.now.addingTimeInterval(3 * 86400).rjISO8601), createdAt: now, updatedAt: now)
         ]
+        farts = [
+            FartClip(id: "3D1E7C40-93D7-4947-9C0A-BB8A00110762", ownerID: "raphaela", title: "Ein Hauch von Wochenende", caption: "Klein, aber mit Persönlichkeit.", category: "Liebeslüftchen", duration: 3.2,
+                     waveform: (0..<60).map { i in max(0.03, abs(sin(Double(i) * 0.43)) * exp(-abs(Double(i) - 27) / 18)) }, sizeBytes: 32000, createdAt: now,
+                     ratings: [FartRating(userID: "robin", overall: 5, power: 3, style: 5, comment: "Ein zartes Meisterwerk. 😂", updatedAt: now)], reactions: [FartReaction(userID: "robin", emoji: "❤️"), FartReaction(userID: "raphaela", emoji: "😂")])
+        ]
+        records.append(SharedRecord(id: UUID().uuidString, kind: .coupon, ownerID: "raphaela", payload: RecordPayload(title: "Eine Massage nur für dich", text: "Mit ganz viel Liebe und ohne auf die Uhr zu schauen.", targetID: "robin", completed: false), createdAt: now, updatedAt: now))
+        records.append(SharedRecord(id: UUID().uuidString, kind: .gratitude, ownerID: "raphaela", payload: RecordPayload(title: "Heute mag ich an dir …", text: "Dass ich mit dir über jeden Quatsch lachen kann."), createdAt: now, updatedAt: now))
         if ProcessInfo.processInfo.arguments.contains("--preview-hub") { selectedTab = .together }
+        if ProcessInfo.processInfo.arguments.contains("--preview-farts") { selectedTab = .moments; experienceSection = .farts }
+        if ProcessInfo.processInfo.arguments.contains("--preview-love") { selectedTab = .moments; experienceSection = .love }
     }
 }
 #endif

@@ -25,7 +25,7 @@ try:
     app = Path('.sim-derived/Build/Products/Debug-iphonesimulator/RJ Love.app')
     assert app.is_dir()
     run('xcrun', 'simctl', 'install', device, str(app))
-    for name, arguments in [('Wir', []), ('Chat', ['--preview-hub']), ('Health', ['--preview-health'])]:
+    for name, arguments in [('Wir', []), ('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Recorder', ['--preview-recorder']), ('Liebe', ['--preview-love'])]:
         run('xcrun', 'simctl', 'launch', device, 'eu.rjuhas.rjlove', '--preview', *arguments)
         time.sleep(5)
         run('xcrun', 'simctl', 'io', device, 'screenshot', f'Preview-{name}.png')

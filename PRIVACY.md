@@ -1,4 +1,4 @@
-# Datenschutz — RJ Love 2.0
+# Datenschutz — RJ Love 2.1
 
 RJ Love ist für genau zwei konfigurierte Konten vorgesehen. Kein Tracking-SDK, keine Werbung, keine Analyseplattform.
 
@@ -11,3 +11,12 @@ RJ Love ist für genau zwei konfigurierte Konten vorgesehen. Kein Tracking-SDK, 
 - Optionale APNs-Mitteilungen nutzen Apple. Optionale ntfy-Hinweise nutzen den konfigurierten Betreiber; sie enthalten nur einen allgemeinen Hinweis, keine Koordinaten, Health-Werte oder Nachrichtentexte. Geheime Topics vertraulich halten.
 - Geteilte Einträge können in der App gelöscht werden. Serverseitig ist dies eine Löschmarkierung; zur vollständigen Entfernung alter Daten und Sicherungen ist der Serverbetreiber zuständig. Derzeit existiert kein automatischer Lösch-/Export-Assistent.
 - Die Konfigurationsdatei, Logs, Konsolen-Reset-Ausgaben und Sicherungen sind vertraulich und dürfen nicht ins öffentliche GitHub-Repository gelangen.
+
+
+## Private Audioaufnahmen
+
+Mikrofonzugriff wird erst nach einer Aufnahmeaktion abgefragt. Der Recorder ist sichtbar; iOS zeigt den Mikrofonindikator. Ein Widget kann die App direkt in die Aufnahmeansicht öffnen. Es werden nur ausdrücklich gestartete Clips bis 60 Sekunden aufgenommen. Pause, Stopp und Verwerfen stehen bereit. Beim Verlassen in den Hintergrund wird gestoppt.
+
+Ein Entwurf liegt mit iOS-Dateischutz lokal im App-Ordner. Erst die Senden-Aktion lädt ihn auf den eigenen Server hoch. Anhören lädt Audio nur nach Nutzeraktion; es gibt keinen öffentlichen Audio-Link und kein automatisches Abspielen eingehender Clips. Die aktive App-Anmeldung ist bei jedem Download erforderlich. Playback nutzt einen flüchtigen Speicherpuffer. Bei Abmeldung werden lokale Entwürfe gelöscht. Aufnahmen sind für beide Konten sichtbar. Nur der Ersteller kann sie löschen; nur das Gegenüber kann bewerten. Audio/zugehörige Wertungen werden beim Löschen aus den aktiven Tabellen entfernt. Serverseitige SQLite-Freiseiten und eigene Sicherungen können frühere Bytes enthalten; deren sichere Löschung liegt beim Serverbetreiber. Keine Ende-zu-Ende-Verschlüsselung.
+
+Die Aufnahme-Live-Aktivität zeigt nur den laufenden Recorder, keine geteilten Audioinhalte. Optionale Push-Dienste erhalten nur einen allgemeinen Hinweis auf neue Duftpost. Sterne sind manuelle Spaßbewertungen; Wellenformen sind Aufnahmepegel, keine objektive Geruchs- oder Qualitätsmessung.

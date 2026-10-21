@@ -19,6 +19,10 @@ struct HomeView: View {
                 heartSpace
                 partnerCard
                 quickActions
+                HStack(spacing: 12) {
+                    action("Duftpost", "Euer privates Furzstudio", "wind", LovePalette.violet) { appState.selectedTab = .moments; appState.experienceSection = .farts }
+                    action("Zeit für uns", "Dates & kleine Versprechen", "gift.fill", LovePalette.pink) { appState.selectedTab = .moments; appState.experienceSection = .love }
+                }
                 if let milestone { milestoneCard(milestone) }
                 healthCard
                 liveCard

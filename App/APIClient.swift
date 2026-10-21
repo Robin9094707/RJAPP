@@ -213,6 +213,32 @@ final class APIClient: @unchecked Sendable {
         _ = try await execute(try request(path: "/v1/live-activities", method: "POST", body: encoder.encode(body)), as: EmptyResponse.self)
     }
 
+    func uploadFart(_ body: FartUpload) async throws -> FartClip {
+        try await execute(try request(path: "/v1/farts", method: "POST", body: encoder.encode(body)), as: FartClip.self)
+    }
+    func rateFart(id: String, overall: Int, power: Int, style: Int, comment: String) async throws -> FartClip {
+        struct Body: Encodable { let overall: Int; let power: Int; let style: Int; let comment: String }
+        return try await execute(try request(path: "/v1/farts/\(id)/rating", method: "POST", body: encoder.encode(Body(overall: overall, power: power, style: style, comment: comment))), as: FartClip.self)
+    }
+    func reactToFart(id: String, emoji: String) async throws -> FartClip {
+        try await execute(try request(path: "/v1/farts/\(id)/reaction", method: "POST", body: encoder.encode(["emoji": emoji])), as: FartClip.self)
+    }
+    func deleteFart(id: String) async throws {
+        _ = try await execute(try request(path: "/v1/farts/\(id)", method: "DELETE"), as: EmptyResponse.self)
+    }
+    func fartAudio(id: String) async throws -> Data {
+        var value = try request(path: "/v1/farts/\(id)/audio", method: "GET")
+        value.setValue("audio/mp4", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: value)
+        guard let response = response as? HTTPURLResponse else { throw APIClientError.invalidResponse }
+        guard response.statusCode == 200 else {
+            let envelope = try? decoder.decode(APIErrorEnvelope.self, from: data)
+            throw APIClientError.server(status: response.statusCode, message: envelope?.message ?? "Aufnahme konnte nicht geladen werden.")
+        }
+        guard data.count <= 4 * 1024 * 1024 else { throw APIClientError.invalidResponse }
+        return data
+    }
+
     func logout() async {
         guard let request = try? request(path: "/v1/auth/logout", method: "POST", body: Data("{}".utf8)) else { return }
         _ = try? await execute(request, as: EmptyResponse.self)

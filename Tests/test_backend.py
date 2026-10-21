@@ -317,6 +317,91 @@ class RJLoveBackendTests(unittest.TestCase):
             for table in ("devices", "nearby", "live_activities", "sessions"):
                 self.assertEqual(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0], 0)
 
+    def upload_clip(self, token, clip_id=None, **overrides):
+        import uuid, base64
+        audio = b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00M4A isom" + b"\x00" * 40
+        body = {"id": clip_id or str(uuid.uuid4()), "title": "Donnerwetter", "caption": "Ein Naturtalent", "category": "Donnergrollen", "duration": 2.5, "waveform": [0.1, 0.6, 0.9, 0.2], "audio_base64": base64.b64encode(audio).decode()}
+        body.update(overrides)
+        return body, self.request("/v1/farts", "POST", body, token), audio
+
+    def test_private_audio_upload_roundtrip_and_metadata_only_bootstrap(self):
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        body, (status, clip), audio = self.upload_clip(token)
+        self.assertEqual(status, 200)
+        self.assertEqual(clip["owner_id"], "robin")
+        self.assertNotIn("audio_base64", clip)
+        snapshot = self.request("/v1/bootstrap", token=partner)[1]
+        self.assertEqual(snapshot["farts"][0]["id"], clip["id"])
+        self.assertNotIn("audio", snapshot["farts"][0])
+        self.assertEqual(snapshot["features"]["audio_studio_enabled"], True)
+        self.assertEqual(snapshot["storage_used_bytes"], 0)
+        self.assertEqual(self.app.storage_usage("robin"), len(audio))
+        self.assertEqual(self.request_error("/v1/farts/" + clip["id"] + "/audio")[0], 401)
+        req = urllib.request.Request(self.base + "/v1/farts/" + clip["id"] + "/audio", headers={"Authorization":"Bearer " + partner})
+        with urllib.request.urlopen(req) as response:
+            self.assertEqual(response.headers["Content-Type"], "audio/mp4")
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(response.read(), audio)
+        self.assertEqual(self.request("/v1/farts", "POST", body, token)[0], 200)
+        self.assertEqual(len(self.app.list_farts()), 1)
+
+    def test_partner_rating_reaction_and_owner_only_audio_deletion(self):
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        _, (_, clip), _ = self.upload_clip(token)
+        path = "/v1/farts/" + clip["id"]
+        score = {"overall":5,"power":4,"style":5,"comment":"Ein echtes Meisterwerk"}
+        self.assertEqual(self.request_error(path+"/rating", "POST", score, token)[0], 403)
+        self.assertEqual(self.request(path+"/rating", "POST", score, partner)[1]["ratings"][0]["overall"], 5)
+        score["overall"] = 3
+        rated = self.request(path+"/rating", "POST", score, partner)[1]
+        self.assertEqual(len(rated["ratings"]), 1)
+        self.assertEqual(rated["ratings"][0]["overall"], 3)
+        reacted = self.request(path+"/reaction", "POST", {"emoji":"😂"}, partner)[1]
+        self.assertEqual(len(reacted["reactions"]), 1)
+        reacted = self.request(path+"/reaction", "POST", {"emoji":"😂"}, partner)[1]
+        self.assertEqual(reacted["reactions"], [])
+        self.assertEqual(self.request_error(path,"DELETE",token=partner)[0],403)
+        self.assertEqual(self.request(path,"DELETE",token=token)[0],204)
+        self.assertEqual(self.request_error(path+"/audio",token=partner)[0],404)
+        self.assertEqual(self.app.storage_usage("robin"),0)
+        with self.app.database.connect() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM fart_ratings").fetchone()[0],0)
+
+    def test_audio_and_rating_validation(self):
+        import base64, uuid
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        body, (_, clip), _ = self.upload_clip(token)
+        for change in [{"audio_base64":"invalid!"}, {"audio_base64":base64.b64encode(b"not an audio file at all").decode()}, {"duration":61}, {"duration":False}, {"waveform":[-1]}, {"waveform":[True]}, {"waveform":[]}, {"category":"unknown"}]:
+            changed = dict(body, id=str(uuid.uuid4()), **change)
+            self.assertEqual(self.request_error("/v1/farts","POST",changed,token)[0],400)
+        for value in [0,6,True,"5"]:
+            self.assertEqual(self.request_error("/v1/farts/"+clip["id"]+"/rating","POST",{"overall":value,"power":3,"style":3},partner)[0],400)
+        self.assertEqual(self.request_error("/v1/farts/"+clip["id"]+"/reaction","POST",{"emoji":"invalid"},partner)[0],400)
+
+    def test_audio_storage_quota_is_enforced(self):
+        token = self.login()
+        self.config["users"][0]["storage_limit_mb"] = 1
+        self.upload_clip(token)
+        self.assertGreater(self.app.storage_usage("robin"),0)
+        import base64,uuid
+        body, _, _ = self.upload_clip(token)
+        audio = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * (1024*1024)
+        body.update(id=str(uuid.uuid4()),audio_base64=base64.b64encode(audio).decode())
+        self.assertEqual(self.request_error("/v1/farts","POST",body,token)[0],507)
+
+    def test_coupons_are_redeemable_without_rewriting_gift(self):
+        import uuid
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        body = {"id":str(uuid.uuid4()), "kind":"coupon", "payload":{"title":"Frühstück", "text":"Mit Liebe", "target_id":"raphaela", "completed":False}}
+        self.assertEqual(self.request("/v1/records","POST",body,token)[0],200)
+        body["payload"]["completed"] = True
+        self.assertEqual(self.request("/v1/records","POST",body,partner)[1]["payload"]["completed"],True)
+        body["payload"]["title"] = "Fremder Text"
+        self.assertEqual(self.request_error("/v1/records","POST",body,partner)[0],403)
+        body = {"id":str(uuid.uuid4()),"kind":"gratitude","payload":{"title":"Heute mag ich an dir", "text":"Deinen Humor"}}
+        self.assertEqual(self.request("/v1/records","POST",body,token)[0],200)
+        self.assertEqual(self.request_error("/v1/records","POST",body,partner)[0],403)
+
 
 if __name__ == "__main__":
     unittest.main()

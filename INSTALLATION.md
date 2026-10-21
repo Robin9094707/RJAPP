@@ -1,4 +1,4 @@
-# RJ Love 2.0 einrichten
+# RJ Love 2.1 einrichten
 
 ## 1. Python-Server
 
@@ -64,3 +64,16 @@ Nur HTTPS; Topic mindestens 16 Zeichen aus Buchstaben, Zahlen, `_` oder `-`. Auf
 ## 7. Sicherung und Neustart
 
 `rjapp_config.json` und `rjlove_data/` privat sichern; für eine einfache konsistente Kopie den Server kurz stoppen. Keine dieser Dateien ins öffentliche Repository hochladen. Für diesen Neustart neue leere Verzeichnisse verwenden; keine alten Datenbanken übernehmen.
+
+
+## Neu: Duftpost, Aufnahme-Widget und Liebessachen
+
+Unter **Spielplatz** findest du Duftpost, Liebe und die bisherige Momentgalerie. Beim ersten Aufnehmen Mikrofonzugriff erlauben. Aufnahmen bleiben zunächst als lokaler Entwurf auf dem eigenen iPhone; erst „Duftpost senden“ teilt sie mit dem Gegenüber. Schließen beendet eine laufende Aufnahme. Ein Entwurf bleibt bis zum Teilen/Verwerfen bzw. Abmelden erhalten. Die Aufnahmedauer ist auf 60 Sekunden begrenzt. Ein Prozessabbruch oder Gerätefehler kann eine gerade noch laufende Aufnahme beschädigen; sichere wichtige Aufnahmen durch Stoppen.
+
+Widget **Duftpost · Sofortaufnahme** hinzufügen. Ein Tipp öffnet die App und die Aufnahmeansicht und startet dort nach Freigabe des Mikrofons automatisch. Bei Face-ID-Schutz zuerst entsperren. Bei vorhandenem Entwurf wird dieser geöffnet, ohne ihn zu überschreiben. Live-Aktivitäten und App-Group-Widgets benötigen weiterhin eine passende Signierung.
+
+Bewertungen sind dem Gegenüber vorbehalten. Du kannst eigene Aufnahmen löschen; Audio und Bewertungen werden dann unmittelbar aus der aktiven Serverdatenbank entfernt (eigene Backups separat verwalten). Gespeicherte Audios zählen zum Speicherlimit. Der Server liefert die neuesten 100 Aufnahmen in der Sammlung.
+
+Unter **Liebe**: Date-Ideen auslosen und als Wunsch merken, persönliche Gutscheine verschenken/einlösen und Wertschätzung teilen. Unter **Momente** bleibt die Fotogalerie erreichbar.
+
+Beim Update von 2.0: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Für diesen Funktionszuwachs ist keine manuelle Datenmigration notwendig. App und Backend jeweils auf 2.1 aktualisieren.

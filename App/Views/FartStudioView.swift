@@ -231,6 +231,7 @@ struct FartRecorderView: View {
     private var studio: AudioStudioService { appState.studio }
     var body: some View {
         NavigationStack {
+            VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 24) {
                     ViewThatFits(in: .horizontal) {
@@ -256,16 +257,16 @@ struct FartRecorderView: View {
                     Text("Bis zu 60 Sekunden · Mikrofon nur während der sichtbaren Aufnahme. Beim Verlassen der App wird gestoppt und ein lokaler Entwurf behalten. Geteilt wird erst mit deinem Tipp auf „Duftpost senden“.")
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.padding(24)
-            }.background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .bottom) {
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 if studio.mode == .review {
                     VStack(spacing: 7) {
                         sendButton
                         Text(String(format: "Dein Ausschnitt: %.1f s · Name optional", max(0.2, trimEnd - trimStart)))
                             .font(.caption2).foregroundStyle(.secondary)
-                    }.padding(.horizontal, 20).padding(.vertical, 12).background(.ultraThinMaterial)
+                    }.padding(.horizontal, 20).padding(.vertical, 12)
+                        .frame(maxWidth: .infinity).background(.ultraThinMaterial)
                 }
-            }
+            }.background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Schließen") { dismiss() }.disabled(saving) } }
             .confirmationDialog("Aufnahme wirklich verwerfen?", isPresented: $discard, titleVisibility: .visible) {
                 Button("Verwerfen", role: .destructive) { studio.discard(); failedUpload = false }

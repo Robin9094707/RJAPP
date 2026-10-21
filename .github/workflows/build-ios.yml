@@ -160,4 +160,5 @@ jobs:
             Simulator-build.log
             UI-backend.log
             Layout-*.xcresult
+            UIAttachments-*
           if-no-files-found: warn

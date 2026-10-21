@@ -20,6 +20,12 @@ final class ResponsiveLayoutTests: XCTestCase {
         app.launch()
         let send = app.buttons["duftpost-send"]
         XCTAssertTrue(send.waitForExistence(timeout: 8))
+        XCTContext.runActivity(named: "Recorder footer before interaction") { activity in
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.lifetime = .keepAlways
+            activity.add(screenshot)
+        }
+        XCTAssertTrue(send.isEnabled, "A completed unnamed draft must be enabled")
         XCTAssertTrue(send.isHittable, "Send must remain visible even on the smallest supported screen")
         XCTAssertGreaterThanOrEqual(send.frame.minX, app.frame.minX)
         XCTAssertLessThanOrEqual(send.frame.maxX, app.frame.maxX + 1)

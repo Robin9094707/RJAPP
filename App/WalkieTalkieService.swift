@@ -71,6 +71,7 @@ struct RadioFeed: Decodable {
     private var expectedLeaves = 0
     private var uploadTask: Task<Void, Error>?
     private var uploadedChunks = 0
+    private var capturedSliceDuration = 0.0
     private var receiveDeadline: Date?
     private override init() { super.init(); speech.delegate = self }
 
@@ -153,33 +154,41 @@ struct RadioFeed: Decodable {
     func finishTalking() {
         wantsToTalk = false; operation = UUID()
         if joinedSystem { manager?.stopTransmitting(channelUUID: channelID) }
-        // Do not cancel the uploader: final audio/end must follow previously sent chunks.
+        // Stop the microphone immediately, but finish the ordered upload queue.
+        stopCapture()
         transmitting = false
         updateStatus()
     }
+    private func stopCapture() {
+        if let recorder {
+            capturedSliceDuration = max(capturedSliceDuration, recorder.currentTime)
+            recorder.stop()
+        }
+    }
     private func startTransmitting() {
         guard wantsToTalk, transmitTask == nil, let api else { return }
-        stopReceiving(); transmitting = true; status = "Du sprichst · Loslassen zum Senden"
+        transmitting = true; stopReceiving(); status = "Funkverbindung wird geöffnet …"
         let tx = UUID().uuidString
         uploadedChunks = 0; uploadTask = nil
         transmitTask = Task {
             var index = 0
             do {
                 try await api.radioAction("begin", transmissionID: tx)
+                if wantsToTalk { status = "Du sprichst · Loslassen zum Senden" }
                 let started = Date.now
                 while wantsToTalk && !Task.isCancelled && Date.now.timeIntervalSince(started) < 30 {
                     let url = FileManager.default.temporaryDirectory.appendingPathComponent("radio-" + UUID().uuidString + ".m4a")
                     do {
                         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 24000, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 48000]
                         let recorder = try AVAudioRecorder(url: url, settings: settings)
-                        self.recorder = recorder
+                        self.recorder = recorder; capturedSliceDuration = 0
                         try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: url.path)
                         guard recorder.record() else { throw APIClientError.transport("Mikrofon konnte nicht starten.") }
                         let slice = Date.now
                         while wantsToTalk && Date.now.timeIntervalSince(slice) < 0.75 && !Task.isCancelled {
                             try await Task.sleep(for: .milliseconds(30))
                         }
-                        let duration = recorder.currentTime
+                        let duration = max(recorder.currentTime, capturedSliceDuration)
                         recorder.stop(); self.recorder = nil
                         if duration >= 0.08 {
                             let audio = try Data(contentsOf: url)
@@ -281,10 +290,11 @@ struct RadioFeed: Decodable {
         } catch { errorMessage = error.localizedDescription; player = nil; stopReceiving() }
     }
     func stopReceiving() {
+        let wasReceiving = receiving || activeTransmission != nil
         pending = []; player?.stop(); player = nil; speech.stopSpeaking(at: .immediate)
         receiving = false; activeTransmission = nil; receiveDeadline = nil
-        if joinedSystem { manager?.setActiveRemoteParticipant(nil, channelUUID: channelID) { _ in } }
-        else if !transmitting { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+        if joinedSystem && wasReceiving { manager?.setActiveRemoteParticipant(nil, channelUUID: channelID) { _ in } }
+        else if !joinedSystem && !transmitting { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
         updateStatus()
     }
     private func updateStatus() {
@@ -320,7 +330,7 @@ struct RadioFeed: Decodable {
         if systemAudioActive { startTransmitting() }
     }
     func channelManager(_ channelManager: PTChannelManager, channelUUID: UUID, didEndTransmittingFrom source: PTChannelTransmitRequestSource) {
-        wantsToTalk = false; transmitting = false; updateStatus()
+        wantsToTalk = false; stopCapture(); transmitting = false; updateStatus()
     }
     func channelManager(_ channelManager: PTChannelManager, didActivate audioSession: AVAudioSession) {
         systemAudioActive = true
@@ -329,7 +339,7 @@ struct RadioFeed: Decodable {
         else { receiving = true; startReceiving(); playNext() }
     }
     func channelManager(_ channelManager: PTChannelManager, didDeactivate audioSession: AVAudioSession) {
-        systemAudioActive = false; wantsToTalk = false; recorder?.stop(); transmitting = false
+        systemAudioActive = false; wantsToTalk = false; stopCapture(); transmitting = false
         player?.stop(); player = nil; receiving = false; updateStatus()
     }
     func channelManager(_ channelManager: PTChannelManager, failedToBeginTransmittingInChannel channelUUID: UUID, error: Error) { wantsToTalk = false; errorMessage = error.localizedDescription }

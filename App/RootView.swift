@@ -93,6 +93,7 @@ struct MainTabView: View {
 
     var body: some View {
         @Bindable var state = appState
+        @Bindable var journey = appState.setupJourney
 
         TabView(selection: $state.selectedTab) {
             NavigationStack { HomeView() }
@@ -115,6 +116,6 @@ struct MainTabView: View {
             FartRecorderView(autoStart: appState.quickFartRecording)
         }
         .sheet(isPresented: $state.showingRadio) { NavigationStack { WalkieTalkieView() } }
-        .fullScreenCover(isPresented: $state.setupJourney.presented) { SetupJourneyView() }
+        .fullScreenCover(isPresented: $journey.presented) { SetupJourneyView() }
     }
 }

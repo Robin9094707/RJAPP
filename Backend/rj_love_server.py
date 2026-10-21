@@ -888,7 +888,7 @@ class RJLoveApplication:
                 fingerprint = self.credential_fingerprint(user)
                 row = db.execute("SELECT fingerprint FROM credential_versions WHERE user_id=?", (user["id"],)).fetchone()
                 if row is None or row["fingerprint"] != fingerprint:
-                    for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
+                    for table in ("sessions", "devices", "nearby", "live_activities", "radio_members", "radio_floor"):
                         db.execute(f"DELETE FROM {table} WHERE user_id=?", (user["id"],))
                     db.execute("INSERT INTO credential_versions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET fingerprint=excluded.fingerprint", (user["id"], fingerprint))
 
@@ -913,7 +913,7 @@ class RJLoveApplication:
                 raise
             with self.database.connect() as db:
                 db.execute("BEGIN IMMEDIATE")
-                for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
+                for table in ("sessions", "devices", "nearby", "live_activities", "radio_members", "radio_floor"):
                     db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
                 db.execute("INSERT INTO credential_versions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET fingerprint=excluded.fingerprint", (user_id, self.credential_fingerprint(user)))
 
@@ -924,7 +924,7 @@ class RJLoveApplication:
         expires = created + dt.timedelta(days=int(self.config["server"].get("session_days", 30)))
         with self.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
+            for table in ("sessions", "devices", "nearby", "live_activities", "radio_members", "radio_floor"):
                 db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
             db.execute(
                 "INSERT INTO sessions(token_hash,user_id,device_id,created_at,expires_at,last_seen_at) VALUES(?,?,?,?,?,?)",
@@ -1478,7 +1478,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
-            for table in ("devices", "nearby", "live_activities", "radio_members"):
+            for table in ("devices", "nearby", "live_activities", "radio_members", "radio_floor"):
                 db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
         self.send_empty()
 
@@ -2143,7 +2143,7 @@ def main() -> int:
                                 if not password.startswith("scrypt$"):
                                     old["password"] = app.encode_password(password)
                                 with app.database.connect() as db:
-                                    for table in ("sessions", "devices", "nearby", "live_activities", "radio_members"):
+                                    for table in ("sessions", "devices", "nearby", "live_activities", "radio_members", "radio_floor"):
                                         db.execute(f"DELETE FROM {table} WHERE user_id=?", (old["id"],))
                         app.save_config()
                     app.synchronize_credential_versions()

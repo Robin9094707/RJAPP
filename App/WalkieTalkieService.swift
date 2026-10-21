@@ -28,7 +28,7 @@ struct RadioFeed: Decodable {
     enum CodingKeys: String, CodingKey { case events, cursor; case speakerID = "speaker_id"; case backgroundPushConfigured = "background_push_configured" }
 }
 
-@MainActor @Observable final class WalkieTalkieService: NSObject, @preconcurrency PTChannelManagerDelegate, @preconcurrency PTChannelRestorationDelegate, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
+@MainActor @Observable final class WalkieTalkieService: NSObject, @preconcurrency PTChannelManagerDelegate, PTChannelRestorationDelegate, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
     static let shared = WalkieTalkieService()
     private(set) var enabled = UserDefaults.standard.bool(forKey: "rjlove.radio-enabled")
     var speakTexts = UserDefaults.standard.object(forKey: "rjlove.radio-speak-texts") as? Bool ?? true {
@@ -67,24 +67,35 @@ struct RadioFeed: Decodable {
     private var inBackground = false
     private var studioPaused = false
     private var operation = UUID()
+    private var expectedLeaves = 0
     private var uploadTask: Task<Void, Error>?
     private var uploadedChunks = 0
     private var receiveDeadline: Date?
     private override init() { super.init(); speech.delegate = self }
 
-    func configure(api: APIClient) { self.api = api.sessionCopy() }
+    func configure(api: APIClient) {
+        self.api = api.sessionCopy()
+        if enabled { Task { await prepareSystemChannel() } }
+    }
+    private func prepareSystemChannel() async {
+        guard enabled, !studioPaused else { return }
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+            if manager == nil { manager = try await PTChannelManager.channelManager(delegate: self, restorationDelegate: self) }
+            if manager?.activeChannelUUID == channelID { joinedSystem = true }
+        } catch { systemMessage = "iOS-Systemkanal nicht verfügbar: " + error.localizedDescription }
+    }
     func enable(api: APIClient) async {
         guard !connecting else { return }
         self.api = api.sessionCopy(); enabled = true; UserDefaults.standard.set(true, forKey: "rjlove.radio-enabled")
         studioPaused = false; inBackground = false; connecting = true
         defer { connecting = false }
         errorMessage = nil
+        await prepareSystemChannel()
         do {
             let result = try await api.radioJoin(token: ephemeralToken)
             if !receiving { cursor = max(cursor, result.cursor) }; backgroundPushConfigured = result.backgroundPushConfigured
             startReceiving()
-            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
-            if manager == nil { manager = try await PTChannelManager.channelManager(delegate: self, restorationDelegate: self) }
             if manager?.activeChannelUUID == channelID {
                 joinedSystem = true; startReceiving()
             } else { manager?.requestJoinChannel(channelUUID: channelID, descriptor: descriptor()) }
@@ -105,14 +116,14 @@ struct RadioFeed: Decodable {
         enabled = false; UserDefaults.standard.set(false, forKey: "rjlove.radio-enabled")
         operation = UUID(); wantsToTalk = false
         finishTalking(); stopReceiving(); receiveTask?.cancel(); receiveTask = nil
-        manager?.requestLeaveChannel(channelUUID: channelID)
+        manager?.leaveChannel(channelUUID: channelID)
         joinedSystem = false; cursor = 0; ephemeralToken = ""; lastTexts = []; status = "Walkie-Talkie ist aus"
         let api = api; Task { try? await api?.radioAction("leave") }
     }
     func pauseForStudio() {
         guard enabled else { return }
         studioPaused = true; finishTalking(); stopReceiving(); receiveTask?.cancel(); receiveTask = nil
-        manager?.requestLeaveChannel(channelUUID: channelID); joinedSystem = false
+        if joinedSystem { expectedLeaves += 1; manager?.leaveChannel(channelUUID: channelID) }; joinedSystem = false
         Task { try? await api?.radioAction("leave") }
         status = "Für das Duftstudio pausiert"
     }
@@ -161,6 +172,7 @@ struct RadioFeed: Decodable {
                         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 24000, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 48000]
                         let recorder = try AVAudioRecorder(url: url, settings: settings)
                         self.recorder = recorder
+                        try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: url.path)
                         guard recorder.record() else { throw APIClientError.transport("Mikrofon konnte nicht starten.") }
                         let slice = Date.now
                         while wantsToTalk && Date.now.timeIntervalSince(slice) < 0.75 && !Task.isCancelled {
@@ -285,6 +297,7 @@ struct RadioFeed: Decodable {
     }
     func channelManager(_ channelManager: PTChannelManager, didLeaveChannel channelUUID: UUID, reason: PTChannelLeaveReason) {
         joinedSystem = false; systemAudioActive = false; finishTalking(); stopReceiving()
+        if expectedLeaves > 0 { expectedLeaves -= 1; return }
         if !studioPaused && enabled { disable() }
     }
     func channelManager(_ channelManager: PTChannelManager, failedToJoinChannel channelUUID: UUID, error: Error) {

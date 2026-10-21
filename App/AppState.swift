@@ -473,7 +473,9 @@ final class AppState {
 
     private func process(_ commands: [RemoteCommand], events: [RemoteEvent]) async {
         for event in events {
-            await notifications.scheduleLocal(event: event)
+            // A push test must only arrive through APNs. A poll-generated local
+            // notification would falsely suggest that signing/server push works.
+            if event.kind != "push_test" { await notifications.scheduleLocal(event: event) }
             try? await api.acknowledgeEvent(id: event.id)
         }
         await CommandDeliveryProcessor.shared.process(commands, api: api, senderName: partner?.displayName ?? "Schatzi")

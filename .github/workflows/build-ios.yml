@@ -140,23 +140,7 @@ jobs:
           set -o pipefail
           xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Simulator-build.log
       - name: Capture preview
-        run: |
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if "iPhone" in x["name"]))')
-          xcrun simctl boot "$DEVICE" || true
-          xcrun simctl bootstatus "$DEVICE" -b
-          xcrun simctl status_bar "$DEVICE" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
-          xcrun simctl install "$DEVICE" '.sim-derived/Build/Products/Debug-iphonesimulator/RJ Love.app'
-          xcrun simctl launch "$DEVICE" eu.rjuhas.rjlove --preview
-          sleep 5
-          xcrun simctl io "$DEVICE" screenshot Preview-Wir.png
-          xcrun simctl terminate "$DEVICE" eu.rjuhas.rjlove
-          xcrun simctl launch "$DEVICE" eu.rjuhas.rjlove --preview --preview-hub
-          sleep 3
-          xcrun simctl io "$DEVICE" screenshot Preview-Chat.png
-          xcrun simctl terminate "$DEVICE" eu.rjuhas.rjlove
-          xcrun simctl launch "$DEVICE" eu.rjuhas.rjlove --preview --preview-health
-          sleep 3
-          xcrun simctl io "$DEVICE" screenshot Preview-Health.png
+        run: python3 Scripts/capture_preview.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -88,6 +88,11 @@ final class HealthService: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    private nonisolated static func isEmptyHealthResult(_ error: Error) -> Bool {
+        let value = error as NSError
+        return value.domain == HKErrorDomain && [HKError.Code.errorNoData.rawValue, HKError.Code.errorAuthorizationDenied.rawValue].contains(value.code)
+    }
+
     private func quantity(_ metric: Metric) async throws -> Double? {
         guard let type = HKObjectType.quantityType(forIdentifier: metric.id) else { return nil }
         let start = metric.cumulative ? Calendar.current.startOfDay(for: .now) : Date.now.addingTimeInterval(-86400)
@@ -95,7 +100,11 @@ final class HealthService: ObservableObject {
         if metric.cumulative {
             return try await withCheckedThrowingContinuation { continuation in
                 let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
-                    if let error { continuation.resume(throwing: error); return }
+                    if let error {
+                        if Self.isEmptyHealthResult(error) { continuation.resume(returning: nil) }
+                        else { continuation.resume(throwing: error) }
+                        return
+                    }
                     continuation.resume(returning: result?.sumQuantity()?.doubleValue(for: metric.unit))
                 }
                 store.execute(query)
@@ -103,7 +112,11 @@ final class HealthService: ObservableObject {
         }
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: 1, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, samples, error in
-                if let error { continuation.resume(throwing: error); return }
+                if let error {
+                    if Self.isEmptyHealthResult(error) { continuation.resume(returning: nil) }
+                    else { continuation.resume(throwing: error) }
+                    return
+                }
                 continuation.resume(returning: (samples?.first as? HKQuantitySample)?.quantity.doubleValue(for: metric.unit))
             }
             store.execute(query)
@@ -118,7 +131,11 @@ final class HealthService: ObservableObject {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
         let samples: [HKCategorySample] = try await withCheckedThrowingContinuation { continuation in
             store.execute(HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
-                if let error { continuation.resume(throwing: error); return }
+                if let error {
+                    if Self.isEmptyHealthResult(error) { continuation.resume(returning: []) }
+                    else { continuation.resume(throwing: error) }
+                    return
+                }
                 continuation.resume(returning: samples as? [HKCategorySample] ?? [])
             })
         }

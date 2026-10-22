@@ -2,6 +2,8 @@
 
 ## 1. Python-Server
 
+**Vorhandenen Server aktualisieren:** Server stoppen, `rj_love_server.py` durch die Datei aus diesem Paket ersetzen und wieder starten. `rjapp_config.json` und `rjlove_data/` unverändert behalten und vorher sichern. Die neue App benötigt Server 2.4 mit Protokoll 4; deshalb zuerst den Server, danach die App aktualisieren. Die folgenden Schritte mit leerem Ordner gelten ausschließlich für eine erstmalige Einrichtung.
+
 1. `Backend/rj_love_server.py` in einen neuen leeren Serverordner kopieren. Python 3.11 oder neuer verwenden.
 2. `python3 rj_love_server.py` starten. Die Datei `rjapp_config.json` wird erzeugt. Der erste Lauf beendet sich absichtlich.
 3. Die beiden zufälligen Startpasswörter sicher notieren. Auf Wunsch eigene Passwörter mit mindestens zehn Zeichen und Benutzernamen eintragen. Die internen IDs `robin` und `raphaela` beibehalten.
@@ -63,7 +65,7 @@ Nur HTTPS; Topic mindestens 16 Zeichen aus Buchstaben, Zahlen, `_` oder `-`. Auf
 
 ## 7. Sicherung und Neustart
 
-`rjapp_config.json` und `rjlove_data/` privat sichern; für eine einfache konsistente Kopie den Server kurz stoppen. Keine dieser Dateien ins öffentliche Repository hochladen. Für diesen Neustart neue leere Verzeichnisse verwenden; keine alten Datenbanken übernehmen.
+`rjapp_config.json` und `rjlove_data/` privat sichern; für eine einfache konsistente Kopie den Server kurz stoppen. Alternativ den integrierten Backup-Befehl verwenden, siehe [RELEASE-2.2.md](RELEASE-2.2.md). Keine dieser Dateien ins öffentliche Repository hochladen. Beim Update bleiben Konfiguration und Datenverzeichnis erhalten; neue optionale Spalten werden automatisch ergänzt. Nur eine ausdrücklich gewünschte, vollständig neue Einrichtung beginnt in einem leeren Ordner.
 
 
 ## Neu: Duftpost, Aufnahme-Widget und Liebessachen
@@ -72,11 +74,11 @@ Unter **Spielplatz** findest du Duftpost, Liebe und die bisherige Momentgalerie.
 
 Widget **Duftpost · Sofortaufnahme** hinzufügen. Ein Tipp öffnet die App und die Aufnahmeansicht und startet dort nach Freigabe des Mikrofons automatisch. Bei Face-ID-Schutz zuerst entsperren. Bei vorhandenem Entwurf wird dieser geöffnet, ohne ihn zu überschreiben. Live-Aktivitäten und App-Group-Widgets benötigen weiterhin eine passende Signierung.
 
-Bewertungen sind dem Gegenüber vorbehalten. Du kannst eigene Aufnahmen löschen; Audio und Bewertungen werden dann unmittelbar aus der aktiven Serverdatenbank entfernt (eigene Backups separat verwalten). Gespeicherte Audios zählen zum Speicherlimit. Der Server liefert die neuesten 100 Aufnahmen in der Sammlung.
+Bewertungen sind dem Gegenüber vorbehalten. Du kannst eigene Aufnahmen löschen; Audio und Bewertungen werden dann unmittelbar aus dem aktiven Serverbestand entfernt (eigene Backups separat verwalten). Gespeicherte Audios zählen zum Speicherlimit. Der normale Abgleich enthält die neuesten 100 Aufnahmen; das Duftstudio lädt das gesamte Archiv seitenweise nach. Sammlung, Monats-/Jahreskalender, Furzkarte und Bilanz haben eine fest erreichbare Bereichsauswahl. Im Jahresmodus werden die Aufnahmen des ganzen Jahres angezeigt. Suche und Filter gelten in allen vier Ansichten.
 
 Unter **Liebe**: Date-Ideen auslosen und als Wunsch merken, persönliche Gutscheine verschenken/einlösen und Wertschätzung teilen. Unter **Momente** bleibt die Fotogalerie erreichbar.
 
-Beim Update von 2.0: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Für diesen Funktionszuwachs ist keine manuelle Datenmigration notwendig. App und Backend jeweils auf 2.2 aktualisieren.
+Auch beim Update von einer früheren Version: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Die Ergänzung der Tabellen erfolgt automatisch. App und Backend jeweils auf 2.4 aktualisieren.
 
 ## Update 2.2
 

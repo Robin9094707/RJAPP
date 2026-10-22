@@ -6,7 +6,7 @@ Das Duftstudio ist jetzt ein vollständiges privates Audioarchiv: Sammlung, Kale
 
 Suche nach Titel, Duftnote, Person, Aufnahmedatum, Situation oder Jury-Kommentar. Filter für Person, Kategorie, Favoriten und einen frei wählbaren Datumsbereich; Sortierung nach Datum, Bewertung oder Länge. Das Archiv lädt Metadaten seitenweise über die gesamte Sammlung, nicht nur die letzten 100 Aufnahmen. Audio wird weiterhin erst bei Wiedergabe geladen.
 
-Der Monatskalender markiert Tage mit Aufnahmen; ein Tag öffnet seine Einträge. Ohne ausgewählten Tag werden alle Aufnahmen des Monats angezeigt. Die Jahresübersicht zeigt alle zwölf Monate mit Zählern und öffnet einen Monat direkt. Suche und Filter gelten auch in Kalender, Karte und Bilanz. Bilanz zeigt echte Aufnahmezahlen, Gesamtdauer, aktive Tage, Jury-Durchschnitt und die Verteilung zwischen euch beiden. Es werden keine Geruchs- oder Lautstärkewerte erfunden.
+Der Monatskalender markiert Tage mit Aufnahmen; ein Tag öffnet seine Einträge. Ohne ausgewählten Tag werden alle Aufnahmen des Monats angezeigt. Die Jahresübersicht zeigt alle zwölf Monate mit Zählern und öffnet einen Monat direkt; ihre Liste enthält die Aufnahmen des ganzen Jahres. Bereichsauswahl und Monat-/Jahr-Umschalter bleiben auch auf kleinen Displays außerhalb des Scrollinhalts erreichbar. Suche und Filter gelten auch in Kalender, Karte und Bilanz. Bilanz zeigt echte Aufnahmezahlen, Gesamtdauer, aktive Tage, Jury-Durchschnitt und die Verteilung zwischen euch beiden. Es werden keine Geruchs- oder Lautstärkewerte erfunden.
 
 ## Recorder und Sprüche
 

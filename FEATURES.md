@@ -18,3 +18,9 @@ Nicht zugesichert: dauerhaft laufender iOS-Hintergrundprozess, exakte Widget-Akt
 ## Update 2.2
 
 Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk hält Audio und Texte zehn Minuten abrufbar; der anschließende Minutenlauf löscht sie.
+
+## Duftstudio 2.4
+
+Vier fest erreichbare Ansichten: vollständige Sammlung, Monats-/Jahreskalender mit Tagwahl und Zählern, Furzkarte mit ausdrücklich geteilten Aufnahmeorten sowie Bilanz aus echten Archivdaten. Suche nach Text, Person, Situation und Datum; Filter für Kategorie, Person, Favoriten und Zeitraum; Sortierung nach Datum, Bewertung oder Länge. Metadaten werden über die gesamte Sammlung nachgeladen, Audio nur bei Bedarf.
+
+Recorder mit fester Aufnahme-/Sendeaktion, Schnitt vor und nach dem Teilen und 400 offline gespeicherten Spruchkombinationen für acht Situationen. App und Server erkennen erforderliche Gegenstellen-Updates. Der Server übernimmt vorhandene passende APNs-Schlüssel automatisch ohne Konsolenbefehl; echte Apple-Schlüssel und passende Signaturrechte bleiben Voraussetzung. Details: [RELEASE-2.4.md](RELEASE-2.4.md).

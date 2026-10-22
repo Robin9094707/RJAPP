@@ -71,7 +71,7 @@ python3 -m unittest -v Tests/test_backend.py
 xcodegen generate
 ```
 
-GitHub Actions baut bei Änderungen an `main` und manuell. Der Workflow prüft den Server, baut die unsignierte IPA und erstellt das Komplettpaket. Ein zweiter Job baut die Simulator-App und erzeugt echte UI-Vorschauen. Diese nutzen ausschließlich synthetische Daten in einer nur im Debug-Build vorhandenen Vorschaufunktion. Release-Builds enthalten diesen Einstieg nicht.
+GitHub Actions baut bei Änderungen an `main` und manuell. Der Workflow prüft den Server, baut die unsignierte IPA und erstellt das Komplettpaket. Drei weitere Jobs prüfen Bedienung und Layout auf iPhone SE (3. Generation), 14 Pro und 15 Plus und erzeugen echte UI-Vorschauen. Diese nutzen ausschließlich synthetische Daten in einer nur im Debug-Build vorhandenen Vorschaufunktion. Release-Builds enthalten diesen Einstieg nicht.
 
 Der grüne Build prüft Compiler, Paketstruktur und Backend-Verträge. HealthKit, UWB, APNs, AlarmKit und die konkrete ArcticSign-Signierung müssen zusätzlich auf realen Geräten geprüft werden.
 

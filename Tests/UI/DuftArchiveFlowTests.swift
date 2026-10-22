@@ -1,29 +1,35 @@
 import XCTest
 
 final class DuftArchiveFlowTests: XCTestCase {
+    private func requireHittable(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed, file: file, line: line)
+    }
     func testCalendarYearMapAndSearchRemainReachable() {
         let app = XCUIApplication()
         app.launchArguments = ["--preview","--preview-farts"]
         app.launch()
         XCTAssertTrue(app.staticTexts["duft-archive-title"].waitForExistence(timeout: 15))
         let calendar = app.segmentedControls["duft-room"].buttons["Kalender"]
-        XCTAssertTrue(calendar.isHittable)
+        requireHittable(calendar)
         calendar.tap()
         let heading = app.staticTexts["duft-calendar-heading"]
         XCTAssertTrue(heading.waitForExistence(timeout: 8))
         let year = app.segmentedControls["duft-calendar-scale"].buttons["Jahr"]
-        XCTAssertTrue(year.isHittable, "Calendar scale remains fixed above the scrolling archive")
+        requireHittable(year)
         year.tap()
         XCTAssertTrue(heading.label.contains(String(Calendar.current.component(.year,from: .now))))
-        let today = app.buttons["Heute anzeigen"]
+        let today = app.buttons["duft-calendar-today"]
         let scroll = app.scrollViews["duft-archive-scroll"]
-        for _ in 0..<8 where !today.isHittable {
+        // Navigation remains available even after scrolling past the calendar.
+        for _ in 0..<3 {
             scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5,dy: 0.75)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5,dy: 0.35)))
         }
-        XCTAssertTrue(today.isHittable)
+        requireHittable(today)
         today.tap()
+        XCTAssertTrue(app.segmentedControls["duft-calendar-scale"].buttons["Monat"].isSelected)
         let map = app.segmentedControls["duft-room"].buttons["Karte"]
-        XCTAssertTrue(map.isHittable, "Rooms remain reachable after scrolling the calendar")
+        requireHittable(map)
         map.tap()
         XCTAssertTrue(app.staticTexts["duft-map-title"].waitForExistence(timeout: 8))
         let collection = app.segmentedControls["duft-room"].buttons["Sammlung"]

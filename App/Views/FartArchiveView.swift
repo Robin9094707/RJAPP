@@ -62,6 +62,11 @@ struct FartStudioView: View {
                 if room == .kalender {
                     Picker("Kalenderansicht", selection: $yearMode) { Text("Monat").tag(false); Text("Jahr").tag(true) }
                         .pickerStyle(.segmented).accessibilityIdentifier("duft-calendar-scale")
+                    Button("Heute anzeigen") {
+                        calendarDate = .now
+                        selectedDay = nil
+                        yearMode = false
+                    }.font(.caption.bold()).accessibilityIdentifier("duft-calendar-today")
                 }
                 if !query.isEmpty {
                     HStack {Text("\(clips.count) Treffer").font(.caption.bold()).accessibilityIdentifier("duft-results");Spacer();Button("Suche leeren"){query=""}.font(.caption)}
@@ -97,7 +102,7 @@ struct FartStudioView: View {
                     }
                     Text("Euer privates Baucharchiv. Nur ihr zwei hört mit.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 10)
                 }.padding(20)
-            }.accessibilityIdentifier("duft-archive-scroll").refreshable { _ = await app.syncNow(showErrors: true) }
+            }.id(room).accessibilityIdentifier("duft-archive-scroll").refreshable { _ = await app.syncNow(showErrors: true) }
             Button { app.openFartRecorder() } label: {
                 Label(app.studio.draft == nil ? "Neues Meisterwerk aufnehmen" : "Deinen Entwurf fortsetzen", systemImage: app.studio.draft == nil ? "mic.fill" : "waveform").frame(maxWidth: .infinity)
             }.buttonStyle(.borderedProminent).controlSize(.large).tint(LovePalette.violet)
@@ -190,7 +195,6 @@ struct FartCalendarPanel: View {
                 Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 40, height: 40) }.accessibilityLabel(yearMode ? "Nächstes Jahr" : "Nächster Monat")
             }.buttonStyle(.bordered)
             if yearMode { yearGrid } else { monthGrid }
-            Button("Heute anzeigen") { date = .now; selectedDay = nil; yearMode = false }.font(.caption.bold())
         }.padding(12).frame(maxWidth: .infinity).loveGlass(in: RoundedRectangle(cornerRadius: 26))
             .onAppear {
                 #if DEBUG

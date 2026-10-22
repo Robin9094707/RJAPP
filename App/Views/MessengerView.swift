@@ -74,7 +74,7 @@ struct MediaComposer:View {
     }.navigationTitle(kind == .chat ? "In unserem Gespräch":"Unser Moment").toolbar{
         ToolbarItem(placement:.cancellationAction){Button("Abbrechen"){dismiss()}.disabled(saving)}
         ToolbarItem(placement:.confirmationAction){Button("Teilen"){Task{await save()}}.disabled(saving)}
-    }.onAppear{capturedAt=media.capturedAt}.interactiveDismissDisabled(saving)}}
+    }.onAppear{capturedAt=media.capturedAt}.onDisappear{if !saving{for file in media.files{try? FileManager.default.removeItem(at:file)}}}.interactiveDismissDisabled(saving)}}
     private func save() async {
         saving=true;uploadError=nil;defer{saving=false}
         do {
@@ -111,7 +111,7 @@ struct MediaViewer:View {
         if kind=="live",files.count==2{LivePhotoDisplay(files:files).frame(maxHeight:.infinity)}
         else if kind=="video"{VideoPlayer(player:player).onAppear{if let file=files.first{player=AVPlayer(url:file);player?.play()}}}
         else if kind=="audio"{Image(systemName:"waveform.circle.fill").font(.system(size:80)).foregroundStyle(LovePalette.pink);Button(VoiceNoteService.shared.playing ? "Stoppen":"Abspielen"){if VoiceNoteService.shared.playing{VoiceNoteService.shared.stop()}else if let file=files.first{try? VoiceNoteService.shared.play(file)}}.buttonStyle(.borderedProminent)}
-        else if let file=files.first,let image=UIImage(contentsOfFile:file.path){Image(uiImage:image).resizable().scaledToFit()}
+        else if let file=files.first,let image=MediaPicker.Coordinator.displayImage(file:file){Image(uiImage:image).resizable().scaledToFit()}
         if kind != "audio"{Button("In Apple Fotos sichern",systemImage:"square.and.arrow.down"){Task{await saveToPhotos()}}.buttonStyle(.bordered)}
         if let saveMessage{Text(saveMessage).font(.footnote)}
     }.padding(18).background(LoveBackground()).navigationTitle(kind=="audio" ? "Für dich":"Unser Moment").toolbar{ToolbarItem(placement:.cancellationAction){Button("Fertig"){dismiss()}};ToolbarItem(placement:.topBarTrailing){Button("Teilen",systemImage:"square.and.arrow.up"){share=true}}}.sheet(isPresented:$share){FileShareView(urls:files)}.onDisappear{player?.pause();VoiceNoteService.shared.stop()}}}

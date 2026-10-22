@@ -28,7 +28,14 @@ final class InstantCamera:NSObject,ObservableObject,AVCapturePhotoCaptureDelegat
     }
     func capture(){queue.async{guard self.session.isRunning else{return};self.output.capturePhoto(with:AVCapturePhotoSettings(format:[AVVideoCodecKey:AVVideoCodecType.jpeg]),delegate:self)}}
     func stop(){queue.async{if self.session.isRunning{self.session.stopRunning()};DispatchQueue.main.async{self.running=false}}}
-    func photoOutput(_ output:AVCapturePhotoOutput,didFinishProcessingPhoto photo:AVCapturePhoto,error:Error?){DispatchQueue.main.async{if let error{self.error=error.localizedDescription}else{self.photo=photo.fileDataRepresentation()}}}
+    func photoOutput(_ output:AVCapturePhotoOutput,didFinishProcessingPhoto photo:AVCapturePhoto,error:Error?) {
+        let jpeg = photo.fileDataRepresentation().flatMap { MediaPicker.Coordinator.cameraJPEG($0) }
+        DispatchQueue.main.async {
+            if let error { self.error = error.localizedDescription }
+            else if let jpeg { self.photo = jpeg }
+            else { self.error = MediaError.unreadable.localizedDescription }
+        }
+    }
 }
 private final class CameraPreviewHost:UIView {
     override class var layerClass:AnyClass {AVCaptureVideoPreviewLayer.self}
@@ -136,8 +143,8 @@ struct InstantGalleryView:View {
     var body:some View {ScrollView{VStack(alignment:.leading,spacing:20){
         Text("Zeig mir dein Jetzt.").font(.system(size:32,weight:.medium,design:.serif))
         Text("Schick einen Fotowunsch. In der geöffneten App erscheint beim Gegenüber die sichtbare Kamera und nimmt direkt ein Foto auf. Beide können das unter Mehr ausschalten.").font(.subheadline).foregroundStyle(.secondary)
-        Button(sendingRequest ? "Wird gewünscht …" : "Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest)
-        if sent { Label("Fotowunsch gesendet", systemImage: "checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent") }.buttonStyle(.borderedProminent)
+        Button(sendingRequest ? "Wird gewünscht …" : "Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest).buttonStyle(.borderedProminent)
+        if sent { Label("Fotowunsch gesendet", systemImage: "checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent") }
         ForEach(app.records.filter{$0.kind == .photo_request && $0.payload.completed != true}){request in HStack{Text(request.payload.title ?? "Ein Fotowunsch");Spacer();if request.payload.targetID==app.me?.id{Button("Beantworten"){UserDefaults.standard.removeObject(forKey:"rjlove.photo-skip."+request.id);app.pendingPhotoRequest=request}}else{Text("Wartet auf deinen Lieblingsmenschen").font(.caption)}}.loveCard()}
         ForEach(photos){photo in VStack(alignment:.leading,spacing:12){MediaAttachmentView(record:photo);Text(photo.payload.caption ?? "Unser Jetzt").font(.headline).accessibilityIdentifier("instant-photo-caption");if let date=(photo.payload.capturedAt ?? photo.createdAt).rjDate{Text(date.formatted(.dateTime.day().month(.wide).year().hour().minute().second())).font(.caption.monospacedDigit())};if photo.ownerID==app.me?.id{Button("Beschreiben",systemImage:"pencil"){editing=photo};Button("Foto zurückrufen",role:.destructive){deleting=photo}}}.loveCard()}
     }.padding(22)}.background(LoveBackground()).navigationTitle("Unser Jetzt").sheet(item:$editing){MomentMetadataEditor(record:$0)}.alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true;requestID=UUID().uuidString};sendingRequest=false}};Button("Abbrechen",role:.cancel){}}.alert("Foto für beide zurückrufen?",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}})){Button("Zurückrufen",role:.destructive){if let photo=deleting{Task{_ = await app.deleteRecord(photo)}};deleting=nil};Button("Abbrechen",role:.cancel){deleting=nil}}.task{await app.loadRecordArchive(kind:.instant);await app.loadRecordArchive(kind:.photo_request)}}

@@ -18,6 +18,7 @@ final class NearbyService: NSObject, NISessionDelegate {
     var backgroundSearch = true
     private var searchActivity: Activity<NearbySearchAttributes>?
     private var deadline: Date?
+    private var sessionAPI: APIClient?
     private var configuration: NINearbyPeerConfiguration?
     private var arSession:ARSession?
     private var generation=UUID()
@@ -39,6 +40,7 @@ final class NearbyService: NSObject, NISessionDelegate {
         }
         session.delegate = self
         self.session = session
+        sessionAPI = api
         deadline = .now.addingTimeInterval(900)
         if backgroundSearch {
             do {
@@ -104,7 +106,7 @@ final class NearbyService: NSObject, NISessionDelegate {
     }
 
     func stop(api: APIClient) {
-        generation=UUID();lastMeasurement=nil; deadline=nil; configuration=nil
+        generation=UUID();lastMeasurement=nil; deadline=nil; configuration=nil; sessionAPI=nil
         if let activity = searchActivity { searchActivity = nil; Task { await activity.end(nil, dismissalPolicy: .immediate) } }
         task?.cancel(); task = nil
         session?.invalidate(); session = nil
@@ -120,6 +122,10 @@ final class NearbyService: NSObject, NISessionDelegate {
         let horizontal = object.horizontalAngle
         Task { @MainActor [weak self] in
             guard let self, self.running, self.session === session else { return }
+            if let deadline = self.deadline, deadline <= .now {
+                if let api = self.sessionAPI { self.stop(api: api) }
+                return
+            }
             self.distance = distance
             let measured=direction.map {Double(atan2($0.x,-$0.z))*180 / .pi} ?? horizontal.map{Double($0)*180 / .pi}
             if let previous=self.angle,let measured {

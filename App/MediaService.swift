@@ -210,6 +210,11 @@ struct MediaPicker: UIViewControllerRepresentable {
             guard let source = CGImageSourceCreateWithURL(file as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
             return poster(source: source)
         }
+        static func displayImage(file: URL) -> UIImage? {
+            guard let source = CGImageSourceCreateWithURL(file as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 2560] as CFDictionary) else { return nil }
+            return UIImage(cgImage: image)
+        }
         private static func poster(source: CGImageSource) -> Data? {
             guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                     kCGImageSourceCreateThumbnailFromImageAlways: true,

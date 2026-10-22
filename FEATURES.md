@@ -17,11 +17,7 @@ Nicht zugesichert: dauerhaft laufender iOS-Hintergrundprozess, exakte Widget-Akt
 
 2.2 ergänzt das Duftstudio (echte private AAC-Aufnahmen, lokale Entwürfe, Vorschau, Pegel/Wellenform, Pause, 60-Sekunden-Limit), Jury-Wertungen, Kommentare, Reaktionen, Favoriten/Best-of, direkte Recorder-Widgets und eine Aufnahme-Live-Aktivität. Dazu kommen Date-Roulette, einlösbare Gutscheine und Wertschätzungsbotschaften. Das Icon und alle Bildressourcen werden direkt im fertigen IPA geprüft.
 
-## Update 2.2
-
-Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk hält Audio und Texte zehn Minuten abrufbar; der anschließende Minutenlauf löscht sie.
-
-## Duftstudio 2.4
+## Duftstudio
 
 Vier fest erreichbare Ansichten: vollständige Sammlung, Monats-/Jahreskalender mit Tagwahl und Zählern, Furzkarte mit ausdrücklich geteilten Aufnahmeorten sowie Bilanz aus echten Archivdaten. Suche nach Text, Person, Situation und Datum; Filter für Kategorie, Person, Favoriten und Zeitraum; Sortierung nach Datum, Bewertung oder Länge. Metadaten werden über die gesamte Sammlung nachgeladen, Audio nur bei Bedarf.
 

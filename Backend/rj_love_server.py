@@ -2473,7 +2473,7 @@ def config_path_from_environment() -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="RJ Love 2.4 – privater Partner-Server")
+    parser = argparse.ArgumentParser(description=f"RJ Love {APP_VERSION} – privater Partner-Server")
     parser.add_argument("--configure-push", action="store_true", help="APNs mit eigenem bzw. vom Signing-Team bereitgestelltem .p8-Schlüssel einrichten")
     parser.add_argument("--check-push", action="store_true", help="APNs-Konfiguration lokal prüfen, ohne Push zu senden")
     parser.add_argument("--reset-user", choices=["robin", "raphaela"], help="Passwort sicher zurücksetzen und alle Sitzungen widerrufen")

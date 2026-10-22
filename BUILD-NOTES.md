@@ -1,14 +1,19 @@
-# Build 2.4.0 (240)
+# Build 3.0.0 (300)
 
-XcodeGen erzeugt App- und Widget-Targets aus `project.yml`. Mindestversion iOS 26.1; Swift 5-Sprachmodus. Der Workflow wählt ein installiertes stabiles Xcode 26, baut ohne Codesigning und packt die Haupt-App inklusive `PlugIns/RJLoveWidgets.appex` in die IPA. Der zusätzliche Simulatorjob erstellt UI-Vorschauen aus synthetischen Debug-Daten. Auf dem Runner sind keine privaten Apple-Zertifikate erforderlich.
+XcodeGen erzeugt App-, Widget- und UI-Test-Targets aus `project.yml`. Mindestversion iOS 26.1; Swift 5-Sprachmodus. GitHub Actions baut die Release-App ohne Codesigning und packt sie inklusive `PlugIns/RJLoveWidgets.appex` in die IPA. Parallel laufen echte Simulator-Bedienungstests auf iPhone SE (3. Generation), iPhone 14 Pro und iPhone 15 Plus. Kein Testjob wird als optionaler Erfolg behandelt.
 
-Artefakte: `RJ-Love-unsigned-IPA`, `RJ-Love-2.2-Komplettpaket` und `RJ-Love-interface-preview`. Das Komplettpaket enthält ein SHA-256-Manifest mit Commit-ID. Fehlerprotokolle bleiben als Artefakte verfügbar.
+## Artefakte
 
-Ein frischer Installations-/Serverordner ist vorgesehen. Keine Datenmigration. Native Fähigkeiten benötigen nach dem Build weiterhin passende Provisioningprofile und die Zustimmung des Nutzers. Die Produktion aktiviert keine Debug-Vorschau.
+- `RJ-Love-unsigned-IPA`: die installierbare, noch zu signierende `RJ-Love-unsigned.ipa`.
+- `RJ-Love-3.0-Komplettpaket`: IPA, einzelne Python-Serverdatei und aktuelle Anleitungen. Das ZIP enthält ein SHA-256-Manifest mit Commit-ID.
+- `RJ-Love-interface-preview-<Gerät>`: Screenshots, UI-Test-Ergebnisse und Simulatorprotokoll je Gerät.
 
+Der Paketcheck prüft Version, App-Icon, `Assets.car`, Datenschutzhinweise, Mikrofonzweck und die eingebettete Widget-Extension. Die Backend-Vertragstests prüfen Anmeldung, Sitzungsaustausch, Freigaben, Medien, Archive, Backups und Updatequelle. Die UI-Tests verwenden ausschließlich synthetische Debug-Daten; der Vorschau-Einstieg ist im Release-Build nicht enthalten.
 
-2.2 (220) bindet `App/Resources` ausdrücklich als Ressourcenquelle ein. `Scripts/verify_ipa.py` bricht den Build ab, wenn Icon-Metadaten, Icon-PNGs, `Assets.car`, Datenschutzerklärung, Mikrofonzweck oder die Widget-Extension fehlen. Die UI-Prüfung erfasst zusätzlich Duftpost, Recorder und Liebesbereich. Das Recorder-Mikrofon wird in der synthetischen Vorschau nicht aktiviert.
+## Vorhandene Daten
 
-## Update 2.2
+Beim Update nur die Python-Datei ersetzen und neu starten; `rjapp_config.json` und `rjlove_data/` vorher sichern und behalten. Die Datenbank ergänzt neue Tabellen und Spalten automatisch. Die Apps mit denselben IDs über die vorhandenen Installationen installieren. Die konkrete Signierung, HealthKit, UWB, AlarmKit und APNs zusätzlich auf den realen iPhones prüfen.
 
-Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk hält Audio und Texte zehn Minuten abrufbar; der anschließende Minutenlauf löscht sie.
+## Reparatur vom 22. Oktober 2026
+
+Im Duftstudio bleiben Bereichsauswahl und „Heute anzeigen“ auch nach dem Scrollen im Jahreskalender erreichbar. Ein Bereichswechsel beginnt oben im jeweiligen Inhalt. Die UI-Prüfung wartet auf tatsächlich bedienbare Schalter und testet die feste Kalendernavigation nach dem Scrollen.

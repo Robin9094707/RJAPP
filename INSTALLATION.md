@@ -26,7 +26,7 @@
 
 - Standort aktivieren und für Hintergrundortung auf Wunsch „Immer“ erlauben.
 - **Mehr → Health & Freigaben → Meine Daten**: Apple Health verbinden, Kategorien auswählen und Weitergabe-Schalter aktivieren. Health-Leserechte und die Weitergabe an den Partner sind zwei getrennte Entscheidungen.
-- Kalender: gemeinsame Termine unter **Für uns → Ablage-Symbol → Kalender** erstellen. Das Gegenüber übernimmt einen Termin mit „In iOS-Kalender“. Wiederholtes Übernehmen aktualisiert den zugeordneten Termin. Private bestehende Kalender werden nicht automatisch hochgeladen. Löschen in RJ Love löscht keinen bereits übernommenen Apple-Kalendereintrag.
+- Planung: gemeinsame Termine, Jahrestage und Erinnerungen unter **Für uns → Kalendersymbol oben links (Gemeinsame Planung)** anlegen. Die Schalter für Apple Kalender und Apple Erinnerungen legen fest, welche Einträge nach Freigabe beim Öffnen abgeglichen werden. Verknüpfte Apple-Einträge werden bei Änderungen aktualisiert und beim Löschen des gemeinsamen Plans entfernt, sofern der Zugriff erlaubt ist. Private sonstige Kalender und Listen werden nicht hochgeladen.
 - Nahbereich: beide **Wir → Dich finden** öffnen, Suche starten, nah zusammengehen und iPhones aufrecht halten. Bei fehlendem Richtungsvektor wird kein Pfeil gezeigt.
 - Widgets durch langes Drücken auf den Home- oder Sperrbildschirm hinzufügen. Sie zeigen den letzten App-Abgleich.
 - Live-Aktivität auf der Wir-Seite starten. Bei nicht laufender App aktualisiert sie sich nur durch zulässige Hintergrundereignisse/APNs.
@@ -74,7 +74,7 @@ Nur HTTPS; Topic mindestens 16 Zeichen aus Buchstaben, Zahlen, `_` oder `-`. Auf
 
 Unter **Spielplatz** findest du Duftpost, Liebe und die bisherige Momentgalerie. Beim ersten Aufnehmen Mikrofonzugriff erlauben. Aufnahmen bleiben zunächst als lokaler Entwurf auf dem eigenen iPhone; erst „Duftpost senden“ teilt sie mit dem Gegenüber. Schließen beendet eine laufende Aufnahme. Ein Entwurf bleibt bis zum Teilen/Verwerfen bzw. Abmelden erhalten. Die Aufnahmedauer ist auf 60 Sekunden begrenzt. Ein Prozessabbruch oder Gerätefehler kann eine gerade noch laufende Aufnahme beschädigen; sichere wichtige Aufnahmen durch Stoppen.
 
-Widget **Duftpost · Sofortaufnahme** hinzufügen. Ein Tipp öffnet die App und die Aufnahmeansicht und startet dort nach Freigabe des Mikrofons automatisch. Bei Face-ID-Schutz zuerst entsperren. Bei vorhandenem Entwurf wird dieser geöffnet, ohne ihn zu überschreiben. Live-Aktivitäten und App-Group-Widgets benötigen weiterhin eine passende Signierung.
+Widget **Duftpost · Sofortaufnahme** hinzufügen. Ein Tipp öffnet die App und die Aufnahmeansicht und startet dort nach Freigabe des Mikrofons automatisch. Wenn iOS eine Entsperrung verlangt, zuerst das iPhone entsperren. Bei vorhandenem Entwurf wird dieser geöffnet, ohne ihn zu überschreiben. Live-Aktivitäten und App-Group-Widgets benötigen weiterhin eine passende Signierung.
 
 Bewertungen sind dem Gegenüber vorbehalten. Du kannst eigene Aufnahmen löschen; Audio und Bewertungen werden dann unmittelbar aus dem aktiven Serverbestand entfernt (eigene Backups separat verwalten). Gespeicherte Audios zählen zum Speicherlimit. Der normale Abgleich enthält die neuesten 100 Aufnahmen; das Duftstudio lädt das gesamte Archiv seitenweise nach. Sammlung, Monats-/Jahreskalender, Furzkarte und Bilanz haben eine fest erreichbare Bereichsauswahl. Im Jahresmodus werden die Aufnahmen des ganzen Jahres angezeigt. Suche und Filter gelten in allen vier Ansichten.
 
@@ -82,14 +82,6 @@ Unter **Liebe**: Date-Ideen auslosen und als Wunsch merken, persönliche Gutsche
 
 Auch beim Update von einer früheren Version: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Die Ergänzung der Tabellen erfolgt automatisch. App und Backend jeweils auf 3.0 aktualisieren.
 
-## Update 2.2
+## Push, Wecker und Hintergrund prüfen
 
-Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Voraussetzungen für Walkie-Talkie stehen in [RELEASE-2.2.md](RELEASE-2.2.md). Der Fokus-Status entfällt vollständig. Die neue geführte Einrichtung startet Freigaben eingeschaltet; jede iOS-Berechtigung wird separat angefragt. Funk hält Audio und Texte zehn Minuten abrufbar; der anschließende Minutenlauf löscht sie.
-
-## 2.3: Hintergrundwecker und Signatur prüfen
-
-Unter **Wir → Push, Wecker & Hintergrund prüfen** Profil, tatsächliches APNs-Topic und Serverantworten prüfen. Bei wichtigen Weckrufen im Voraus planen und die Bestätigung „Auf dem iPhone eingeplant“ abwarten. Hintergrundpushes sind durch iOS nicht garantiert. Eine fremde Bundle-ID übernimmt keine Rechte eines anderen Apple-Teams. Weitere Schritte: [RELEASE-2.3.md](RELEASE-2.3.md).
-
-## 2.4: Erst Server, dann App aktualisieren
-
-Die App benötigt Server 2.4 und Protokoll 4. Python-Datei ersetzen, Konfiguration und Datenordner behalten, neu starten; anschließend App inklusive Widget aktualisieren. Push wird automatisch geprüft: Apples AuthKey-Datei in den Ordner `push` neben der Konfiguration legen; passende IDs werden übernommen, soweit eindeutig verfügbar. Details und Voraussetzungen: [RELEASE-2.4.md](RELEASE-2.4.md).
+Unter **Wir → Push, Wecker & Hintergrund prüfen** Profil, tatsächliches APNs-Topic und Serverantworten prüfen. Bei wichtigen Weckrufen im Voraus planen und die Bestätigung „Auf dem iPhone eingeplant“ abwarten. Hintergrundpushes sind durch iOS nicht garantiert. Eine fremde Bundle-ID übernimmt keine Rechte eines anderen Apple-Teams. Walkie-Talkie wird in 3.0 nicht mehr angeboten.

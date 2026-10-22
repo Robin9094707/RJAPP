@@ -47,6 +47,7 @@ struct LoveHubView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink { PlannerView() } label: { Image(systemName:"calendar.badge.clock") }
+                    .accessibilityLabel("Gemeinsame Planung")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink { TogetherView() } label: { Image(systemName: "tray.full") }

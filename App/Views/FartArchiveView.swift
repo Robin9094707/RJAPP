@@ -20,6 +20,7 @@ struct FartStudioView: View {
     @State private var dates: [String: Date] = [:]
     @State private var calendarDate = Date.now
     @State private var selectedDay: Date?
+    @State private var yearMode = false
     private var cal: Calendar { Calendar.autoupdatingCurrent }
     private func date(_ clip: FartClip) -> Date { dates[clip.id] ?? clip.date ?? .distantPast }
     private var clips: [FartClip] {
@@ -32,7 +33,7 @@ struct FartStudioView: View {
             if useDates && (day < cal.startOfDay(for: from) || day > cal.startOfDay(for: until)) { return false }
             if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let author = clip.ownerID == app.me?.id ? app.me?.displayName : app.partner?.displayName
-                let haystack = [clip.title,clip.caption,clip.category,author ?? "",FartSituation(rawValue: clip.situation ?? "alltag")?.title ?? "",date(clip).formatted(date: .long, time: .shortened),clip.ratings.first?.comment ?? ""].joined(separator: " ")
+                let haystack = [clip.title,clip.caption,clip.category,author ?? "",FartSituation(rawValue: clip.situation ?? "alltag")?.title ?? "",date(clip).formatted(date: .long, time: .shortened),date(clip).formatted(date: .numeric, time: .omitted),clip.recordedAt ?? clip.createdAt,clip.ratings.first?.comment ?? ""].joined(separator: " ")
                 if !haystack.localizedStandardContains(query.trimmingCharacters(in: .whitespacesAndNewlines)) { return false }
             }
             return true
@@ -49,17 +50,23 @@ struct FartStudioView: View {
     private var calendarClips: [FartClip] {
         clips.filter { clip in
             if let selectedDay { return cal.isDate(date(clip), inSameDayAs: selectedDay) }
-            return cal.isDate(date(clip), equalTo: calendarDate, toGranularity: .month)
+            return cal.isDate(date(clip), equalTo: calendarDate, toGranularity: yearMode ? .year : .month)
         }
     }
     var body: some View {
         VStack(spacing: 0) {
+            VStack(spacing: 10) {
+                Picker("Duftstudio-Bereich", selection: $room) {
+                    ForEach(DuftRoom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented).accessibilityIdentifier("duft-room")
+                if room == .kalender {
+                    Picker("Kalenderansicht", selection: $yearMode) { Text("Monat").tag(false); Text("Jahr").tag(true) }
+                        .pickerStyle(.segmented).accessibilityIdentifier("duft-calendar-scale")
+                }
+            }.padding(.horizontal, 20).padding(.vertical, 10).background(.ultraThinMaterial)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
-                    hero
-                    Picker("Duftstudio-Bereich", selection: $room) {
-                        ForEach(DuftRoom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }.pickerStyle(.segmented).accessibilityIdentifier("duft-room")
+                    if room == .sammlung { hero }
                     filters
                     if app.loadingFartArchive { ProgressView("Euer vollständiges Archiv wird geladen …").font(.footnote) }
                     switch room {
@@ -67,9 +74,9 @@ struct FartStudioView: View {
                         if clips.isEmpty { empty }
                         else { ForEach(clips) { clip in FartClipCard(clip: clip) } }
                     case .kalender:
-                        FartCalendarPanel(clips: clips, date: $calendarDate, selectedDay: $selectedDay)
+                        FartCalendarPanel(clips: clips, date: $calendarDate, selectedDay: $selectedDay, yearMode: $yearMode)
                         HStack {
-                            Text((selectedDay ?? calendarDate).formatted(selectedDay == nil ? .dateTime.month(.wide).year() : .dateTime.day().month(.wide).year())).font(.headline)
+                            Text((selectedDay ?? calendarDate).formatted(selectedDay != nil ? .dateTime.day().month(.wide).year() : yearMode ? .dateTime.year() : .dateTime.month(.wide).year())).font(.headline)
                             Spacer()
                             Text("\(calendarClips.count)").font(.subheadline.bold()).foregroundStyle(LovePalette.violet)
                         }
@@ -81,7 +88,7 @@ struct FartStudioView: View {
                     }
                     Text("Euer privates Baucharchiv. Nur ihr zwei hört mit.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 10)
                 }.padding(20)
-            }.refreshable { _ = await app.syncNow(showErrors: true) }
+            }.accessibilityIdentifier("duft-archive-scroll").refreshable { _ = await app.syncNow(showErrors: true) }
             Button { app.openFartRecorder() } label: {
                 Label(app.studio.draft == nil ? "Neues Meisterwerk aufnehmen" : "Deinen Entwurf fortsetzen", systemImage: app.studio.draft == nil ? "mic.fill" : "waveform").frame(maxWidth: .infinity)
             }.buttonStyle(.borderedProminent).controlSize(.large).tint(LovePalette.violet)
@@ -101,6 +108,7 @@ struct FartStudioView: View {
             }
             .onChange(of: app.farts, initial: true) { _, value in dates = Dictionary(uniqueKeysWithValues: value.compactMap { clip in clip.date.map { (clip.id,$0) } }) }
             .onDisappear { app.fartArchiveVisible = false; app.studio.stopPlayback() }
+            .onChange(of: yearMode) { _, _ in selectedDay = nil }
             .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: room)
     }
     private var hero: some View {
@@ -159,13 +167,12 @@ struct FartCalendarPanel: View {
     let clips: [FartClip]
     @Binding var date: Date
     @Binding var selectedDay: Date?
-    @State private var yearMode = false
+    @Binding var yearMode: Bool
     private var cal: Calendar { Calendar.autoupdatingCurrent }
     private var first: Date { cal.date(from: cal.dateComponents([.year,.month], from: date))! }
     private var counts: [Date: Int] { Dictionary(grouping: clips.compactMap(\.date), by: { cal.startOfDay(for: $0) }).mapValues(\.count) }
     var body: some View {
         VStack(spacing: 16) {
-            Picker("Kalenderansicht", selection: $yearMode) { Text("Monat").tag(false); Text("Jahr").tag(true) }.pickerStyle(.segmented).accessibilityIdentifier("duft-calendar-scale")
             HStack {
                 Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 40, height: 40) }.accessibilityLabel(yearMode ? "Vorheriges Jahr" : "Vorheriger Monat")
                 Spacer(minLength: 0)

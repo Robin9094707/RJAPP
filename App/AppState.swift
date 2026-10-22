@@ -294,7 +294,7 @@ final class AppState {
         #endif
         loadingFartArchive = true; defer { loadingFartArchive = false }
         do { farts = try await api.loadFartArchive() }
-        catch { if !(error is CancellationError) { alert = AppAlert(title: "Archiv konnte nicht geladen werden", message: error.localizedDescription) } }
+        catch { if !Task.isCancelled && !(error is CancellationError) { alert = AppAlert(title: "Archiv konnte nicht geladen werden", message: error.localizedDescription) } }
     }
     private func receiveFart(_ clip: FartClip) {
         farts.removeAll { $0.id == clip.id }; farts.insert(clip, at: 0)

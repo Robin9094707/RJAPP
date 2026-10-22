@@ -7,20 +7,23 @@ final class DuftArchiveFlowTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["duft-archive-title"].waitForExistence(timeout: 15))
         let calendar = app.segmentedControls["duft-room"].buttons["Kalender"]
-        for _ in 0..<4 where !calendar.isHittable { app.swipeUp() }
         XCTAssertTrue(calendar.isHittable)
         calendar.tap()
         let heading = app.staticTexts["duft-calendar-heading"]
         XCTAssertTrue(heading.waitForExistence(timeout: 8))
         let year = app.segmentedControls["duft-calendar-scale"].buttons["Jahr"]
-        for _ in 0..<3 where !year.isHittable { app.swipeUp() }
+        XCTAssertTrue(year.isHittable, "Calendar scale remains fixed above the scrolling archive")
         year.tap()
         XCTAssertTrue(heading.label.contains(String(Calendar.current.component(.year,from: .now))))
         let today = app.buttons["Heute anzeigen"]
-        for _ in 0..<4 where !today.isHittable { app.swipeUp() }
+        let scroll = app.scrollViews["duft-archive-scroll"]
+        for _ in 0..<8 where !today.isHittable {
+            scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5,dy: 0.75)).press(forDuration: 0.05, thenDragTo: scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5,dy: 0.35)))
+        }
+        XCTAssertTrue(today.isHittable)
         today.tap()
         let map = app.segmentedControls["duft-room"].buttons["Karte"]
-        for _ in 0..<5 where !map.isHittable { app.swipeDown() }
+        XCTAssertTrue(map.isHittable, "Rooms remain reachable after scrolling the calendar")
         map.tap()
         XCTAssertTrue(app.staticTexts["duft-map-title"].waitForExistence(timeout: 8))
         let collection = app.segmentedControls["duft-room"].buttons["Sammlung"]

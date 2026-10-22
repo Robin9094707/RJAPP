@@ -60,8 +60,10 @@ struct MediaComposer:View {
     @State private var albumID=""
     @State private var saving=false
     @State private var assets:[String]?
+    @State private var saved=false
     var body:some View {NavigationStack{Form{
         if let data=media.poster,let image=UIImage(data:data){Image(uiImage:image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius:20))}
+        if saved{Text("Moment geteilt").accessibilityIdentifier("media-upload-complete")}
         Label(media.kind=="live" ? "Live Photo · Bild und Bewegung":media.kind=="video" ? "Video":"Foto",systemImage:media.kind=="video" ? "video.fill":"photo.fill")
         TextField("Ein paar Worte dazu",text:$caption,axis:.vertical)
         if kind == .moment {DatePicker("Aufgenommen am",selection:$capturedAt);Picker("Album",selection:$albumID){Text("Alle Momente").tag("");ForEach(app.records.filter{$0.kind == .album}){Text($0.payload.title ?? "Album").tag($0.id)}}}
@@ -77,7 +79,7 @@ struct MediaComposer:View {
             if assets==nil{assets=try await MediaTransfer.shared.upload(media,api:app.api)}
             var payload=RecordPayload();payload.assetIDs=assets;payload.mediaKind=media.kind;payload.posterBase64=media.poster?.base64EncodedString()
             if kind == .moment{payload.caption=caption;payload.capturedAt=capturedAt.rjISO8601;payload.albumID=albumID.isEmpty ? nil:albumID;payload.comments=[];payload.reactions=[]}else{payload.text=caption}
-            if await app.saveRecord(kind:kind,payload:payload) != nil{dismiss()}
+            if await app.saveRecord(kind:kind,payload:payload) != nil{saved=true;dismiss()}
         }catch{app.alert=AppAlert(title:"Upload fehlgeschlagen",message:error.localizedDescription)}
     }
 }
@@ -146,6 +148,7 @@ struct VoiceComposerView:View {
         if saving{ProgressView(value:MediaTransfer.shared.progress)}
         Button("Süße Nachricht senden",systemImage:"heart.fill"){Task{await send()}}.buttonStyle(.borderedProminent).controlSize(.large).disabled(voice.recording || voice.file==nil || voice.duration<0.2 || saving)
     }.padding(24)}.background(LoveBackground()).navigationTitle("Eine Stimme für dich").toolbar{ToolbarItem(placement:.cancellationAction){Button("Schließen"){dismiss()}.disabled(saving)}}.onDisappear{voice.stop()}}
+    }
     private func send() async {guard let file=voice.file else{return};saving=true;defer{saving=false};voice.stop();do{if asset==nil{asset=try await MediaTransfer.shared.upload(SelectedMedia(files:[file],mimeTypes:["audio/mp4"],kind:"audio",capturedAt:.now,poster:nil),api:app.api).first};var payload=RecordPayload(text:text);payload.assetIDs=asset.map{[$0]};payload.mediaKind="audio";payload.autoplay=sweet;payload.urgency=urgency;if await app.saveRecord(kind:.chat,payload:payload) != nil{dismiss()}}catch{app.alert=AppAlert(title:"Sprachnachricht",message:error.localizedDescription)}}
 }
 struct SweetPlaybackView:View {

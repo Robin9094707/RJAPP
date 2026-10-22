@@ -72,6 +72,7 @@ enum WidgetSharedStore {
     static func pendingThoughts()->Int {withQueue{$0.count}}
     static func pendingThoughtsToday()->Int {withQueue{$0.filter{$0.occurredAt?.rjDate.map{Calendar.current.isDateInToday($0)} ?? true}.count}}
     static func nextPendingThought()->PendingThought? {withQueue{$0.first}}
+    static func consumePendingThought(id:String)->Bool {withQueue{queue in guard let index=queue.firstIndex(where:{$0.id==id}) else{return false};queue.remove(at:index);return true}}
     static func consumeOnePendingThought()->Bool {withQueue{queue in guard !queue.isEmpty else{return false};queue.removeFirst();return true}}
     static func clearPendingThoughts(){withQueue{$0.removeAll()};defaults.removeObject(forKey:pendingThoughtsKey);defaults.removeObject(forKey:pendingThoughtsDayKey)}
 

@@ -14,11 +14,11 @@ final class InstantCamera:NSObject,ObservableObject,AVCapturePhotoCaptureDelegat
         queue.async{
             do {
                 if self.session.inputs.isEmpty {
-                    self.session.beginConfiguration();self.session.sessionPreset = .photo
+                    self.session.beginConfiguration();defer{self.session.commitConfiguration()};self.session.sessionPreset = .photo
                     guard let camera=AVCaptureDevice.default(.builtInWideAngleCamera,for:.video,position:.front) else{throw MediaError.unreadable}
                     let input=try AVCaptureDeviceInput(device:camera)
                     guard self.session.canAddInput(input),self.session.canAddOutput(self.output) else{throw MediaError.unreadable}
-                    self.session.addInput(input);self.session.addOutput(self.output);self.session.commitConfiguration()
+                    self.session.addInput(input);self.session.addOutput(self.output)
                 }
                 self.session.startRunning();DispatchQueue.main.async{self.running=self.session.isRunning}
             }catch{DispatchQueue.main.async{self.error=error.localizedDescription}}

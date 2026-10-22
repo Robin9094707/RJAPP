@@ -320,6 +320,10 @@ struct LoginResponse: Codable, Sendable {
 struct ThoughtResponse: Codable, Sendable {
     let day: String
     let count: Int
+    var id:String? = nil
+    var occurredAt:String? = nil
+    var receivedAt:String? = nil
+    enum CodingKeys:String,CodingKey {case day,count,id;case occurredAt="occurred_at",receivedAt="received_at"}
 }
 
 struct CreatedCommandResponse: Codable, Sendable {

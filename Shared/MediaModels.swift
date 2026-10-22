@@ -1,5 +1,5 @@
 import Foundation
-struct ThoughtEvent: Codable, Identifiable, Sendable {
+struct ThoughtEvent: Codable, Identifiable, Sendable,Hashable {
     let id: String
     let userID: String
     let occurredAt: String?

@@ -17,6 +17,7 @@ struct AppUpdateView:View {
         if let release{Text("Auf eurem Server: \(release.version) (\(release.build))").font(.title3.bold());Text(RJVersion.older(RJVersion.app,than:release.version) ? "Ein neues Update wartet auf euch.":"Du hast diese Version oder eine neuere.").foregroundStyle(.secondary)}else{Text("Noch keine IPA auf eurem Server freigegeben.").foregroundStyle(.secondary)}
         Button("Neue RJ-Love-IPA hochladen",systemImage:"square.and.arrow.up"){importing=true}.buttonStyle(.borderedProminent).disabled(uploading)
         if uploading{ProgressView(value:MediaTransfer.shared.progress);Text("Upload \(Int(MediaTransfer.shared.progress*100)) %").font(.caption)}
+        if release != nil {Button("IPA laden & in Feather öffnen",systemImage:"square.and.arrow.down"){Task{do{sharedFile=try await app.api.latestIPA();share=true}catch{self.error=error.localizedDescription}}}.buttonStyle(.bordered)}
         Button("Private Feather-Quelle erstellen",systemImage:"link"){Task{do{let token=try await app.api.updateFeedToken(baseURL:app.profile?.baseURL ?? "");if let base=app.profile?.baseURL{feedURL=URL(string:base+"/updates/"+token+"/source.json")}}catch{self.error=error.localizedDescription}}}.buttonStyle(.bordered)
         if let feedURL{Text(feedURL.absoluteString).font(.caption.monospaced()).textSelection(.enabled);Button("Quelladresse kopieren"){UIPasteboard.general.url=feedURL};ShareLink(item:feedURL){Label("Quelle teilen",systemImage:"square.and.arrow.up")}}
         Text("In Feather unter Quellen die kopierte Adresse hinzufügen. Neue hochgeladene IPAs erscheinen in dieser privaten Quelle und werden dort mit eurem Zertifikat signiert und installiert. Eine neue Quelladresse widerruft die vorherige Adresse dieses Kontos.").font(.subheadline)
@@ -24,6 +25,7 @@ struct AppUpdateView:View {
         Text("Eine App kann ihr eigenes signiertes Programm nicht selbst ersetzen. Feather übernimmt den Installationsschritt; Haupt-App und Widget gemeinsam signieren.").font(.footnote).foregroundStyle(.secondary)
         if let error{Text(error).foregroundStyle(.orange)}
     }.padding(24)}.background(LoveBackground()).navigationTitle("App & Feather").task{do{release=try await app.api.latestRelease()}catch{self.error=error.localizedDescription}}
+        .sheet(isPresented:$share,onDismiss:{if let sharedFile{try? FileManager.default.removeItem(at:sharedFile)};sharedFile=nil}){if let sharedFile{FileShareView(urls:[sharedFile])}}
         .fileImporter(isPresented:$importing,allowedContentTypes:[UTType(filenameExtension:"ipa") ?? .data]){result in switch result{case .success(let url):Task{await upload(url)};case .failure(let error):self.error=error.localizedDescription}}
     }
     private func upload(_ url:URL) async {

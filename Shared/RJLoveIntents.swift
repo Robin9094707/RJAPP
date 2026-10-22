@@ -31,7 +31,9 @@ struct RJLoveShortcuts: AppShortcutsProvider {
 struct EmergencyFartIntent: AppIntent {
     static var title: LocalizedStringResource = "Notfallfurz aufnehmen"
     static var openAppWhenRun = true
-    func perform() async throws -> some IntentResult & OpensIntent {
-        .result(opensIntent:OpenURLIntent(URL(string:"rjlove://record-fart")!))
+    @MainActor func perform() async throws -> some IntentResult {
+        WidgetSharedStore.defaults.set(true,forKey:"rjlove.quick-fart-requested")
+        NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
+        return .result()
     }
 }

@@ -1375,7 +1375,19 @@ class RJLoveApplication:
             },
         }
 
+    def cleanup_assets(self):
+        cutoff=(utc_now()-dt.timedelta(hours=24)).isoformat().replace("+00:00","Z")
+        import shutil
+        with self.media_lock,self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for row in db.execute("SELECT * FROM assets WHERE created_at<?",(cutoff,)).fetchall():
+                referenced=db.execute("SELECT 1 FROM records,json_each(json_extract(payload,'$.asset_ids')) AS a WHERE deleted_at IS NULL AND a.value=? LIMIT 1",(row["id"],)).fetchone()
+                if not referenced and not db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(row["id"],)).fetchone():
+                    shutil.rmtree(self.media_path(row["path"]).parent,ignore_errors=True)
+                    db.execute("DELETE FROM assets WHERE id=?",(row["id"],))
+
     def cleanup(self) -> None:
+        self.cleanup_assets()
         now = utc_now()
         old_events = now - dt.timedelta(days=30)
         old_commands = now - dt.timedelta(days=14)
@@ -1711,6 +1723,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.send_json(200,{"records":[self._record_dict(r) for r in rows]});return True
         if len(parts)==3 and parts[:2]==["v1","assets"]:
             user_id=self.current_user();self._asset_bytes(parts[2],user_id=user_id);return True
+        if path=="/v1/app-release/ipa":
+            self.current_user()
+            with self.app.database.connect() as db:row=db.execute("SELECT asset_id FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
+            if not row:raise APIError(404,"no_release","Keine IPA veröffentlicht.")
+            self._asset_bytes(row["asset_id"],public=True);return True
         if path=="/v1/app-release":
             self.current_user()
             with self.app.database.connect() as db: row=db.execute("SELECT id,version,build,created_at FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
@@ -1997,7 +2014,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         day=when.astimezone(self.app.timezone).date().isoformat()
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            old=db.execute("SELECT user_id FROM thought_events WHERE id=?",(event_id,)).fetchone()
+            old=db.execute("SELECT * FROM thought_events WHERE id=?",(event_id,)).fetchone()
             if old and old["user_id"]!=user_id: raise APIError(409,"id_conflict","Herz-ID bereits vergeben.")
             if not old:
                 db.execute("INSERT INTO thought_events VALUES(?,?,?,?)",(event_id,user_id,stamp,now))
@@ -2007,7 +2024,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if not old:
             sender=self.app.user_by_id(user_id) or {"display_name":"Schatzi"}
             self.app.broadcast_event(user_id,"thought",f"{sender['display_name']} denkt an dich 💗",f"Heute schon {count}×.",{"count":count,"day":day})
-        self.send_json(200,{"day":day,"count":count})
+        self.send_json(200,{"day":day,"count":count,"id":event_id,"occurred_at":stamp,"received_at":old["received_at"] if old else now})
 
     def _upsert_record(self, user_id: str) -> None:
         body = self.read_json()

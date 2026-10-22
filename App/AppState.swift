@@ -117,6 +117,7 @@ final class AppState {
         #endif
         guard UIApplication.shared.applicationState == .active, !activating else { return }
         activating = true; defer { activating = false }
+        acceptQuickCaptureRequest()
         if phase == .authenticated { try? await api.recordAppOpen() }
         if health.sharingEnabled { await health.refresh(force:true); lastHealthRefresh = .now }
 
@@ -127,6 +128,7 @@ final class AppState {
         guard !isActivated else {
             startPolling()
             await syncNow(showErrors: false)
+            offerForegroundMoments()
             return
         }
         isActivated = true
@@ -147,6 +149,7 @@ final class AppState {
         startPolling()
         await scheduleSharedReminders()
         await syncNow(showErrors: false)
+        offerForegroundMoments()
     }
 
     func deactivateForeground() {
@@ -191,6 +194,7 @@ final class AppState {
             connectionMessage = "Verbunden"
             DebugLogger.shared.log("Anmeldung erfolgreich", category: "Server")
             await syncNow(showErrors: true)
+            offerForegroundMoments()
             if let token = UserDefaults.standard.string(forKey: NotificationCoordinator.deviceTokenKey) { await registerDeviceToken(token) }
             startPolling()
         } catch {
@@ -264,8 +268,7 @@ final class AppState {
             if health.sharingEnabled, Date.now.timeIntervalSince(lastHealthRefresh)>60 { await health.refresh(); lastHealthRefresh = .now }
             queuePresenceUpload(force: true)
             await PlannerService.shared.reconcile(app: self)
-            if !setupJourney.presented, UserDefaults.standard.string(forKey:"rjlove.changelog-seen") != RJVersion.app { showingChangelog = true }
-            offerForegroundMoments()
+            if !setupJourney.presented, !showingFartRecorder, pendingSweet==nil,pendingPhotoRequest==nil,UserDefaults.standard.string(forKey:"rjlove.changelog-seen") != RJVersion.app { showingChangelog = true }
             return true
         } catch let issue as UpdateRequirement {
             connectionMessage = issue.localizedDescription
@@ -455,11 +458,12 @@ final class AppState {
 
     func didReadChangelog() {
         UserDefaults.standard.set(RJVersion.app,forKey:"rjlove.changelog-seen")
-        showingChangelog = false; offerForegroundMoments()
+        showingChangelog = false
     }
     func offerForegroundMoments() {
         guard UIApplication.shared.applicationState == .active, !showingChangelog, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
         let defaults = UserDefaults.standard
+        if defaults.string(forKey:"rjlove.changelog-seen") != RJVersion.app {showingChangelog=true;return}
         if defaults.object(forKey:"rjlove.sweet-autoplay") == nil || defaults.bool(forKey:"rjlove.sweet-autoplay") {
             pendingSweet = records.filter { $0.kind == .chat && $0.ownerID != me?.id && $0.payload.autoplay == true }.sorted { $0.createdAt < $1.createdAt }.first { record in !openedRecords.contains { $0.recordID == record.id && $0.userID == me?.id } && !defaults.bool(forKey:"rjlove.opened."+record.id) }
         }
@@ -517,7 +521,15 @@ final class AppState {
         connectionMessage = lastSync == nil ? "Gespeicherte Sitzung" : "Offline-Daten geladen · synchronisiere …"
     }
 
+    func acceptQuickCaptureRequest(){
+        if phase == .authenticated,WidgetSharedStore.defaults.bool(forKey:"rjlove.quick-fart-requested") {
+            WidgetSharedStore.defaults.set(false,forKey:"rjlove.quick-fart-requested")
+            handleDeepLink(URL(string:"rjlove://record-fart")!)
+        }
+    }
     private func observeSystemEvents() {
+        notificationTasks.append(Task{[weak self] in for await _ in NotificationCenter.default.notifications(named:Notification.Name("rjEmergencyFartRequested")){self?.acceptQuickCaptureRequest()}})
+
         notificationTasks.append(Task { [weak self] in
             for await notification in NotificationCenter.default.notifications(named: .rjDeviceTokenReceived) {
                 guard let token = notification.object as? String else { continue }
@@ -562,10 +574,11 @@ final class AppState {
         var sent = 0
         while WidgetSharedStore.pendingThoughts() > 0, sent < 20 {
             do {
-                let pending = WidgetSharedStore.nextPendingThought()
-                let response = try await api.sendThought(id:pending?.id ?? UUID().uuidString, occurredAt:pending?.occurredAt)
-                if response.day == serverLocalDay, let myID = me?.id { thoughts[myID] = response.count }
-                _ = WidgetSharedStore.consumeOnePendingThought()
+                guard let pending = WidgetSharedStore.nextPendingThought() else{break}
+                let response = try await api.sendThought(id:pending.id, occurredAt:pending.occurredAt)
+                if response.day == serverLocalDay, let myID = me?.id { thoughts[myID] = max(thoughts[myID] ?? 0,response.count) }
+                if let id=response.id,let received=response.receivedAt,!thoughtHistory.contains(where:{$0.id==id}) {thoughtHistory.insert(ThoughtEvent(id:id,userID:me?.id ?? "",occurredAt:response.occurredAt,receivedAt:received),at:0)}
+                _ = WidgetSharedStore.consumePendingThought(id:pending.id)
                 sent += 1
             } catch {
                 break
@@ -717,7 +730,7 @@ extension AppState {
             Task { try? await api.checkCompatibility() }
         }
         if ProcessInfo.processInfo.arguments.contains("--preview-draft") { studio.preparePreviewDraft() }
-        if ProcessInfo.processInfo.arguments.contains("--ui-test-server") { api.configure(baseURL: URL(string: "http://127.0.0.1:8787")!, token: "ui-test-token") }
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-server") { profile=ServerProfile(baseURL:"http://127.0.0.1:8787",username:"robin");api.configure(baseURL: URL(string: "http://127.0.0.1:8787")!, token: "ui-test-token") }
         phase = .authenticated
         me = UserProfile(id: "robin", displayName: "Robin", accent: "cyan", storageLimitMB: 0)
         var presence = PresencePayload()

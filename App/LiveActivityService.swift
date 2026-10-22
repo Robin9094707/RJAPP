@@ -75,12 +75,12 @@ final class LiveActivityService {
     }
 
     func stop() async {
-        tokenTasks.forEach { $0.cancel() }; tokenTasks = []
-        for activity in Activity<ConnectionActivityAttributes>.activities {
-            await onPushToken?(activity.id, "")
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
-        isRunning = false
+        tokenTasks.forEach { $0.cancel() }; tokenTasks=[]
+        let activities=Activity<ConnectionActivityAttributes>.activities
+        isRunning=false
+        for activity in activities {await activity.end(nil,dismissalPolicy:.immediate)}
+        for activity in Activity<FartRecordingAttributes>.activities {await activity.end(nil,dismissalPolicy:.immediate)}
+        for activity in activities {await onPushToken?(activity.id,"")}
     }
 }
 

@@ -109,6 +109,13 @@ extension APIClient {
         struct Response:Decodable {let release:AppRelease?}
         return try await execute(try request(path:"/v1/app-release",method:"POST",body:encoder.encode(["asset_id":assetID])),as:Response.self).release
     }
+    func latestIPA() async throws -> URL {
+        let config=URLSessionConfiguration.default;config.timeoutIntervalForResource=900
+        let transfer=URLSession(configuration:config);defer{transfer.finishTasksAndInvalidate()}
+        let (file,response)=try await transfer.download(for:request(path:"/v1/app-release/ipa",method:"GET"))
+        guard let http=response as? HTTPURLResponse,http.statusCode==200 else{throw APIClientError.transport("Update konnte nicht geladen werden.")}
+        let result=FileManager.default.temporaryDirectory.appendingPathComponent("RJ-Love-"+UUID().uuidString+".ipa");try FileManager.default.moveItem(at:file,to:result);return result
+    }
     func latestRelease() async throws -> AppRelease? {
         struct Response:Decodable {let release:AppRelease?}
         return try await execute(try request(path:"/v1/app-release",method:"GET"),as:Response.self).release

@@ -39,6 +39,7 @@ struct FartImportView:View {
         if date > .now{date = .now}
         do{audio=try await ImportedFartAudio.prepare(source)}catch{self.error=error.localizedDescription}
     }.onDisappear{app.studio.stopPlayback();if let audio{try? FileManager.default.removeItem(at:audio.url)}}}
+    }
     private func save() async {guard let audio,let user=app.me?.id else{return};saving=true;defer{saving=false};do{let data=try Data(contentsOf:audio.url);let id=UUID().uuidString;let clip:FartClip
         if localOnly{clip=FartClip(id:id,ownerID:user,title:title.isEmpty ? "Ein Klassiker":title,caption:caption,category:category.rawValue,duration:audio.duration,waveform:audio.waveform,sizeBytes:data.count,createdAt:Date.now.rjISO8601,ratings:[],reactions:[],recordedAt:date.rjISO8601)}else{clip=try await app.api.uploadFart(FartUpload(id:id,title:title.isEmpty ? "Ein Klassiker":title,caption:caption,category:category.rawValue,duration:audio.duration,waveform:audio.waveform,recordedAt:date.rjISO8601,location:nil,situation:"alltag",audioBase64:data.base64EncodedString()))}
         try LocalFartStore.shared.saveImported(clip,data:data)

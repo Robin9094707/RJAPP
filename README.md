@@ -1,8 +1,12 @@
-# RJ Love 2.4 — Robin & Raphaela
+# RJ Love 3.0 — Robin & Raphaela
 
-Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.4.0 (240)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
+Ein privater, nativer iOS-Raum für zwei Menschen. Version **3.0.0 (300)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
 
 Die neue Wir-Seite verbindet warme Rosé-Farben, ruhige Typografie, native Liquid-Glass-Flächen und einen interaktiven Herzgedanken. Dazu kommen privater Chat mit Tagesfrage, Wunschliste, besondere Tage mit Countdown, Gefühle, Karte, Nahbereichssuche, gemeinsame Notizen, Termine, Erinnerungen und Fotomomente.
+
+## Neu in 3.0
+
+Messenger mit Medien und süßen Sprachnachrichten, Momente mit Video/Live Photos und Alben, lokales Duftarchiv mit Import, Playlist und Soundarten, gemeinsame Jahresplanung mit Apple Erinnerungen, exakte Herzchronik, UWB-Pfeil und private Feather-Updatequelle. Walkie-Talkie und eigene Face-ID-Sperre sind entfernt. **Update und Funktionsgrenzen: [RELEASE-3.0.md](RELEASE-3.0.md).**
 
 ## Direkt loslegen
 

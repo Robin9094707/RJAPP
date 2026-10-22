@@ -23,16 +23,10 @@ struct HomeView: View {
                 NavigationLink { DeliveryCenterView() } label: {
                     Label("Push, Wecker & Hintergrund prüfen", systemImage: "checkmark.shield.fill").font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .leading).padding(17).loveGlass(in: RoundedRectangle(cornerRadius: 22))
                 }.buttonStyle(.plain)
-                Button { appState.showingRadio = true } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "antenna.radiowaves.left.and.right").font(.title2).foregroundStyle(LovePalette.violet)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Deine Stimme. Ganz nah.").font(.headline)
-                            Text(appState.radio.enabled ? appState.radio.status : "Walkie-Talkie öffnen").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer(); Image(systemName: "chevron.right").font(.caption.bold())
-                    }.loveCard()
-                }.buttonStyle(.plain)
+                NavigationLink { MessengerView() } label: { Label("Deine Stimme. Ganz nah.",systemImage:"waveform.bubble.fill").font(.headline).frame(maxWidth:.infinity,alignment:.leading).padding(18).loveGlass(in:RoundedRectangle(cornerRadius:24)) }.buttonStyle(.plain)
+                NavigationLink { ThoughtHistoryView() } label: { Label("Jeder kleine Herzgedanke",systemImage:"heart.text.square.fill").font(.headline).frame(maxWidth:.infinity,alignment:.leading).padding(18).loveGlass(in:RoundedRectangle(cornerRadius:24)) }.buttonStyle(.plain)
+                NavigationLink { PlannerView() } label: {Label("Unsere Termine & Jahrestage",systemImage:"calendar.badge.clock")}
+                NavigationLink { InstantGalleryView() } label: {Label("Ein Foto nur für dich",systemImage:"camera.fill")}
                 quickActions
                 HStack(spacing: 12) {
                     action("Duftpost", "Euer privates Furzstudio", "wind", LovePalette.violet) { appState.selectedTab = .moments; appState.experienceSection = .farts }

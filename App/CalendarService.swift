@@ -6,7 +6,7 @@ final class CalendarService: ObservableObject {
     static let shared = CalendarService()
 
     @Published private(set) var authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-    private let store = EKEventStore()
+    let store = EKEventStore()
 
     private init() {}
 
@@ -21,6 +21,10 @@ final class CalendarService: ObservableObject {
         }
     }
 
+    func requestReminderAccess() async -> Bool {
+        do { return try await store.requestFullAccessToReminders() }
+        catch { return false }
+    }
     func addToCalendar(_ record: SharedRecord) async throws {
         guard record.kind == .calendar,
               let start = record.payload.startAt?.rjDate,

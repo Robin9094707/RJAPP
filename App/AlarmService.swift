@@ -42,6 +42,7 @@ final class AlarmService {
 
     func schedule(reminder: SharedRecord, senderName: String) async throws {
         guard reminder.kind == .reminder, let id = UUID(uuidString: reminder.id) else { return }
+        if reminder.payload.recurrence == "yearly" { cancel(id:reminder.id); return }
         guard reminder.payload.alarmEnabled ?? false,
               reminder.payload.completed != true,
               let due = reminder.payload.dueAt?.rjDate,

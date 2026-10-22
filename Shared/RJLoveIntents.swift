@@ -27,3 +27,11 @@ struct RJLoveShortcuts: AppShortcutsProvider {
         )
     }
 }
+
+struct EmergencyFartIntent: AppIntent {
+    static var title: LocalizedStringResource = "Notfallfurz aufnehmen"
+    static var openAppWhenRun = true
+    func perform() async throws -> some IntentResult & OpensIntent {
+        .result(opensIntent:OpenURLIntent(URL(string:"rjlove://record-fart")!))
+    }
+}

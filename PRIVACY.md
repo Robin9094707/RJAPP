@@ -1,4 +1,14 @@
-# Datenschutz — RJ Love 2.4
+# Aktuelle Änderungen 3.0
+
+Walkie-Talkie, Push-to-Talk und die eigene Face-ID-Sperre sind entfernt. Süße Sprachnachrichten werden beim Öffnen auf Wunsch mit der eingestellten Medienlautstärke abgespielt; die automatische Wiedergabe ist zunächst eingeschaltet und abschaltbar. App-Öffnung und erste Nachrichtenöffnung werden gespeichert. Fotowünsche sind zunächst eingeschaltet und abschaltbar; die Kamera ist sichtbar, benötigt iOS-Zustimmung und zählt vor der Aufnahme abbrechbar herunter. Keine Hintergrundkamera. Das aufgenommene Foto wird automatisch geteilt und lässt sich vom Aufnehmenden zurückrufen.
+
+Neue Furze teilen einen verfügbaren frischen Aufnahmeort standardmäßig. Der Aufnahmeort-Schalter ist abschaltbar; fehlende Systemfreigaben werden nicht umgangen. Lokale Kopien von Furzen bleiben unabhängig von späteren Serverlöschungen erhalten. Fotos, Videos und Live-Photo-Bestandteile liegen als authentifiziert abrufbare Dateien auf dem eigenen Server; Backups enthalten diese Dateien. Kein Cloud-Analyse- oder Transkriptionsdienst und keine Ende-zu-Ende-Verschlüsselung.
+
+Nur verknüpfte RJ-Love-Termine und Aufgaben werden mit Apple Kalender/Erinnerungen abgeglichen. Exakte Herzzeitpunkte werden ab 3.0 gespeichert; alte Tageszähler werden nicht in erfundene Einzelereignisse umgewandelt. Private Feather-Quelladressen erlauben ausschließlich Abruf der freigegebenen App-IPA und ihres Icons; bei Bedarf neu erzeugen und dadurch widerrufen.
+
+Die nachfolgenden Abschnitte beschreiben die bisherigen Datenformate und Aufbewahrung. Angaben zu Walkie-Talkie und eigener App-Sperre gelten ausschließlich für Versionen bis 2.4; sie sind in 3.0 entfernt.
+
+# Datenschutz — RJ Love 3.0
 
 RJ Love ist für Robin und Raphaela vorgesehen. Kein Tracking-SDK, keine Werbung und keine Analyseplattform. Inhalte sind nicht Ende-zu-Ende-verschlüsselt; der Betreiber eures eigenen Servers kann sie lesen. HTTPS schützt die Übertragung.
 

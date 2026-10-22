@@ -31,9 +31,9 @@ private struct CompatibilityErrorEnvelope: Decodable {
 }
 
 final class APIClient: @unchecked Sendable {
-    private let session: URLSession
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    let session: URLSession
+    let encoder = JSONEncoder()
+    let decoder = JSONDecoder()
     private let lock = NSLock()
     private var _baseURL: URL?
     private var _token: String?
@@ -66,7 +66,7 @@ final class APIClient: @unchecked Sendable {
         return (baseURL, _token)
     }
 
-    private func request(path: String, method: String, body: Data? = nil, authenticated: Bool = true) throws -> URLRequest {
+    func request(path: String, method: String, body: Data? = nil, authenticated: Bool = true) throws -> URLRequest {
         let (base, token) = try snapshot()
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             throw APIClientError.invalidServerURL
@@ -89,7 +89,7 @@ final class APIClient: @unchecked Sendable {
         return request
     }
 
-    private func execute<T: Decodable>(_ request: URLRequest, as type: T.Type) async throws -> T {
+    func execute<T: Decodable>(_ request: URLRequest, as type: T.Type) async throws -> T {
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw APIClientError.invalidResponse }
@@ -202,8 +202,8 @@ final class APIClient: @unchecked Sendable {
         _ = try await execute(try request(path: "/v1/presence", method: "POST", body: data), as: UpdatedAtResponse.self)
     }
 
-    func sendThought() async throws -> ThoughtResponse {
-        try await execute(try request(path: "/v1/thoughts", method: "POST", body: Data("{}".utf8)), as: ThoughtResponse.self)
+    func sendThought(id: String = UUID().uuidString, occurredAt: String? = nil) async throws -> ThoughtResponse {
+        try await execute(try request(path: "/v1/thoughts", method: "POST", body: encoder.encode(["id":id,"occurred_at":occurredAt])), as: ThoughtResponse.self)
     }
 
     func upsertRecord(id: String = UUID().uuidString, kind: RecordKind, payload: RecordPayload) async throws -> SharedRecord {
@@ -333,24 +333,6 @@ final class APIClient: @unchecked Sendable {
         return data
     }
 
-    func radioJoin(token: String) async throws -> RadioJoin {
-        let environment = SigningProfile.current.pushEnvironment
-        return try await execute(try request(path: "/v1/radio/join", method: "POST", body: encoder.encode(["token": token, "environment": environment])), as: RadioJoin.self)
-    }
-    func radioFeed(after cursor: Int) async throws -> RadioFeed {
-        var value = try request(path: "/v1/radio/feed", method: "GET")
-        var components = URLComponents(url: value.url!, resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "after", value: String(cursor))]
-        value.url = components.url
-        return try await execute(value, as: RadioFeed.self)
-    }
-    func radioAction(_ action: String, transmissionID: String? = nil, chunkIndex: Int? = nil, audio: Data? = nil, text: String? = nil) async throws {
-        struct Body: Encodable {
-            var transmission_id: String?; var chunk_index: Int?; var audio_base64: String?; var text: String?
-        }
-        let body = Body(transmission_id: transmissionID, chunk_index: chunkIndex, audio_base64: audio?.base64EncodedString(), text: text)
-        _ = try await execute(try request(path: "/v1/radio/\(action)", method: "POST", body: encoder.encode(body)), as: EmptyResponse.self)
-    }
 
     func logout() async {
         guard let request = try? request(path: "/v1/auth/logout", method: "POST", body: Data("{}".utf8)) else { return }

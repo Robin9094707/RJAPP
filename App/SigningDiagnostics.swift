@@ -6,7 +6,6 @@ struct SigningProfile {
     let teamID: String?
     let applicationID: String?
     let environment: String?
-    let permitsPushToTalk: Bool?
     let development: Bool?
     let expires: Date?
     let found: Bool
@@ -17,14 +16,13 @@ struct SigningProfile {
               let bytes = try? Data(contentsOf: url),
               let start = bytes.range(of: Data("<plist".utf8)), let end = bytes.range(of: Data("</plist>".utf8)),
               let dictionary = (try? PropertyListSerialization.propertyList(from: bytes.subdata(in: start.lowerBound..<end.upperBound), format: nil)) as? [String: Any] else {
-            return SigningProfile(bundleID: id, teamID: nil, applicationID: nil, environment: nil, permitsPushToTalk: nil, development: nil, expires: nil, found: false)
+            return SigningProfile(bundleID: id, teamID: nil, applicationID: nil, environment: nil, development: nil, expires: nil, found: false)
         }
         let entitlements = dictionary["Entitlements"] as? [String: Any] ?? [:]
         return SigningProfile(bundleID: id,
             teamID: (dictionary["TeamIdentifier"] as? [String])?.first,
             applicationID: entitlements["application-identifier"] as? String,
             environment: entitlements["aps-environment"] as? String,
-            permitsPushToTalk: entitlements["com.apple.developer.push-to-talk"] as? Bool ?? false,
             development: entitlements["get-task-allow"] as? Bool,
             expires: dictionary["ExpirationDate"] as? Date, found: true)
     }
@@ -41,14 +39,7 @@ struct SigningProfile {
         guard found else { return "Kein auswertbares Profil eingebettet. Auf Simulator und unsigned IPA normal; auf dem iPhone Signatur prüfen." }
         return development == true ? "Developer-/JIT-Profil" : "Distribution-Profil"
     }
-    func pushToTalkError(_ error: Error) -> String {
-        let value = error as NSError
-        let detail = "\(value.domain) (\(value.code)): \(value.localizedDescription)"
-        if permitsPushToTalk == false {
-            return "Das installierte Profil erlaubt com.apple.developer.push-to-talk nicht. Die App kann diese Apple-Freigabe nicht selbst hinzufügen. In Feather das Distribution-Profil prüfen und bei ArcticSign gezielt Push to Talk für diese App-ID anfragen. System: " + detail
-        }
-        return "iOS hat den Systemkanal abgelehnt. Profil, aktive Telefonate und einen anderen aktiven Funkkanal prüfen. System: " + detail
-    }
+
 }
 
 @MainActor final class PushRegistrationStatus: ObservableObject {

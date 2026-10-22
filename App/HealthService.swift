@@ -64,10 +64,10 @@ final class HealthService: ObservableObject {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func refresh() async {
+    func refresh(force:Bool=false) async {
         guard requested, !refreshing, HKHealthStore.isHealthDataAvailable() else { return }
         // Health samples need not be re-read with every foreground sync.
-        if let lastUpdated, Date.now.timeIntervalSince(lastUpdated) < 60 { return }
+        if !force, let lastUpdated, Date.now.timeIntervalSince(lastUpdated) < 60 { return }
         refreshing = true
         defer { refreshing = false }
         do {

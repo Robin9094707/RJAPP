@@ -13,7 +13,6 @@ struct SettingsView: View {
     @ObservedObject private var notifications = NotificationCoordinator.shared
     @ObservedObject private var device = DeviceStatusService.shared
     @ObservedObject private var calendar = CalendarService.shared
-    @ObservedObject private var privacyLock = PrivacyLockService.shared
     @State private var logoutConfirmation = false
     @State private var microphone = AVAudioApplication.shared.recordPermission
 
@@ -21,12 +20,12 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
-            Section("Euer privater Raum · 2.4") {
+            Section("Euer privater Raum · 3.0") {
                 NavigationLink { DeliveryCenterView() } label: { Label("Push, Wecker & Hintergrund", systemImage: "checkmark.shield.fill") }
                 Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
-                NavigationLink { WalkieTalkieView() } label: { Label("Walkie-Talkie & Vorlesen", systemImage: "antenna.radiowaves.left.and.right") }
                 NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }
                 NavigationLink { HealthDashboardView() } label: { Label("Health & Freigaben", systemImage: "heart.text.square.fill") }
+                NavigationLink { AppUpdateView() } label: { Label("App aktualisieren · Feather",systemImage:"arrow.down.app.fill") }
                 NavigationLink { CapabilitiesView() } label: { Label("Funktionen & Signatur", systemImage: "checkmark.seal.fill") }
             }
 
@@ -135,26 +134,16 @@ struct SettingsView: View {
             }
 
             Section("Privatsphäre") {
-                Toggle("App mit Face ID / Gerätecode schützen", isOn: Binding(
-                    get: { privacyLock.isEnabled },
-                    set: { newValue in
-                        if newValue {
-                            Task {
-                                if !(await privacyLock.enableAfterAuthentication()) {
-                                    appState.alert = AppAlert(title: "App-Schutz", message: "Die Authentifizierung wurde nicht abgeschlossen.")
-                                }
-                            }
-                        } else {
-                            privacyLock.isEnabled = false
-                        }
-                    }
-                ))
+                Toggle("Süße Nachrichten beim Öffnen abspielen",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.sweet-autoplay") == nil || UserDefaults.standard.bool(forKey:"rjlove.sweet-autoplay")},set:{UserDefaults.standard.set($0,forKey:"rjlove.sweet-autoplay")}))
+                Toggle("Fotowünsche mit Kamera-Countdown",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.instant-enabled") == nil || UserDefaults.standard.bool(forKey:"rjlove.instant-enabled")},set:{UserDefaults.standard.set($0,forKey:"rjlove.instant-enabled")}))
+                Text("Die Kamera ist sichtbar und vor der Aufnahme abbrechbar. Die Medienlautstärke wird nicht automatisch verändert.").font(.footnote).foregroundStyle(.secondary)
                 Label("Passwort und Sitzungstoken liegen im iOS-Schlüsselbund. Bilder und gemeinsame Daten bleiben auf deinem eigenen Server.", systemImage: "lock.shield.fill")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
             Section("Speicher") {
+                StorageSummaryView()
                 LabeledContent("Von dir belegt", value: ByteCountFormatter.string(fromByteCount: Int64(appState.storageUsedBytes), countStyle: .file))
                 if let limit = appState.me?.storageLimitMB, limit > 0 {
                     ProgressView(value: Double(appState.storageUsedBytes), total: Double(limit * 1024 * 1024))

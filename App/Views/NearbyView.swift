@@ -20,10 +20,14 @@ struct NearbyView: View {
                     Text(String(format: "%.1f m", distance)).font(.system(size: 52, weight: .light, design: .rounded)).monospacedDigit()
                     Text("zu \(appState.partner?.displayName ?? "deinem Lieblingsmenschen")").foregroundStyle(.secondary)
                 }
+                if let elevation=appState.nearby.elevation,abs(elevation)>20 {Label(elevation>0 ? "Etwas höher suchen":"Etwas tiefer suchen",systemImage:elevation>0 ? "arrow.up":"arrow.down").font(.headline)}
+                if appState.nearby.running,appState.nearby.angle == nil {Text("Noch kein Richtungswert von iOS. Ein Pfeil erscheint erst bei einem echten Signal.").font(.caption).foregroundStyle(.secondary)}
                 Text(appState.nearby.message).multilineTextAlignment(.center).font(.headline).frame(minHeight: 60)
+                Toggle("Kamera-Unterstützung für den Richtungspfeil",isOn:Binding(get:{appState.nearby.cameraAssistance},set:{appState.nearby.cameraAssistance=$0})).disabled(appState.nearby.running)
+                Text("Optional: Die Kamera unterstützt die UWB-Messung. Es werden dabei keine Bilder gespeichert oder geteilt.").font(.caption).foregroundStyle(.secondary)
                 Button(appState.nearby.running ? "Suche beenden" : "Nahbereichssuche starten", systemImage: "dot.radiowaves.left.and.right") {
                     if appState.nearby.running { appState.nearby.stop(api: appState.api) }
-                    else { appState.nearby.start(api: appState.api) }
+                    else { Task {await appState.nearby.start(api: appState.api)} }
                 }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!appState.nearby.supported)
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Öffnet beide diese Ansicht und startet die Suche.", systemImage: "person.2.fill")

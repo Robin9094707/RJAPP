@@ -50,11 +50,11 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "2.4.0"
-MINIMUM_APP_VERSION = "2.4.0"
-PROTOCOL_VERSION = 4
+APP_VERSION = "3.0.0"
+MINIMUM_APP_VERSION = "3.0.0"
+PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
-ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude"}
+ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
 
 
@@ -370,6 +370,13 @@ class Database:
                     updated_at TEXT NOT NULL,
                     deleted_at TEXT
                 );
+                CREATE TABLE IF NOT EXISTS assets (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, filename TEXT NOT NULL, mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, path TEXT NOT NULL, ready INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS thought_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, occurred_at TEXT, received_at TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS thought_event_date ON thought_events(received_at);
+                CREATE TABLE IF NOT EXISTS opened_records (record_id TEXT NOT NULL,user_id TEXT NOT NULL,opened_at TEXT NOT NULL,PRIMARY KEY(record_id,user_id));
+                CREATE TABLE IF NOT EXISTS app_openings (user_id TEXT PRIMARY KEY,opened_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS app_releases (id TEXT PRIMARY KEY,asset_id TEXT NOT NULL,version TEXT NOT NULL,build TEXT NOT NULL,created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS update_feeds (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,base_url TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS records_visible ON records(kind, deleted_at, updated_at);
                 CREATE INDEX IF NOT EXISTS records_owner ON records(owner_id, deleted_at);
 
@@ -822,16 +829,17 @@ class RJLoveApplication:
     def validate_record_payload(self, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
         allowed_fields = {
             "note": {"title", "text"},
-            "reminder": {"title", "message", "due_at", "target_id", "alarm_enabled", "completed"},
-            "moment": {"caption", "image_base64", "mime_type", "comments", "reactions"},
+            "reminder": {"title", "message", "due_at", "target_id", "alarm_enabled", "completed", "recurrence", "reminder_sync"},
+            "moment": {"caption", "image_base64", "mime_type", "comments", "reactions", "asset_ids", "media_kind", "album_id", "captured_at", "poster_base64"},
             "geofence": {
                 "name", "latitude", "longitude", "radius", "target_id",
                 "notify_on_enter", "notify_on_exit",
             },
-            "calendar": {"title", "start_at", "end_at", "location", "notes"},
-            "chat": {"text"}, "wish": {"title", "text", "completed"},
+            "calendar": {"title", "start_at", "end_at", "location", "notes", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"},
+            "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id"}, "wish": {"title", "text", "completed"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
-            "milestone": {"title", "start_at", "text"}, "checkin": {"title", "text", "message"},
+            "milestone": {"title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
+            "album": {"title", "text"}, "instant": {"caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
         }[kind]
         unknown = set(payload) - allowed_fields
         if unknown:
@@ -866,7 +874,7 @@ class RJLoveApplication:
             clean["target_id"] = target
 
         if kind in {"chat", "wish", "milestone", "checkin", "coupon", "gratitude"}:
-            text_field("text", 4000, required=kind in {"chat", "gratitude"})
+            text_field("text", 4000, required=kind == "gratitude" or (kind == "chat" and not clean.get("asset_ids") and not clean.get("reference_id")))
             if kind != "chat":
                 text_field("title", 120, required=True)
             if kind in {"wish", "coupon"}:
@@ -879,6 +887,15 @@ class RJLoveApplication:
                 text_field("start_at", 80, required=True)
                 if parse_iso(clean.get("start_at")) is None:
                     raise APIError(400, "invalid_date", "Datum ungültig.")
+
+        elif kind in {"album", "photo_request", "instant"}:
+            if kind != "instant": text_field("title",120,required=True)
+            if kind == "album": text_field("text",4000)
+            if kind == "photo_request": target_field(); boolean_field("completed")
+            if kind == "instant":
+                text_field("caption",1000)
+                text_field("request_id",64)
+                if not clean.get("asset_ids"): raise APIError(400,"missing_photo","Ein Foto fehlt.")
 
         elif kind == "note":
             text_field("title", 120, required=True)
@@ -896,16 +913,16 @@ class RJLoveApplication:
 
         elif kind == "moment":
             text_field("caption", 1_000)
-            text_field("image_base64", int(self.config["server"].get("max_request_mb", 10)) * 1_500_000, required=True)
-            text_field("mime_type", 80, required=True)
-            if clean["mime_type"] not in {"image/jpeg", "image/png", "image/heic", "image/heif"}:
+            text_field("image_base64", int(self.config["server"].get("max_request_mb", 10)) * 1_500_000, required=not clean.get("asset_ids"))
+            text_field("mime_type", 80, required=not clean.get("asset_ids"))
+            if clean.get("mime_type", "image/jpeg") not in {"image/jpeg", "image/png", "image/heic", "image/heif"}:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_image_type", "Dieses Bildformat wird nicht unterstützt.")
             try:
-                image_data = base64.b64decode(clean["image_base64"], validate=True)
+                image_data = base64.b64decode(clean.get("image_base64", ""), validate=True)
             except (ValueError, binascii.Error) as exc:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_image", "Das Bild ist nicht gültig kodiert.") from exc
             maximum_image = int(self.config["server"].get("max_request_mb", 10)) * 1024 * 1024
-            if not image_data or len(image_data) > maximum_image:
+            if (not image_data and not clean.get("asset_ids")) or len(image_data) > maximum_image:
                 raise APIError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "image_too_large", "Das Bild überschreitet das Upload-Limit.")
 
             comments = clean.get("comments", [])
@@ -981,6 +998,22 @@ class RJLoveApplication:
             if start is None or end is None or end < start:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_calendar_range", "Der Terminzeitraum ist ungültig.")
 
+        if "asset_ids" in clean:
+            ids=clean["asset_ids"]
+            if not isinstance(ids,list) or not 1<=len(ids)<=8 or any(not isinstance(v,str) or not re.fullmatch(r"[a-fA-F0-9-]{36}",v) for v in ids):
+                raise APIError(400,"invalid_assets","Ungültige Medienliste.")
+        for key in ("autoplay","alarm_enabled","reminder_sync","calendar_sync"):
+            if key in clean: boolean_field(key)
+        for key in ("media_kind","album_id","captured_at","reference_id","recurrence"):
+            if key in clean: text_field(key,80)
+        if "recurrence" in clean and clean["recurrence"] not in {"none","yearly"}: raise APIError(400,"invalid_recurrence","Wiederholung ungültig.")
+        if clean.get("captured_at") and parse_iso(clean["captured_at"]) is None: raise APIError(400,"invalid_date","Aufnahmedatum ungültig.")
+        if "urgency" in clean and (isinstance(clean["urgency"],bool) or not isinstance(clean["urgency"],(float,int)) or not 0<=clean["urgency"]<=1): raise APIError(400,"invalid_urgency","Dringlichkeit ungültig.")
+        if "poster_base64" in clean:
+            text_field("poster_base64",450000)
+            try: poster=base64.b64decode(clean["poster_base64"],validate=True)
+            except (ValueError,binascii.Error): raise APIError(400,"invalid_poster","Vorschaubild ungültig.")
+            if len(poster)>300000: raise APIError(413,"poster_too_large","Vorschaubild zu groß.")
         return clean
 
     @staticmethod
@@ -1102,21 +1135,6 @@ class RJLoveApplication:
                 self.logger.warning("Live-Aktivitäts-Push fehlgeschlagen")
         threading.Thread(target=deliver, daemon=True).start()
 
-    def push_radio(self, sender_id: str, sequence: int) -> None:
-        if not self.apns.enabled:
-            return
-        def deliver() -> None:
-            with self.database.connect() as db:
-                members = db.execute("SELECT * FROM radio_members WHERE user_id<>? AND token<>''", (sender_id,)).fetchall()
-            for member in members:
-                payload = {"aps": {}, "speaker": self.user_by_id(sender_id)["display_name"], "sequence": sequence}
-                status, reason = self.apns.deliver(member["user_id"], member["token"], member["environment"], payload,
-                    topic=self.config["apns"].get("bundle_id", "eu.rjuhas.rjlove") + ".voip-ptt", push_type="pushtotalk")
-                if status == "410" or reason == "BadDeviceToken":
-                    with self.database.connect() as db:
-                        db.execute("UPDATE radio_members SET token='' WHERE user_id=? AND token=?", (member["user_id"],member["token"]))
-        threading.Thread(target=deliver, daemon=True).start()
-
     def send_ntfy(self, user_id: str, event: dict[str, Any]) -> None:
         config = self.config.get("ntfy", {})
         topic = config.get("topics", {}).get(user_id, "")
@@ -1167,7 +1185,8 @@ class RJLoveApplication:
                 (user_id,),
             ).fetchone()
             audio = connection.execute("SELECT COALESCE(SUM(v.size_bytes),0) AS total FROM audio_versions v JOIN fart_clips f ON f.id=v.clip_id WHERE f.owner_id=?", (user_id,)).fetchone()
-            return int(row["total"]) + int(audio["total"])
+            assets=connection.execute("SELECT COALESCE(SUM(size_bytes),0) FROM assets WHERE owner_id=?",(user_id,)).fetchone()[0]
+            return int(row["total"]) + int(audio["total"]) + int(assets)
         finally:
             if owns_connection:
                 connection.close()
@@ -1271,6 +1290,15 @@ class RJLoveApplication:
             rows = db.execute("SELECT c.id,c.due_at,c.payload,r.status,r.reason,r.updated_at FROM commands c LEFT JOIN command_receipts r ON r.command_id=c.id WHERE c.owner_id=? ORDER BY c.created_at DESC LIMIT 20", (user_id,)).fetchall()
         return [{"id":r["id"],"due_at":r["due_at"],"message":json.loads(r["payload"])["message"],"status":r["status"] or "pending","reason":r["reason"],"updated_at":r["updated_at"]} for r in rows]
 
+    def deleted_record_ids(self):
+        with self.database.connect() as db:return [r[0] for r in db.execute("SELECT id FROM records WHERE deleted_at IS NOT NULL")]
+    def thought_history(self,limit=200,offset=0):
+        with self.database.connect() as db:return [dict(r) for r in db.execute("SELECT * FROM thought_events ORDER BY received_at DESC,id DESC LIMIT ? OFFSET ?",(limit,offset))]
+    def last_opened(self):
+        with self.database.connect() as db:return {r["user_id"]:r["opened_at"] for r in db.execute("SELECT * FROM app_openings")}
+    def opened_records(self):
+        with self.database.connect() as db:return [dict(r) for r in db.execute("SELECT * FROM opened_records ORDER BY opened_at DESC LIMIT 2000")]
+
     def bootstrap(self, user_id: str) -> dict[str, Any]:
         day = self.local_day()
         with self.database.connect() as db:
@@ -1281,7 +1309,7 @@ class RJLoveApplication:
             record_rows = db.execute(
                 "SELECT id,kind,owner_id,payload,created_at,updated_at FROM records "
                 "WHERE id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind='chat' ORDER BY created_at DESC LIMIT 200) "
-                "OR id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind<>'chat' ORDER BY updated_at DESC LIMIT 500) "
+                "OR id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind<>'chat' ORDER BY updated_at DESC LIMIT 500) OR (deleted_at IS NULL AND kind IN ('calendar','milestone','reminder')) "
                 "ORDER BY updated_at DESC"
             ).fetchall()
             command_rows = db.execute(
@@ -1331,11 +1359,16 @@ class RJLoveApplication:
             "commands": commands,
             "events": events,
             "storage_used_bytes": self.storage_usage(user_id),
+            "storage_by_user": {u["id"]:self.storage_usage(u["id"]) for u in self.config["users"]},
+            "deleted_record_ids": self.deleted_record_ids(),
+            "thought_history": self.thought_history(),
+            "last_opened": self.last_opened(),
+            "opened_records": self.opened_records(),
             "farts": self.list_farts(),
             "features": {
                 "audio_studio_enabled": True,
-                "radio_enabled": True,
-                "radio_background_push_configured": self.apns.enabled,
+                "radio_enabled": False,
+                "radio_background_push_configured": False,
                 "apns_enabled": self.apns.enabled,
                 "low_battery_threshold": int(self.config["notifications"].get("low_battery_threshold", 15)),
                 "max_request_mb": int(self.config["server"].get("max_request_mb", 10)),
@@ -1452,9 +1485,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         try:
             path, parts, query = self.route()
-            if path == "/v1/radio/feed":
-                self._radio_feed(self.current_user(), query)
-                return
+            if path.startswith("/v1/radio/"):
+                raise APIError(410,"removed","Walkie-Talkie wurde durch den Messenger ersetzt.")
+            if self._media_get(path,parts,query): return
             if path == "/health":
                 self.send_json(HTTPStatus.OK, {"status": "ok", "time": iso_now(), **compatibility_info()})
                 return
@@ -1521,6 +1554,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
+            if self._media_post(path,parts,user_id): return
             if path == "/v1/push/setup":
                 self.read_json()
                 self.app.configure_push_automatically(force=True)
@@ -1541,7 +1575,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             elif len(parts) == 4 and parts[:2] == ["v1", "commands"] and parts[3] == "receipt":
                 self._command_receipt(user_id, parts[2])
             elif path.startswith("/v1/radio/"):
-                self._radio_action(user_id, parts[-1])
+                self.read_json()
+                raise APIError(410,"removed","Walkie-Talkie wurde entfernt.")
             elif path == "/v1/farts":
                 self._upload_fart(user_id)
             elif len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] == "edit":
@@ -1614,6 +1649,17 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     db.execute("UPDATE fart_clips SET location=NULL WHERE id=?",(parts[2],))
                     self.app.write_clip_manifest(parts[2],db)
                 self.send_json(200,self.app.fart_clip(parts[2]))
+            elif len(parts)==3 and parts[:2]==["v1","assets"]:
+                with self.app.media_lock,self.app.database.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    asset=db.execute("SELECT * FROM assets WHERE id=? AND owner_id=?",(parts[2],user_id)).fetchone()
+                    if not asset:raise APIError(404,"asset_missing","Upload nicht gefunden.")
+                    referenced=db.execute("SELECT 1 FROM records,json_each(json_extract(payload,'$.asset_ids')) AS a WHERE deleted_at IS NULL AND a.value=? LIMIT 1",(parts[2],)).fetchone()
+                    if referenced or db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(parts[2],)).fetchone():raise APIError(409,"asset_in_use","Geteilte Medien über den zugehörigen Eintrag entfernen.")
+                    db.execute("DELETE FROM assets WHERE id=?",(parts[2],))
+                    import shutil
+                    shutil.rmtree(self.app.media_path(asset["path"]).parent,ignore_errors=True)
+                self.send_empty()
             elif len(parts) == 3 and parts[:2] == ["v1", "farts"]:
                 self._delete_fart(user_id, parts[2])
             elif len(parts) == 3 and parts[:2] == ["v1", "records"]:
@@ -1628,6 +1674,190 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             request_id = secrets.token_hex(6)
             self.app.logger.exception("Unhandled DELETE error %s", request_id)
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "server_error", "message": f"Serverfehler ({request_id})."})
+
+    def _media_get(self, path, parts, query):
+        if len(parts)==3 and parts[0]=="updates":
+            with self.app.database.connect() as db:
+                allowed=db.execute("SELECT * FROM update_feeds WHERE token_hash=?",(hashlib.sha256(parts[1].encode()).hexdigest(),)).fetchone()
+                release=db.execute("SELECT * FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
+            if not allowed or not release: raise APIError(404,"no_release","Kein Update verfügbar.")
+            if parts[2]=="latest.ipa": self._asset_bytes(release["asset_id"],public=True); return True
+            if parts[2]=="icon.png":
+                import zipfile
+                asset=self._asset_row(release["asset_id"])
+                with zipfile.ZipFile(self.app.media_path(asset["path"])) as z:
+                    names=[n for n in z.namelist() if n.startswith("Payload/") and n.count("/")==2 and "AppIcon" in n and n.endswith(".png") and z.getinfo(n).file_size<3000000]
+                    if not names:raise APIError(404,"icon_missing","Icon fehlt.")
+                    data=z.read(names[0])
+                self.send_response(200);self.send_header("Content-Type","image/png");self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data);return True
+            if parts[2]=="source.json":
+                base=allowed["base_url"].rstrip("/")
+                if not base:
+                    host=self.headers.get("Host","")
+                    if not re.fullmatch(r"[A-Za-z0-9.\-:\[\]]+",host): raise APIError(400,"invalid_host","Serveradresse ungültig.")
+                    base=("https" if self.app.config.get("tls",{}).get("enabled") else "http")+"://"+host
+                self.send_json(200,{"name":"Robin & Raphaela · RJ Love","identifier":"eu.rjuhas.rjlove.source","apps":[{"name":"RJ Love","bundleIdentifier":"eu.rjuhas.rjlove","developerName":"Robin & Raphaela","subtitle":"Unser privater Lieblingsort","localizedDescription":"Messenger, Momente und Duftstudio für uns zwei.","iconURL":base+"/updates/"+parts[1]+"/icon.png","versions":[{"version":release["version"],"buildVersion":release["build"],"date":release["created_at"],"downloadURL":base+"/updates/"+parts[1]+"/latest.ipa","size":self._asset_row(release["asset_id"])["size_bytes"],"minOSVersion":"26.1"}]}]});return True
+            raise APIError(404,"not_found","Update-Datei fehlt.")
+        if path=="/v1/thoughts/history":
+            self.current_user()
+            offset=self._page_number(query,"offset",0,10000000)
+            self.send_json(200,{"events":self.app.thought_history(200,offset)});return True
+        if path=="/v1/records/archive":
+            self.current_user();kind=query.get("kind",["chat"])[0]
+            if kind not in ALLOWED_RECORD_KINDS: raise APIError(400,"invalid_kind","Archiv unbekannt.")
+            offset=self._page_number(query,"offset",0,10000000)
+            with self.app.database.connect() as db:
+                rows=db.execute("SELECT * FROM records WHERE kind=? AND deleted_at IS NULL ORDER BY created_at DESC,id DESC LIMIT 200 OFFSET ?",(kind,offset)).fetchall()
+            self.send_json(200,{"records":[self._record_dict(r) for r in rows]});return True
+        if len(parts)==3 and parts[:2]==["v1","assets"]:
+            user_id=self.current_user();self._asset_bytes(parts[2],user_id=user_id);return True
+        if path=="/v1/app-release":
+            self.current_user()
+            with self.app.database.connect() as db: row=db.execute("SELECT id,version,build,created_at FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
+            self.send_json(200,{"release":dict(row) if row else None});return True
+        return False
+
+    @staticmethod
+    def _record_dict(row):
+        return {"id":row["id"],"kind":row["kind"],"owner_id":row["owner_id"],"payload":json.loads(row["payload"]),"created_at":row["created_at"],"updated_at":row["updated_at"]}
+
+    @staticmethod
+    def _page_number(query,key,default,maximum):
+        try: return min(maximum,max(0,int(query.get(key,[str(default)])[0])))
+        except (ValueError,TypeError): raise APIError(400,"invalid_page","Archivseite ungültig.")
+
+    def _asset_row(self,asset_id):
+        with self.app.database.connect() as db: row=db.execute("SELECT * FROM assets WHERE id=? AND ready=1",(asset_id,)).fetchone()
+        if not row: raise APIError(404,"asset_missing","Medium noch nicht verfügbar.")
+        return row
+
+    def _asset_bytes(self,asset_id,user_id=None,public=False):
+        row=self._asset_row(asset_id)
+        if not public and row["owner_id"]!=user_id:
+            with self.app.database.connect() as db:
+                shared=db.execute("SELECT 1 FROM records,json_each(json_extract(records.payload,'$.asset_ids')) AS a WHERE records.deleted_at IS NULL AND a.value=? LIMIT 1",(asset_id,)).fetchone()
+            if not shared: raise APIError(404,"asset_missing","Medium zurückgerufen oder noch nicht geteilt.")
+        file=self.app.media_path(row["path"])
+        if not file.is_file(): raise APIError(404,"asset_missing","Mediendatei fehlt.")
+        total=file.stat().st_size;start=0;end=total-1;status=200
+        range_header=self.headers.get("Range")
+        if range_header:
+            m=re.fullmatch(r"bytes=(\d+)-(\d*)",range_header)
+            if not m: raise APIError(416,"invalid_range","Medienbereich ungültig.")
+            start=int(m[1]);end=min(end,int(m[2])) if m[2] else end;status=206
+            if start>end: raise APIError(416,"invalid_range","Medienbereich ungültig.")
+        self.send_response(status);self.send_header("Content-Type",row["mime_type"]);self.send_header("Content-Length",str(end-start+1));self.send_header("Cache-Control","private, no-store");self.send_header("Accept-Ranges","bytes")
+        if status==206:self.send_header("Content-Range",f"bytes {start}-{end}/{total}")
+        self.end_headers()
+        try:
+            with file.open("rb") as stream:
+                stream.seek(start);remaining=end-start+1
+                while remaining:
+                    chunk=stream.read(min(1024*1024,remaining))
+                    if not chunk:break
+                    self.wfile.write(chunk);remaining-=len(chunk)
+        except (BrokenPipeError,ConnectionResetError):pass
+
+    def _media_post(self,path,parts,user_id):
+        if path=="/v1/open":
+            self.read_json()
+            with self.app.database.connect() as db:db.execute("INSERT INTO app_openings VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET opened_at=excluded.opened_at",(user_id,iso_now()))
+            self.send_empty();return True
+        if len(parts)==4 and parts[:2]==["v1","records"] and parts[3]=="opened":
+            self.read_json()
+            with self.app.database.connect() as db:
+                row=db.execute("SELECT 1 FROM records WHERE id=? AND deleted_at IS NULL",(parts[2],)).fetchone()
+                if not row:raise APIError(404,"record_missing","Nachricht wurde zurückgerufen.")
+                db.execute("INSERT OR IGNORE INTO opened_records VALUES(?,?,?)",(parts[2],user_id,iso_now()))
+            self.send_empty();return True
+        if path=="/v1/assets":
+            body=self.read_json();mime=safe_text(body.get("mime_type",""),80,allow_empty=False)
+            if mime not in {"image/jpeg","image/png","image/heic","image/heif","video/mp4","video/quicktime","audio/mp4","audio/m4a","application/octet-stream"}:raise APIError(400,"invalid_media","Medienformat nicht unterstützt.")
+            size=body.get("size_bytes");digest=body.get("sha256","")
+            if isinstance(size,bool) or not isinstance(size,int) or not 0<size<=int(self.app.config["server"].get("max_media_mb",256))*1024*1024:raise APIError(413,"media_too_large","Datei zu groß oder leer. Standardlimit: 256 MB.")
+            if not isinstance(digest,str) or not re.fullmatch(r"[a-f0-9]{64}",digest):raise APIError(400,"invalid_hash","Prüfsumme fehlt.")
+            filename=Path(safe_text(body.get("filename","medium"),200,allow_empty=False)).name
+            asset_id=str(uuid.uuid4());now=iso_now();owner=re.sub(r"[^a-zA-Z0-9_-]","_",user_id)
+            suffix={"image/jpeg":".jpg","image/png":".png","image/heic":".heic","image/heif":".heic","video/mp4":".mp4","video/quicktime":".mov","audio/mp4":".m4a","audio/m4a":".m4a","application/octet-stream":".ipa"}[mime]
+            relative=f"media/assets/{owner}/{utc_now().strftime('%Y/%m')}/{asset_id}/original{suffix}"
+            with self.app.media_lock,self.app.database.connect() as db:
+                db.execute("BEGIN IMMEDIATE");self.app.enforce_quota(user_id,size,db=db)
+                db.execute("INSERT INTO assets VALUES(?,?,?,?,?,?,?,0,?)",(asset_id,user_id,filename,mime,size,digest,relative,now))
+            self.send_json(201,{"id":asset_id});return True
+        if path=="/v1/update-feed":
+            body=self.read_json();token=secrets.token_hex(32)
+            base=safe_text(body.get("base_url",""),2000,allow_empty=False).rstrip("/")
+            from urllib.parse import urlparse
+            parsed=urlparse(base)
+            if parsed.scheme not in {"http","https"} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:raise APIError(400,"invalid_url","Quelladresse ungültig.")
+            with self.app.database.connect() as db:
+                db.execute("DELETE FROM update_feeds WHERE user_id=?",(user_id,));db.execute("INSERT INTO update_feeds VALUES(?,?,?)",(hashlib.sha256(token.encode()).hexdigest(),user_id,base))
+            self.send_json(200,{"token":token});return True
+        if path=="/v1/app-release":
+            import zipfile,plistlib
+            body=self.read_json();asset=self._asset_row(body.get("asset_id",""))
+            if asset["owner_id"]!=user_id or asset["mime_type"]!="application/octet-stream":raise APIError(403,"invalid_ipa","Nur eine eigene IPA kann freigegeben werden.")
+            try:
+                with zipfile.ZipFile(self.app.media_path(asset["path"])) as z:
+                    candidates=[n for n in z.namelist() if n.startswith("Payload/") and n.count("/")==2 and n.endswith(".app/Info.plist")]
+                    if len(candidates)!=1 or z.getinfo(candidates[0]).file_size>200000:raise ValueError()
+                    info=plistlib.loads(z.read(candidates[0]))
+                    if info.get("CFBundleIdentifier")!="eu.rjuhas.rjlove":raise ValueError()
+                    version=str(info["CFBundleShortVersionString"]);build=str(info["CFBundleVersion"])
+                    if not re.fullmatch(r"\d+\.\d+\.\d+",version) or len(build)>20:raise ValueError()
+            except (ValueError,KeyError,zipfile.BadZipFile,plistlib.InvalidFileException):raise APIError(400,"invalid_ipa","Keine gültige RJ-Love-IPA.")
+            now=iso_now();release_id=str(uuid.uuid4())
+            with self.app.database.connect() as db:db.execute("INSERT INTO app_releases VALUES(?,?,?,?,?)",(release_id,asset["id"],version,build,now))
+            self.send_json(200,{"release":{"id":release_id,"version":version,"build":build,"created_at":now}});return True
+        if len(parts)==4 and parts[:2]==["v1","photo-requests"] and parts[3]=="reply":
+            body=self.read_json();asset=self._asset_row(body.get("asset_id",""));now=iso_now()
+            if asset["owner_id"]!=user_id or not asset["mime_type"].startswith("image/"):raise APIError(403,"invalid_photo","Ein eigenes Foto wird benötigt.")
+            captured=body.get("captured_at") or now
+            if parse_iso(captured) is None or parse_iso(captured)>utc_now()+dt.timedelta(minutes=5):raise APIError(400,"invalid_date","Aufnahmezeit ungültig.")
+            caption=safe_text(body.get("caption",""),1000);poster=safe_text(body.get("poster_base64",""),400000)
+            payload=self.app.validate_record_payload("instant",{"caption":caption,"asset_ids":[asset["id"]],"media_kind":"image","request_id":parts[2],"captured_at":captured,"poster_base64":poster})
+            raw=json.dumps(payload,ensure_ascii=False);record_id=str(uuid.uuid4())
+            with self.app.database.connect() as db:
+                db.execute("BEGIN IMMEDIATE");request=db.execute("SELECT * FROM records WHERE id=? AND kind='photo_request' AND deleted_at IS NULL",(parts[2],)).fetchone()
+                if not request:raise APIError(404,"request_missing","Fotowunsch wurde zurückgerufen.")
+                prior=json.loads(request["payload"])
+                if prior.get("target_id")!=user_id or prior.get("completed"):raise APIError(409,"request_completed","Fotowunsch bereits beantwortet.")
+                self.app.enforce_quota(user_id,len(raw.encode()),db=db)
+                db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)",(record_id,"instant",user_id,raw,len(raw.encode()),now,now))
+                prior["completed"]=True;db.execute("UPDATE records SET payload=?,updated_at=? WHERE id=?",(json.dumps(prior),now,parts[2]))
+            self.send_json(200,{"id":record_id,"kind":"instant","owner_id":user_id,"payload":payload,"created_at":now,"updated_at":now});return True
+        return False
+
+    def do_PUT(self):
+        temporary=None
+        try:
+            _,parts,_=self.route();user_id=self.current_user()
+            if len(parts)!=3 or parts[:2]!=["v1","assets"]:raise APIError(404,"not_found","Upload nicht gefunden.")
+            with self.app.database.connect() as db:row=db.execute("SELECT * FROM assets WHERE id=?",(parts[2],)).fetchone()
+            if not row or row["owner_id"]!=user_id:raise APIError(404,"asset_missing","Upload nicht gefunden.")
+            if int(self.headers.get("Content-Length","0"))!=row["size_bytes"]:raise APIError(400,"invalid_size","Dateigröße stimmt nicht.")
+            self.connection.settimeout(120)
+            with self.app.media_lock:
+                destination=self.app.media_path(row["path"]);destination.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+                temporary=destination.with_name(secrets.token_hex(12)+".part");digest=hashlib.sha256();remaining=row["size_bytes"]
+                with temporary.open("xb") as stream:
+                    os.chmod(temporary,0o600)
+                    while remaining:
+                        chunk=self.rfile.read(min(1024*1024,remaining))
+                        if not chunk:raise APIError(400,"incomplete_upload","Upload unterbrochen.")
+                        stream.write(chunk);digest.update(chunk);remaining-=len(chunk)
+                    stream.flush();os.fsync(stream.fileno())
+                if digest.hexdigest()!=row["sha256"]:raise APIError(400,"hash_mismatch","Upload beschädigt; bitte erneut versuchen.")
+                os.replace(temporary,destination)
+                with self.app.database.connect() as db:db.execute("UPDATE assets SET ready=1 WHERE id=?",(row["id"],))
+                self.app.atomic_write(destination.parent/"metadata.json",json.dumps({k:row[k] for k in row.keys() if k!="ready"},ensure_ascii=False,indent=2).encode())
+            self.send_json(200,{"id":row["id"]})
+        except APIError as exc:
+            self.close_connection=True;self.send_json(exc.status,{"error":exc.code,"message":exc.message,**({"compatibility":compatibility_info()} if exc.status==426 else {})})
+        except Exception:
+            self.close_connection=True;self.app.logger.exception("Media upload failed");self.send_json(500,{"error":"upload_failed","message":"Upload fehlgeschlagen. Erneut versuchen."})
+        finally:
+            if temporary:temporary.unlink(missing_ok=True)
 
     def _login(self) -> None:
         key = self.client_key()
@@ -1757,26 +1987,27 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.send_json(HTTPStatus.OK, {"updated_at": now})
 
     def _thought(self, user_id: str) -> None:
-        day = self.app.local_day()
-        now = iso_now()
+        body=self.read_json(); now=iso_now()
+        event_id=body.get("id") or str(uuid.uuid4())
+        try: event_id=str(uuid.UUID(event_id))
+        except (ValueError,TypeError): raise APIError(400,"invalid_id","Herz-ID ungültig.")
+        stamp=body.get("occurred_at")
+        when=parse_iso(stamp) if stamp else utc_now()
+        if when is None or when>utc_now()+dt.timedelta(minutes=5): raise APIError(400,"invalid_date","Herzzeit ungültig.")
+        day=when.astimezone(self.app.timezone).date().isoformat()
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            db.execute(
-                "INSERT INTO thoughts(user_id,local_day,count,updated_at) VALUES(?,?,1,?) "
-                "ON CONFLICT(user_id,local_day) DO UPDATE SET count=count+1,updated_at=excluded.updated_at",
-                (user_id, day, now),
-            )
-            count = int(db.execute(
-                "SELECT count FROM thoughts WHERE user_id=? AND local_day=?", (user_id, day)
-            ).fetchone()["count"])
-            db.execute("COMMIT")
-        sender = self.app.user_by_id(user_id) or {"display_name": "Schatzi"}
-        self.app.broadcast_event(
-            user_id, "thought", f"{sender['display_name']} denkt an dich 💗",
-            f"Heute schon {count}× an dich gedacht.", {"count": count, "day": day},
-        )
-        self.app.push_live_updates()
-        self.send_json(HTTPStatus.OK, {"day": day, "count": count})
+            old=db.execute("SELECT user_id FROM thought_events WHERE id=?",(event_id,)).fetchone()
+            if old and old["user_id"]!=user_id: raise APIError(409,"id_conflict","Herz-ID bereits vergeben.")
+            if not old:
+                db.execute("INSERT INTO thought_events VALUES(?,?,?,?)",(event_id,user_id,stamp,now))
+                db.execute("INSERT INTO thoughts VALUES(?,?,1,?) ON CONFLICT(user_id,local_day) DO UPDATE SET count=count+1,updated_at=excluded.updated_at",(user_id,day,now))
+            row=db.execute("SELECT count FROM thoughts WHERE user_id=? AND local_day=?",(user_id,day)).fetchone()
+            count=int(row[0]) if row else 0
+        if not old:
+            sender=self.app.user_by_id(user_id) or {"display_name":"Schatzi"}
+            self.app.broadcast_event(user_id,"thought",f"{sender['display_name']} denkt an dich 💗",f"Heute schon {count}×.",{"count":count,"day":day})
+        self.send_json(200,{"day":day,"count":count})
 
     def _upsert_record(self, user_id: str) -> None:
         body = self.read_json()
@@ -1809,7 +2040,17 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     "Der Typ eines vorhandenen Eintrags kann nicht geändert werden.",
                 )
             owner_id = str(old["owner_id"]) if old else user_id
-            if old and kind in {"chat", "checkin", "gratitude"} and owner_id != user_id:
+            prior_payload=json.loads(old["payload"]) if old else {}
+            for asset_id in payload.get("asset_ids",[]):
+                asset=db.execute("SELECT * FROM assets WHERE id=? AND ready=1",(asset_id,)).fetchone()
+                if not asset or (asset["owner_id"]!=user_id and asset_id not in prior_payload.get("asset_ids",[])):
+                    raise APIError(403,"invalid_asset_owner","Das Medium ist nicht fertig oder gehört nicht zu diesem Eintrag.")
+            if kind=="photo_request" and (not old and payload.get("target_id") not in self.app.partner_ids(user_id)):
+                raise APIError(400,"invalid_target","Ein Fotowunsch ist für dein Gegenüber bestimmt.")
+            if kind=="photo_request" and old and owner_id!=user_id:
+                if prior_payload.get("target_id")!=user_id or {k:v for k,v in payload.items() if k!="completed"}!={k:v for k,v in prior_payload.items() if k!="completed"}:
+                    raise APIError(403,"not_owner","Nur der Fotowunsch darf beantwortet werden.")
+            if old and kind in {"chat", "checkin", "gratitude", "instant"} and owner_id != user_id:
                 raise APIError(403, "not_owner", "Du kannst fremde Nachrichten oder Gefühle nicht ändern.")
             if kind == "coupon":
                 if old and owner_id != user_id:
@@ -1847,7 +2088,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "coupon": ("Ein kleiner Liebesgutschein 💌", "hat einen Gutschein aktualisiert."),
             "gratitude": ("Das mag ich an dir 💗", "hat dir liebe Worte dagelassen."),
         }
-        title, phrase = labels[kind]
+        title, phrase = labels.get(kind,("Ein Moment für uns","hat etwas Neues für dich geteilt."))
         self.app.broadcast_event(user_id, f"record_{kind}", title, f"{sender['display_name']} {phrase}", {"record_id": record_id})
         self.send_json(
             HTTPStatus.OK,
@@ -1857,9 +2098,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
     def _delete_record(self, user_id: str, record_id: str) -> None:
         now = iso_now()
         with self.app.database.connect() as db:
-            row = db.execute("SELECT kind FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()
+            row = db.execute("SELECT kind,owner_id FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()
             if row is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "record_not_found", "Der Eintrag wurde nicht gefunden.")
+            if row["kind"] in {"chat","instant"} and row["owner_id"]!=user_id:
+                raise APIError(403,"not_owner","Nur eigene Nachrichten und Sofortfotos können zurückgerufen werden.")
             db.execute("UPDATE records SET deleted_at=?,updated_at=? WHERE id=?", (now, now, record_id))
         sender = self.app.user_by_id(user_id) or {"display_name": "Schatzi"}
         self.app.broadcast_event(
@@ -1867,115 +2110,6 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             f"{sender['display_name']} hat einen Eintrag entfernt.", {"record_id": record_id},
         )
         self.send_empty()
-
-    def _radio_feed(self, user_id: str, query: dict[str, list[str]]) -> None:
-        try:
-            cursor = int(query.get("after", ["0"])[0])
-            if cursor < 0:
-                raise ValueError
-        except (ValueError, IndexError) as exc:
-            raise APIError(400, "invalid_cursor", "Ungültiger Funk-Cursor.") from exc
-        with self.app.database.connect() as db:
-            if not db.execute("SELECT 1 FROM radio_members WHERE user_id=?", (user_id,)).fetchone():
-                raise APIError(409, "radio_not_joined", "Bitte Walkie-Talkie zuerst einschalten.")
-            cutoff = (utc_now() - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
-            rows = db.execute("SELECT * FROM radio_events WHERE seq>? AND created_at>? ORDER BY seq LIMIT 12", (cursor,cutoff)).fetchall()
-            events = []
-            for row in rows:
-                if row["user_id"] == user_id:
-                    continue
-                value = dict(row)
-                audio = value.pop("audio")
-                value["audio_base64"] = base64.b64encode(audio).decode() if audio else None
-                value["speaker"] = self.app.user_by_id(row["user_id"])["display_name"]
-                events.append(value)
-            floor = db.execute("SELECT user_id,transmission_id,expires_at FROM radio_floor WHERE expires_at>?", (iso_now(),)).fetchone()
-            latest = rows[-1]["seq"] if rows else cursor
-        self.send_json(200, {"events": events, "cursor": latest, "speaker_id": floor["user_id"] if floor else None, "background_push_configured": self.app.apns.enabled})
-
-    def _radio_action(self, user_id: str, action: str) -> None:
-        body = self.read_json()
-        push_sequence = None
-        with self.app.database.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            now = iso_now()
-            db.execute("DELETE FROM radio_events WHERE created_at<?", ((utc_now() - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),))
-            if action == "join":
-                token = safe_text(body.get("token", ""), 1024).lower()
-                environment = body.get("environment", "production")
-                if environment not in {"sandbox", "production"} or token and (len(token) < 32 or any(c not in "0123456789abcdef" for c in token)):
-                    raise APIError(400, "invalid_ptt_token", "Ungültiger Push-to-Talk-Token.")
-                db.execute("INSERT INTO radio_members VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET token=excluded.token,environment=excluded.environment,updated_at=excluded.updated_at", (user_id,token,environment,now))
-                cursor = db.execute("SELECT COALESCE(MAX(seq),0) FROM radio_events").fetchone()[0]
-                result = {"cursor": cursor, "background_push_configured": self.app.apns.enabled}
-            elif action == "leave":
-                db.execute("DELETE FROM radio_members WHERE user_id=?", (user_id,))
-                floor = db.execute("SELECT * FROM radio_floor WHERE user_id=?", (user_id,)).fetchone()
-                if floor:
-                    index = db.execute("SELECT COALESCE(MAX(chunk_index),-1)+1 FROM radio_events WHERE transmission_id=?", (floor["transmission_id"],)).fetchone()[0]
-                    db.execute("INSERT OR IGNORE INTO radio_events (transmission_id,chunk_index,user_id,kind,text,created_at) VALUES(?,?,?,'end','',?)", (floor["transmission_id"],index,user_id,now))
-                db.execute("DELETE FROM radio_floor WHERE user_id=?", (user_id,))
-                result = {}
-            else:
-                if not db.execute("SELECT 1 FROM radio_members WHERE user_id=?", (user_id,)).fetchone():
-                    raise APIError(409, "radio_not_joined", "Walkie-Talkie ist ausgeschaltet.")
-                tx = safe_text(body.get("transmission_id", ""), 64, allow_empty=False)
-                try:
-                    uuid.UUID(tx)
-                except ValueError as exc:
-                    raise APIError(400, "invalid_transmission", "Ungültige Funk-ID.") from exc
-                floor = db.execute("SELECT * FROM radio_floor WHERE expires_at>?", (now,)).fetchone()
-                if action in {"begin", "text"}:
-                    if floor and (floor["user_id"] != user_id or floor["transmission_id"] != tx):
-                        raise APIError(409, "radio_busy", "Dein Gegenüber spricht gerade. Bitte kurz warten.")
-                    if action == "begin":
-                        if not floor:
-                            expires = (utc_now() + dt.timedelta(seconds=35)).isoformat().replace("+00:00", "Z")
-                            db.execute("INSERT OR REPLACE INTO radio_floor VALUES(1,?,?,?)", (user_id,tx,expires))
-                        result = {}
-                    else:
-                        text = safe_text(body.get("text", ""), 600, allow_empty=False)
-                        old = db.execute("SELECT seq FROM radio_events WHERE transmission_id=? AND chunk_index=0", (tx,)).fetchone()
-                        if not old:
-                            push_sequence = db.execute("INSERT INTO radio_events (transmission_id,chunk_index,user_id,kind,text,created_at) VALUES(?,0,?,'text',?,?)", (tx,user_id,text,now)).lastrowid
-                        result = {}
-                elif action in {"audio", "end"}:
-                    index = body.get("chunk_index")
-                    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index <= 100:
-                        raise APIError(400, "invalid_chunk", "Ungültige Funk-Reihenfolge.")
-                    old = db.execute("SELECT user_id FROM radio_events WHERE transmission_id=? AND chunk_index=?", (tx,index)).fetchone()
-                    if old:
-                        if old["user_id"] != user_id:
-                            raise APIError(403, "not_owner", "Fremde Funkübertragung.")
-                        self.send_json(200, {})
-                        return
-                    if not floor or floor["user_id"] != user_id or floor["transmission_id"] != tx:
-                        raise APIError(409, "radio_expired", "Sprechzeit beendet. Bitte erneut drücken.")
-                    expected = db.execute("SELECT COUNT(*) FROM radio_events WHERE transmission_id=?", (tx,)).fetchone()[0]
-                    if index != expected:
-                        raise APIError(409, "chunk_gap", "Ein Audioteil fehlt. Bitte erneut sprechen.")
-                    audio = None
-                    if action == "audio":
-                        encoded = body.get("audio_base64")
-                        if not isinstance(encoded, str) or len(encoded) > 180000:
-                            raise APIError(413, "audio_too_large", "Funk-Audioteil zu groß.")
-                        try:
-                            audio = base64.b64decode(encoded, validate=True)
-                        except (ValueError, binascii.Error) as exc:
-                            raise APIError(400, "invalid_audio", "Ungültiges Funk-Audio.") from exc
-                        if not 24 <= len(audio) <= 128000 or audio[4:8] != b"ftyp" or audio[8:12] not in {b"M4A ",b"mp42",b"isom"}:
-                            raise APIError(400, "invalid_audio", "Ungültiges Funk-Audioformat.")
-                    seq = db.execute("INSERT INTO radio_events (transmission_id,chunk_index,user_id,kind,audio,text,created_at) VALUES(?,?,?,?,?,'',?)", (tx,index,user_id,action,audio,now)).lastrowid
-                    if action == "audio" and index == 0:
-                        push_sequence = seq
-                    if action == "end":
-                        db.execute("DELETE FROM radio_floor WHERE user_id=? AND transmission_id=?", (user_id,tx))
-                    result = {}
-                else:
-                    raise APIError(404, "not_found", "Funk-Aktion nicht gefunden.")
-        if push_sequence is not None:
-            self.app.push_radio(user_id, push_sequence)
-        self.send_json(200, result)
 
     def _upload_fart(self, user_id: str, editing_id: str | None = None) -> None:
         body = self.read_json()

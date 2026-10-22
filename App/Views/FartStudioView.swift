@@ -69,6 +69,9 @@ struct FartClipCard: View {
     @State private var rating = false
     @State private var deleting = false
     @State private var editing = false
+    @State private var exporting=false
+    @State private var exportURL:URL?
+    @State private var localSaving=false
     private var playing: Bool { appState.studio.playingID == clip.id }
     private var mine: Bool { clip.ownerID == appState.me?.id }
     var body: some View {
@@ -81,9 +84,12 @@ struct FartClipCard: View {
                 }
                 Spacer(minLength: 0)
                 if mine {
-                    Menu { Button("Schneiden & umbenennen", systemImage: "scissors") { editing = true }; if clip.location != nil { Button("Geteilten Ort entfernen",systemImage: "mappin.slash",role: .destructive) { Task { await appState.removeFartLocation(clip) } } }; Button("Aufnahme löschen", systemImage: "trash", role: .destructive) { deleting = true } } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Aufnahme verwalten")
+                    Menu { Button("Auf diesem iPhone sichern",systemImage:"square.and.arrow.down"){saveLocal(share:false)};Button("Exportieren / iMessage teilen",systemImage:"square.and.arrow.up"){saveLocal(share:true)}; Button("Schneiden & umbenennen", systemImage: "scissors") { editing = true }; if clip.location != nil { Button("Geteilten Ort entfernen",systemImage: "mappin.slash",role: .destructive) { Task { await appState.removeFartLocation(clip) } } }; Button("Aufnahme löschen", systemImage: "trash", role: .destructive) { deleting = true } } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Aufnahme verwalten")
+                } else {
+                    Menu {Button("Auf diesem iPhone sichern",systemImage:"square.and.arrow.down"){saveLocal(share:false)};Button("Exportieren / iMessage teilen",systemImage:"square.and.arrow.up"){saveLocal(share:true)}}label:{Image(systemName:"square.and.arrow.down")}
                 }
             }
+            if localSaving{ProgressView("Wird lokal gesichert …")}
             if !clip.caption.isEmpty { Text(clip.caption).font(.subheadline).foregroundStyle(.secondary) }
             HStack(spacing: 12) {
                 Button { appState.studio.togglePlayback(clip, api: appState.api) } label: {
@@ -125,6 +131,7 @@ struct FartClipCard: View {
                 if let point = clip.location { Label("Ort · ca. \(Int(point.accuracy)) m",systemImage: "mappin.circle.fill") }
             }.font(.caption2).foregroundStyle(LovePalette.violet).fixedSize(horizontal: false, vertical: true)
         }.loveCard()
+        .sheet(isPresented:$exporting){if let exportURL{FileShareView(urls:[exportURL])}}
         .sheet(isPresented: $rating) { FartRatingView(clip: clip) }
         .sheet(isPresented: $editing) { FartEditorView(clip: clip) }
         .alert("Dieses Meisterwerk löschen?", isPresented: $deleting) {
@@ -132,11 +139,13 @@ struct FartClipCard: View {
             Button("Abbrechen", role: .cancel) {}
         } message: { Text("Die Aufnahme und ihre Bewertungen werden für euch beide entfernt.") }
     }
-    private var speedControls: some View {
-        @Bindable var studio = appState.studio
-        return Picker("Tempo", selection: $studio.playbackRate) {
-            Text("Zeitlupe").tag(Float(0.65)); Text("Original").tag(Float(1)); Text("Turbo").tag(Float(1.5))
-        }.pickerStyle(.segmented)
+    private func saveLocal(share:Bool){localSaving=true;Task{defer{localSaving=false};do{if let server=appState.profile?.baseURL,let user=appState.me?.id{LocalFartStore.shared.configure(server:server,userID:user)};let file=try await LocalFartStore.shared.save(clip,api:appState.api);if share{exportURL=file;exporting=true}else{Haptics.success()}}catch{appState.alert=AppAlert(title:"Lokales Sichern",message:error.localizedDescription)}}}
+    private var speedControls:some View {
+        @Bindable var studio=appState.studio
+        return VStack(alignment:.leading,spacing:10){
+            HStack{Text("Tempo");Slider(value:$studio.playbackRate,in:0.25...3);Text(String(format:"%.2f×",studio.playbackRate)).font(.caption.monospacedDigit())}
+            Picker("Soundart",selection:$studio.soundEffect){ForEach(FartSoundEffect.allCases){Text($0.rawValue).tag($0)}}.pickerStyle(.menu)
+        }
     }
 }
 
@@ -154,7 +163,7 @@ struct FartRecorderView: View {
     @State private var category: FartCategory = .natural
     @State private var situation: FartSituation = .alltag
     @State private var quip = ""
-    @State private var includeLocation = false
+    @AppStorage("rjlove.fart-locations") private var includeLocation = true
     @State private var saving = false
     @State private var discard = false
     @State private var starting = false
@@ -302,8 +311,13 @@ struct FartRecorderView: View {
             }
             if let trimError { Text(trimError).font(.footnote).foregroundStyle(.orange) }
             if title.count > 100 || caption.count > 500 { Text("Name: maximal 100 Zeichen. Duftnote: maximal 500 Zeichen.").font(.caption).foregroundStyle(.orange) }
+                Button("Nur auf diesem iPhone sichern",systemImage:"square.and.arrow.down") {
+                    guard let draft=appState.studio.draft,let server=appState.profile?.baseURL,let user=appState.me?.id else{return}
+                    do {LocalFartStore.shared.configure(server:server,userID:user);let data=try Data(contentsOf:draft.url);let clip=FartClip(id:draft.id,ownerID:user,title:title.isEmpty ? "Ein kleines Meisterwerk":title,caption:caption,category:category.rawValue,duration:draft.duration,waveform:draft.waveform,sizeBytes:data.count,createdAt:Date.now.rjISO8601,ratings:[],reactions:[],recordedAt:draft.recordedAt,location:includeLocation ? draft.location:nil,situation:situation.rawValue);try LocalFartStore.shared.saveImported(clip,data:data);appState.studio.discard();dismiss()}catch{appState.alert=AppAlert(title:"Lokales Sichern",message:error.localizedDescription)}
+                }
             if let point = studio.draft?.location {
                 Toggle("Aufnahmeort auf eurer Furzkarte teilen", isOn: $includeLocation).tint(LovePalette.violet)
+                Text("Neue Aufnahmen teilen einen verfügbaren Ort standardmäßig. Ohne iOS-Standortfreigabe bleibt der Ort unbekannt.").font(.caption2).foregroundStyle(.secondary)
                 Text("Der Ort stammt vom Aufnahmebeginn. Genauigkeit etwa \(Int(point.accuracy)) m. Ohne diesen Schalter wird kein Ort hochgeladen.").font(.caption).foregroundStyle(.secondary)
             } else {
                 Label("Ohne Aufnahmeort · kein aktueller freigegebener Standort vorhanden", systemImage: "mappin.slash").font(.caption).foregroundStyle(.secondary)

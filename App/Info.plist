@@ -56,8 +56,6 @@
 	<string>RJ Love liest nach deiner Auswahl Aktivität, Schlaf und Vitalwerte. Welche Zusammenfassungen Raphaela oder Robin sehen darf, legst du getrennt in der App fest.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>RJ Love greift nur nach Bestätigung auf deinen Kalender zu, wenn du einen ausgewählten gemeinsamen Termin in deinen iOS-Kalender übernehmen möchtest.</string>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Face ID schützt eure privaten Standorte, Notizen und Momente vor fremden Blicken.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>RJ Love verbindet sich auf Wunsch direkt mit deinem privaten Python-Server im lokalen Netzwerk.</string>
 	<key>UIBackgroundModes</key>
@@ -65,8 +63,6 @@
 		<string>location</string>
 		<string>fetch</string>
 		<string>remote-notification</string>
-		<string>push-to-talk</string>
-		<string>audio</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
@@ -93,6 +89,12 @@
 	<key>NSNearbyInteractionUsageDescription</key>
 	<string>Wenn ihr beide die Nahbereichssuche öffnet, misst RJ Love per Ultra-Breitband eure Entfernung und Richtung.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>RJ Love verwendet das Mikrofon für deine Duftpost und solange du im Walkie-Talkie die Sprechtaste drückst. Aufnahmen kannst du vor dem Teilen anhören und schneiden.</string>
+	<string>RJ Love nimmt deine Duftpost und Sprachnachrichten nur im sichtbaren Recorder auf. Du kannst sie vor dem Teilen anhören.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Für Fotowünsche öffnet RJ Love sichtbar die Kamera mit abbrechbarem Countdown. Du kannst Fotos später zurückrufen.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>RJ Love synchronisiert ausschließlich eure ausgewählten gemeinsamen Aufgaben mit Apple Erinnerungen.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Speichere ausgewählte gemeinsame Fotos und Videos zurück in deiner Mediathek.</string>
 </dict>
 </plist>

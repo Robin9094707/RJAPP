@@ -25,7 +25,6 @@ struct DeliveryCenterView: View {
                     detail("Bundle-ID", signing.bundleID)
                     detail("Signing-Team", signing.teamID ?? "Nicht auslesbar")
                     detail("APNs-Umgebung", signing.environment ?? "Im Profil nicht gefunden")
-                    detail("Push-to-Talk im Profil", signing.permitsPushToTalk.map { $0 ? "Erlaubt · tatsächliche Signatur wird von iOS geprüft" : "Nicht erlaubt" } ?? "Unbekannt")
                     detail("APNs-Gerätetoken", app.notifications.deviceTokenAvailable ? "Von iOS empfangen" : "Noch nicht empfangen")
                     if let expires = signing.expires { detail("Profil gültig bis", expires.formatted(date: .abbreviated, time: .omitted)) }
                     if let failure = registration.error { Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }

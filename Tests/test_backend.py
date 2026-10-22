@@ -380,58 +380,12 @@ class RJLoveBackendTests(unittest.TestCase):
         finally:
             restarted.close()
 
-    def test_radio_half_duplex_ordered_audio_text_and_revocation(self):
-        import uuid, base64
-        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
-        tx = str(uuid.uuid4())
-        body = {"transmission_id": tx}
-        self.assertEqual(self.request_error("/v1/radio/begin", "POST", body, token)[0], 409)
-        for auth in (token, partner):
-            self.assertEqual(self.request("/v1/radio/join", "POST", {}, auth)[0], 200)
-        self.request("/v1/radio/begin", "POST", body, token)
-        self.assertEqual(self.request_error("/v1/radio/begin", "POST", {"transmission_id":str(uuid.uuid4())}, partner)[0], 409)
-        audio = base64.b64encode(b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 40).decode()
-        chunk = dict(body, chunk_index=0, audio_base64=audio)
-        self.assertEqual(self.request_error("/v1/radio/audio", "POST", dict(chunk, chunk_index=1), token)[0], 409)
-        for _ in range(2):
-            self.assertEqual(self.request("/v1/radio/audio", "POST", chunk, token)[0], 200)
-        feed = self.request("/v1/radio/feed?after=0", token=partner)[1]
-        self.assertEqual(len(feed["events"]), 1)
-        self.assertEqual(feed["events"][0]["audio_base64"], audio)
-        self.assertEqual(feed["speaker_id"], "robin")
-        self.request("/v1/radio/end", "POST", dict(body,chunk_index=1), token)
-        self.request("/v1/radio/text", "POST", {"transmission_id":str(uuid.uuid4()),"text":"Ich liebe dich"}, partner)
-        feed = self.request("/v1/radio/feed?after=0", token=token)[1]
-        self.assertEqual(feed["events"][0]["text"], "Ich liebe dich")
-        self.request("/v1/auth/logout", "POST", {}, partner)
-        with self.app.database.connect() as db:
-            self.assertIsNone(db.execute("SELECT * FROM radio_members WHERE user_id='raphaela'").fetchone())
-        self.assertEqual(self.request_error("/v1/radio/feed?after=0", token=partner)[0], 401)
-
-    def test_radio_native_push_headers_and_short_term_retention(self):
-        import uuid, datetime, types
-        from unittest.mock import patch
-        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
-        self.request("/v1/radio/join", "POST", {"token":"ab" * 32, "environment":"production"}, partner)
-        self.app.config["apns"]["enabled"] = True
-        with patch.object(self.app.apns, "provider_token", return_value="test-jwt"), patch.object(SERVER.subprocess, "run", return_value=types.SimpleNamespace(returncode=0,stdout=b"200")) as send, patch.object(SERVER.threading, "Thread", side_effect=lambda target, daemon: types.SimpleNamespace(start=target)):
-            self.app.push_radio("robin", 42)
-            args, kwargs = send.call_args
-            command = args[0]
-            self.assertIn("apns-push-type: pushtotalk", command)
-            self.assertIn("apns-topic: eu.rjuhas.rjlove.voip-ptt", command)
-            self.assertIn("apns-expiration: 0", command)
-            payload = json.loads(kwargs["input"])
-            self.assertEqual(payload["sequence"], 42)
-            self.assertNotIn("audio", payload)
-        self.app.config["apns"]["enabled"] = False
-        old = (SERVER.utc_now() - datetime.timedelta(minutes=11)).isoformat().replace("+00:00", "Z")
-        with self.app.database.connect() as db:
-            db.execute("INSERT INTO radio_events(transmission_id,chunk_index,user_id,kind,text,created_at) VALUES(?,0,'robin','text','old',?)", (str(uuid.uuid4()),old))
-        self.assertEqual(self.request("/v1/radio/feed?after=0", token=partner)[1]["events"], [])
-        self.app.cleanup()
-        with self.app.database.connect() as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM radio_events").fetchone()[0], 0)
+    def test_obsolete_walkie_talkie_is_removed(self):
+        token=self.login()
+        for path in ["/v1/radio/join","/v1/radio/begin","/v1/radio/text"]:
+            self.assertEqual(self.request_error(path,"POST",{},token)[0],410)
+        self.assertEqual(self.request_error("/v1/radio/feed",token=token)[0],410)
+        self.assertFalse(self.app.bootstrap("robin")["features"]["radio_enabled"])
 
     def test_private_audio_upload_roundtrip_and_metadata_only_bootstrap(self):
         token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
@@ -566,9 +520,9 @@ class RJLoveBackendTests(unittest.TestCase):
             try:
                 self.assertEqual(error.code,426)
                 body=json.loads(error.read())
-                self.assertEqual(body["compatibility"]["minimum_app_version"],"2.4.0")
+                self.assertEqual(body["compatibility"]["minimum_app_version"],SERVER.MINIMUM_APP_VERSION)
             finally:error.close()
-        self.assertEqual(self.request("/health",version=None,protocol=None)[1]["minimum_protocol"],4)
+        self.assertEqual(self.request("/health",version=None,protocol=None)[1]["minimum_protocol"],SERVER.PROTOCOL_VERSION)
         self.login()
         self.assertEqual(self.request("/health",version="99.0.0",protocol=99)[0],200)
 
@@ -639,6 +593,137 @@ class RJLoveBackendTests(unittest.TestCase):
         body = {"id":str(uuid.uuid4()),"kind":"gratitude","payload":{"title":"Heute mag ich an dir", "text":"Deinen Humor"}}
         self.assertEqual(self.request("/v1/records","POST",body,token)[0],200)
         self.assertEqual(self.request_error("/v1/records","POST",body,partner)[0],403)
+
+    def upload_asset(self,token,data=b"test-media",mime="image/jpeg"):
+        import hashlib
+        body={"filename":"test.jpg","mime_type":mime,"size_bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}
+        asset=self.request("/v1/assets","POST",body,token)[1]["id"]
+        self.raw_asset_request("/v1/assets/"+asset,"PUT",token,data)
+        return asset
+
+    def raw_asset_request(self,path,method,token,data=None,extra=None):
+        headers={"X-RJ-App-Version":SERVER.APP_VERSION,"X-RJ-Protocol":str(SERVER.PROTOCOL_VERSION)}
+        if token:headers["Authorization"]="Bearer "+token
+        headers.update(extra or {})
+        req=urllib.request.Request(self.base+path,data=data,headers=headers,method=method)
+        with urllib.request.urlopen(req,timeout=5) as response:return response.status,response.read()
+
+    def test_media_upload_integrity_share_recall_and_owner_access(self):
+        import uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        asset=self.upload_asset(token,b"private-photo")
+        self.assertEqual(self.raw_asset_request("/v1/assets/"+asset,"GET",token)[1],b"private-photo")
+        self.assertEqual(self.request_error("/v1/assets/"+asset,token=partner)[0],404)
+        record={"id":str(uuid.uuid4()),"kind":"chat","payload":{"asset_ids":[asset],"media_kind":"image","text":"Hallo"}}
+        self.assertEqual(self.request("/v1/records","POST",record,token)[0],200)
+        self.assertEqual(self.raw_asset_request("/v1/assets/"+asset,"GET",partner,extra={"Range":"bytes=1-3"}), (206,b"riv"))
+        self.assertEqual(self.request_error("/v1/records/"+record["id"],"DELETE",token=partner)[0],403)
+        self.assertEqual(self.request_error("/v1/assets/"+asset,"DELETE",token=token)[0],409)
+        self.request("/v1/records/"+record["id"],"DELETE",token=token)
+        self.assertEqual(self.request_error("/v1/assets/"+asset,token=partner)[0],404)
+        self.assertIn(record["id"],self.app.bootstrap("robin")["deleted_record_ids"])
+
+    def test_unfinished_and_foreign_assets_cannot_be_attached(self):
+        import uuid,hashlib
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        asset=self.request("/v1/assets","POST",{"filename":"x.jpg","mime_type":"image/jpeg","size_bytes":3,"sha256":hashlib.sha256(b"abc").hexdigest()},token)[1]["id"]
+        payload={"id":str(uuid.uuid4()),"kind":"moment","payload":{"asset_ids":[asset],"media_kind":"image"}}
+        self.assertEqual(self.request_error("/v1/records","POST",payload,token)[0],403)
+        self.raw_asset_request("/v1/assets/"+asset,"PUT",token,b"abc")
+        self.assertEqual(self.request_error("/v1/records","POST",payload,partner)[0],403)
+        self.assertEqual(self.request("/v1/records","POST",payload,token)[0],200)
+        self.assertEqual(self.app.storage_usage("robin")>3,True)
+
+    def test_corrupt_upload_and_pending_quota_reservations(self):
+        import hashlib
+        token=self.login();self.config["users"][0]["storage_limit_mb"]=1
+        body={"filename":"x.mov","mime_type":"video/quicktime","size_bytes":700000,"sha256":hashlib.sha256(b"a"*700000).hexdigest()}
+        asset=self.request("/v1/assets","POST",body,token)[1]["id"]
+        self.assertEqual(self.request_error("/v1/assets","POST",body,token)[0],507)
+        with self.assertRaises(urllib.error.HTTPError) as raised:self.raw_asset_request("/v1/assets/"+asset,"PUT",token,b"b"*700000)
+        self.assertEqual(raised.exception.code,400);raised.exception.close()
+        self.assertEqual(self.request_error("/v1/assets/"+asset,token=token)[0],404)
+        self.request("/v1/assets/"+asset,"DELETE",token=token)
+        self.assertEqual(self.app.storage_usage("robin"),0)
+
+    def test_live_photo_album_and_binary_backup_survive_restart(self):
+        import uuid,tarfile
+        token=self.login();first=self.upload_asset(token,b"photo");second=self.upload_asset(token,b"paired-video","video/quicktime")
+        album={"id":str(uuid.uuid4()),"kind":"album","payload":{"title":"Unser Sommer"}}
+        self.request("/v1/records","POST",album,token)
+        moment={"id":str(uuid.uuid4()),"kind":"moment","payload":{"asset_ids":[first,second],"album_id":album["id"],"media_kind":"live","captured_at":"2020-02-29T12:00:00Z"}}
+        self.request("/v1/records","POST",moment,token)
+        backup=self.app.backup()
+        with tarfile.open(backup) as archive:self.assertTrue(any(n.endswith("original.mov") for n in archive.getnames()))
+        self.request("/v1/records/"+album["id"],"DELETE",token=token)
+        SERVER.Database(self.app.database.path).initialize()
+        records=self.request("/v1/records/archive?kind=moment",token=token)[1]["records"]
+        self.assertEqual(records[0]["payload"]["asset_ids"],[first,second])
+        self.assertEqual(records[0]["payload"]["captured_at"],"2020-02-29T12:00:00Z")
+
+    def test_photo_request_only_recipient_can_reply_once_and_recall(self):
+        import uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        request={"id":str(uuid.uuid4()),"kind":"photo_request","payload":{"title":"Ein Lächeln","target_id":"raphaela","completed":False}}
+        self.request("/v1/records","POST",request,token)
+        asset=self.upload_asset(partner,b"selfie")
+        body={"asset_id":asset,"caption":"Süßefresse"}
+        endpoint="/v1/photo-requests/"+request["id"]+"/reply"
+        self.assertEqual(self.request_error(endpoint,"POST",body,token)[0],403)
+        photo=self.request(endpoint,"POST",body,partner)[1]
+        self.assertEqual(photo["owner_id"],"raphaela")
+        self.assertEqual(self.request_error(endpoint,"POST",body,partner)[0],409)
+        self.assertEqual(self.request_error("/v1/records/"+photo["id"],"DELETE",token=token)[0],403)
+        self.request("/v1/records/"+photo["id"],"DELETE",token=partner)
+        self.assertEqual(self.request_error("/v1/assets/"+asset,token=token)[0],404)
+
+    def test_precise_thoughts_idempotency_receipts_and_open_times(self):
+        import uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        event={"id":str(uuid.uuid4()),"occurred_at":SERVER.iso_now()}
+        self.request("/v1/thoughts","POST",event,token);self.request("/v1/thoughts","POST",event,token)
+        history=self.request("/v1/thoughts/history",token=partner)[1]["events"]
+        self.assertEqual(len(history),1);self.assertEqual(history[0]["occurred_at"],event["occurred_at"])
+        snapshot=self.app.bootstrap("robin");self.assertEqual(snapshot["thoughts"]["robin"],1)
+        self.request("/v1/open","POST",{},partner)
+        asset=self.upload_asset(token,b"audio","audio/mp4")
+        chat={"id":str(uuid.uuid4()),"kind":"chat","payload":{"asset_ids":[asset],"media_kind":"audio","autoplay":True,"urgency":0.8}}
+        self.request("/v1/records","POST",chat,token)
+        self.request("/v1/records/"+chat["id"]+"/opened","POST",{},partner)
+        snapshot=self.app.bootstrap("robin")
+        self.assertIn("raphaela",snapshot["last_opened"])
+        self.assertEqual(snapshot["opened_records"][0]["record_id"],chat["id"])
+
+    def test_annual_plans_remain_editable_by_both_and_visible_beyond_bootstrap_limit(self):
+        import uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        plan={"id":str(uuid.uuid4()),"kind":"calendar","payload":{"title":"Jahrestag","start_at":"2020-02-29T10:00:00Z","end_at":"2020-02-29T11:00:00Z","recurrence":"yearly","alarm_enabled":True,"reminder_sync":True,"calendar_sync":True}}
+        self.request("/v1/records","POST",plan,token);plan["payload"]["title"]="Unser Tag"
+        self.request("/v1/records","POST",plan,partner)
+        self.assertEqual(self.app.bootstrap("robin")["records"][0]["payload"]["title"],"Unser Tag")
+        plan["payload"]["recurrence"]="nonsense"
+        self.assertEqual(self.request_error("/v1/records","POST",plan,token)[0],400)
+
+    def test_feather_feed_only_serves_validated_rj_ipa_and_token_rotates(self):
+        import io,zipfile,plistlib
+        token=self.login()
+        memory=io.BytesIO()
+        with zipfile.ZipFile(memory,"w") as z:
+            z.writestr("Payload/RJ Love.app/Info.plist",plistlib.dumps({"CFBundleIdentifier":"eu.rjuhas.rjlove","CFBundleShortVersionString":"3.1.0","CFBundleVersion":"310"}))
+            z.writestr("Payload/RJ Love.app/AppIcon60.png",b"fake-icon")
+        asset=self.upload_asset(token,memory.getvalue(),"application/octet-stream")
+        self.request("/v1/app-release","POST",{"asset_id":asset},token)
+        body={"base_url":"https://liebe.example/rj"}
+        feed=self.request("/v1/update-feed","POST",body,token)[1]["token"]
+        source=self.request("/updates/"+feed+"/source.json",version=None,protocol=None)[1]
+        version=source["apps"][0]["versions"][0]
+        self.assertEqual(version["version"],"3.1.0")
+        self.assertTrue(version["downloadURL"].startswith("https://liebe.example/rj/updates/"))
+        self.assertEqual(self.raw_asset_request("/updates/"+feed+"/latest.ipa","GET",None)[1],memory.getvalue())
+        self.request("/v1/update-feed","POST",body,token)
+        self.assertEqual(self.request_error("/updates/"+feed+"/source.json")[0],404)
+        invalid=self.upload_asset(token,b"not-an-ipa","application/octet-stream")
+        self.assertEqual(self.request_error("/v1/app-release","POST",{"asset_id":invalid},token)[0],400)
 
 
 if __name__ == "__main__":

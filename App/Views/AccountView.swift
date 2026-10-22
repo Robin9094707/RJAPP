@@ -51,7 +51,6 @@ struct CapabilitiesView: View {
                 row("Push-Server", appState.features?.apnsEnabled == true ? "Auf dem Server aktiviert" : "APNs nicht konfiguriert", "server.rack", appState.features?.apnsEnabled == true)
                 row("Apple Health", health.requested ? "Auswahl angefragt; Daten in Health verwalten" : "Noch nicht angefragt", "heart.text.square", health.requested)
                 row("Präzise Nahbereichssuche", appState.nearby.supported ? "UWB-Hardware verfügbar" : "Auf diesem Gerät nicht verfügbar", "dot.radiowaves.left.and.right", appState.nearby.supported)
-                row("Walkie-Talkie-Systemkanal", appState.radio.joinedSystem ? "Mit Apples PushToTalk verbunden" : "Nicht verbunden · im Funkbereich einrichten", "antenna.radiowaves.left.and.right", appState.radio.joinedSystem)
                 row("Live-Aktivität", appState.liveActivity.isRunning ? "Aktiv" : "Bereit zum Start auf der Wir-Seite", "livephoto", appState.liveActivity.isRunning)
             }
             Section("Signieren mit ArcticSign / Feather") {

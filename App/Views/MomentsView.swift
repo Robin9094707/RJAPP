@@ -1,108 +1,42 @@
 import PhotosUI
 import SwiftUI
 import UIKit
-
-struct MomentsView: View {
-    @Environment(AppState.self) private var appState
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var pendingImage: Data?
-    @State private var selectedMoment: SharedRecord?
-    @State private var loadingImage = false
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-    ]
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                introCard
-                if appState.moments.isEmpty {
-                    ContentUnavailableView(
-                        "Euer erstes Kapitel wartet",
-                        systemImage: "photo.on.rectangle.angled",
-                        description: Text("Teilt einen Lieblingsmoment mit Bild, Text, Reaktionen und Kommentaren.")
-                    )
-                    .loveCard()
-                } else {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(appState.moments) { moment in
-                            Button { selectedMoment = moment } label: {
-                                MomentTile(moment: moment)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-            .padding(18)
-        }
-        .background(LoveBackground())
-        .navigationTitle("Unsere Momente")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                PhotosPicker(selection: $pickerItem, matching: .images) {
-                    if loadingImage { ProgressView() } else { Image(systemName: "plus") }
-                }
-                .accessibilityLabel("Moment hinzufügen")
-            }
-        }
-        .onChange(of: pickerItem) { _, item in
-            guard let item else { return }
-            loadingImage = true
-            Task {
-                defer { loadingImage = false; pickerItem = nil }
-                guard let raw = try? await item.loadTransferable(type: Data.self),
-                      let compressed = compressMomentImage(raw) else {
-                    appState.alert = AppAlert(title: "Foto nicht geladen", message: "Das ausgewählte Bild konnte nicht verarbeitet werden.")
-                    return
-                }
-                pendingImage = compressed
-            }
-        }
-        .sheet(isPresented: Binding(
-            get: { pendingImage != nil },
-            set: { if !$0 { pendingImage = nil } }
-        )) {
-            if let pendingImage {
-                MomentComposerView(imageData: pendingImage)
-            }
-        }
-        .sheet(item: $selectedMoment) { moment in
-            MomentDetailView(initialMoment: moment)
-        }
-    }
-
-    private var introCard: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "sparkles.rectangle.stack.fill")
-                .font(.system(size: 34))
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(LovePalette.pink, LovePalette.cyan)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Nur für euch zwei")
-                    .font(.headline)
-                Text("Fotos werden verkleinert und direkt auf deinem privaten RJ-Love-Server gespeichert.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .loveCard()
-    }
-
-    private func compressMomentImage(_ data: Data) -> Data? {
-        guard let image = UIImage(data: data) else { return nil }
-        let maximum: CGFloat = 1600
-        let longEdge = max(image.size.width, image.size.height)
-        let scale = min(1, maximum / max(longEdge, 1))
-        let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let renderer = UIGraphicsImageRenderer(size: target)
-        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
-        return resized.jpegData(compressionQuality: 0.78)
+struct MomentsView:View {
+    @Environment(AppState.self) private var app
+    @State private var queuedMedia:SelectedMedia?
+    @State private var picker=false
+    @State private var pending:SelectedMedia?
+    @State private var selected:SharedRecord?
+    @State private var albumID=""
+    @State private var albumName=""
+    @State private var newAlbum=false
+    @State private var renameAlbum:SharedRecord?
+    @State private var deleteAlbum:SharedRecord?
+    private var albums:[SharedRecord]{app.records.filter{$0.kind == .album}.sorted{($0.payload.title ?? "")<($1.payload.title ?? "")}}
+    private var moments:[SharedRecord]{app.moments.filter{albumID.isEmpty || $0.payload.albumID==albumID}.sorted{($0.payload.capturedAt ?? $0.createdAt)>($1.payload.capturedAt ?? $1.createdAt)}}
+    var body:some View {
+        ScrollView {VStack(alignment:.leading,spacing:20){
+            VStack(alignment:.leading,spacing:12){LoveEyebrow(text:"Unsere kleine Ewigkeit");Text("Momente, die bleiben.").font(.system(size:32,weight:.medium,design:.serif));Text("Fotos, Videos und echte Live Photos. In unseren Alben, auf unserem Server.").foregroundStyle(.secondary);StorageSummaryView()}.loveCard()
+            HStack{Button("Moment hinzufügen",systemImage:"plus"){picker=true}.buttonStyle(.borderedProminent);Button("Album",systemImage:"folder.badge.plus"){albumName="";newAlbum=true}.buttonStyle(.bordered)}
+            ScrollView(.horizontal,showsIndicators:false){HStack{Button("Alle Momente"){albumID=""}.buttonStyle(.bordered).tint(albumID.isEmpty ? LovePalette.pink:LovePalette.violet);ForEach(albums){album in Button(album.payload.title ?? "Album"){albumID=album.id}.buttonStyle(.bordered).tint(albumID==album.id ? LovePalette.pink:LovePalette.violet).contextMenu{Button("Umbenennen"){albumName=album.payload.title ?? "";renameAlbum=album};Button("Album entfernen",role:.destructive){deleteAlbum=album}}}}}
+            if MediaTransfer.shared.busy{ProgressView(value:MediaTransfer.shared.progress);Text("Upload \(Int(MediaTransfer.shared.progress*100)) %").font(.caption)}
+            if moments.isEmpty{ContentUnavailableView("Unser nächster Lieblingsmoment",systemImage:"photo.stack.fill",description:Text("Teilt ein Foto, Video oder Live Photo miteinander."))}
+            LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],spacing:12){ForEach(moments){moment in Button{selected=moment}label:{MomentTile(moment:moment)}.buttonStyle(.plain)}}
+        }.padding(18)}.background(LoveBackground()).navigationTitle("Unsere Momente")
+            .toolbar{ToolbarItem(placement:.topBarTrailing){Button("Moment hinzufügen",systemImage:"plus"){picker=true}}}
+            .sheet(isPresented:$picker,onDismiss:{pending=queuedMedia;queuedMedia=nil}){MediaPicker{result in picker=false;switch result{case .success(let media):queuedMedia=media;case .failure(let error):if error is CancellationError{return};app.alert=AppAlert(title:"Medium nicht geladen",message:error.localizedDescription)}}}
+            .sheet(item:$pending){MediaComposer(media:$0,kind:.moment)}
+            .sheet(item:$selected){MomentDetailView(initialMoment:$0)}
+            .alert("Unser neues Album",isPresented:$newAlbum){TextField("Albumname",text:$albumName);Button("Anlegen"){Task{if let album=await app.saveRecord(kind:.album,payload:RecordPayload(title:albumName)){albumID=album.id}}}.disabled(albumName.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty);Button("Abbrechen",role:.cancel){}}
+            .alert("Album umbenennen",isPresented:Binding(get:{renameAlbum != nil},set:{if !$0{renameAlbum=nil}})){TextField("Albumname",text:$albumName);Button("Speichern"){if let album=renameAlbum{Task{_ = await app.saveRecord(id:album.id,kind:.album,payload:RecordPayload(title:albumName))}};renameAlbum=nil}.disabled(albumName.isEmpty);Button("Abbrechen",role:.cancel){renameAlbum=nil}}
+            .alert("Album entfernen?",isPresented:Binding(get:{deleteAlbum != nil},set:{if !$0{deleteAlbum=nil}})){Button("Album entfernen",role:.destructive){if let album=deleteAlbum{Task{_ = await app.deleteRecord(album)}};albumID="";deleteAlbum=nil};Button("Abbrechen",role:.cancel){deleteAlbum=nil}}message:{Text("Die Fotos und Videos bleiben unter Alle Momente erhalten.")}
+            .task{await app.loadRecordArchive(kind:.moment);await app.loadRecordArchive(kind:.album)}
     }
 }
-
+struct StorageSummaryView:View {
+    @Environment(AppState.self) private var app
+    var body:some View{VStack(alignment:.leading,spacing:6){Text("Gemeinsam belegt: "+ByteCountFormatter.string(fromByteCount:Int64(app.storageByUser.values.reduce(0,+)),countStyle:.file)).font(.subheadline.bold());ForEach(app.storageByUser.keys.sorted(),id:\.self){id in Text((id==app.me?.id ? "Du":app.partner?.displayName ?? id)+": "+ByteCountFormatter.string(fromByteCount:Int64(app.storageByUser[id] ?? 0),countStyle:.file)).font(.caption).foregroundStyle(.secondary)}}}
+}
 private struct MomentTile: View {
     let moment: SharedRecord
 
@@ -144,7 +78,7 @@ private struct MomentTile: View {
     }
 
     private var imageData: Data? {
-        moment.payload.imageBase64.flatMap { Data(base64Encoded: $0) }
+        (moment.payload.posterBase64 ?? moment.payload.imageBase64).flatMap { Data(base64Encoded: $0) }
     }
 }
 
@@ -192,9 +126,10 @@ private struct MomentComposerView: View {
     }
 }
 
-private struct MomentDetailView: View {
+struct MomentDetailView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @State private var editingMetadata=false
     @State private var moment: SharedRecord
     @State private var comment = ""
     @State private var deleting = false
@@ -217,9 +152,11 @@ private struct MomentDetailView: View {
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                     }
+                    if moment.payload.assetIDs?.isEmpty == false {MediaAttachmentView(record:moment)}
                     Text(moment.payload.caption?.isEmpty == false ? moment.payload.caption! : "Unser Moment")
                         .font(.title2.bold())
 
+                    Button("Beschreibung, Datum & Album",systemImage:"pencil"){editingMetadata=true}
                     reactionRow
                     commentsSection
                 }
@@ -234,6 +171,8 @@ private struct MomentDetailView: View {
                     Button(role: .destructive) { deleting = true } label: { Image(systemName: "trash") }
                 }
             }
+            .sheet(isPresented:$editingMetadata){MomentMetadataEditor(record:moment)}
+            .onChange(of:appState.records){_,records in if let current=records.first(where:{$0.id==moment.id}){moment=current}}
             .alert("Moment für euch beide löschen?", isPresented: $deleting) {
                 Button("Löschen", role: .destructive) {
                     Task { if await appState.deleteRecord(moment) { dismiss() } }
@@ -376,4 +315,19 @@ private struct MomentDetailView: View {
             saving = false
         }
     }
+}
+
+struct MomentMetadataEditor:View {
+    @Environment(AppState.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    let record:SharedRecord
+    @State private var caption=""
+    @State private var date=Date.now
+    @State private var albumID=""
+    @State private var saving=false
+    var body:some View {NavigationStack{Form{
+        TextField("Unser Moment in Worten",text:$caption,axis:.vertical)
+        DatePicker("Aufgenommen",selection:$date,in:...Date.now)
+        if record.kind == .moment{Picker("Album",selection:$albumID){Text("Alle Momente").tag("");ForEach(app.records.filter{$0.kind == .album}){Text($0.payload.title ?? "Album").tag($0.id)}}}
+    }.navigationTitle("Unseren Moment beschreiben").toolbar{ToolbarItem(placement:.cancellationAction){Button("Abbrechen"){dismiss()}};ToolbarItem(placement:.confirmationAction){Button("Speichern"){saving=true;Task{var payload=record.payload;payload.caption=caption;payload.capturedAt=date.rjISO8601;if record.kind == .moment{payload.albumID=albumID.isEmpty ? nil:albumID};if await app.saveRecord(id:record.id,kind:record.kind,payload:payload) != nil{dismiss()};saving=false}}.disabled(saving)}}.onAppear{caption=record.payload.caption ?? "";date=min((record.payload.capturedAt ?? record.createdAt).rjDate ?? .now,.now);albumID=record.payload.albumID ?? ""}}}
 }

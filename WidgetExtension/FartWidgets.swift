@@ -73,19 +73,3 @@ struct FartRecordingLiveWidget: Widget {
         else { Text(timerInterval: context.state.startedAt...context.state.startedAt.addingTimeInterval(60), countsDown: false, showsHours: false) }
     }
 }
-
-struct RJLoveRadioWidget: Widget {
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "RJLoveRadioWidget", provider: LoveTimelineProvider()) { _ in
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: "antenna.radiowaves.left.and.right").font(.title)
-                Text("Deine Stimme.").font(.headline)
-                Text("Ganz nah.").font(.system(.title3, design: .serif))
-                Label("Walkie-Talkie öffnen", systemImage: "arrow.up.right").font(.caption)
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .containerBackground(for: .widget) { Color.purple.opacity(0.18) }
-                .widgetURL(URL(string: "rjlove://radio"))
-        }.configurationDisplayName("Eure private Frequenz").description("Öffnet euren Funkkanal. Die Sprechtaste im iOS-Systemkanal ist nach dem Beitritt auch außerhalb der App verfügbar.")
-            .supportedFamilies([.systemSmall])
-    }
-}

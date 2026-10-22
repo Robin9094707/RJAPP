@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import UIKit
 
 struct MonitoredLovePlace: Hashable {
     let id: String
@@ -43,7 +44,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.distanceFilter = 15
         manager.activityType = .otherNavigation
         manager.pausesLocationUpdatesAutomatically = true
-        manager.showsBackgroundLocationIndicator = true
+        manager.showsBackgroundLocationIndicator = false
     }
 
     func requestSetupAccess() async {
@@ -58,6 +59,11 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         }
     }
 
+    func requestRecordingLocation() {
+        guard UserDefaults.standard.object(forKey:"rjlove.fart-locations") == nil || UserDefaults.standard.bool(forKey:"rjlove.fart-locations") else{return}
+        if manager.authorizationStatus == .notDetermined{manager.requestWhenInUseAuthorization()}
+        else if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse{manager.requestLocation()}
+    }
     func requestWhenInUse() {
         manager.requestWhenInUseAuthorization()
     }
@@ -74,11 +80,17 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.requestTemporaryFullAccuracyAuthorization(withPurposeKey: "PartnerMapPrecision")
     }
 
+    func enterBackground() {
+        manager.stopUpdatingLocation()
+        manager.allowsBackgroundLocationUpdates = false
+        if sharingEnabled,manager.authorizationStatus == .authorizedAlways {manager.startMonitoringSignificantLocationChanges()}
+    }
     func start() {
         guard sharingEnabled else { return }
+        guard UIApplication.shared.applicationState == .active else {enterBackground();return}
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
-            manager.allowsBackgroundLocationUpdates = manager.authorizationStatus == .authorizedAlways
+            manager.allowsBackgroundLocationUpdates = false
             manager.startUpdatingLocation()
             manager.startMonitoringSignificantLocationChanges()
         case .notDetermined:

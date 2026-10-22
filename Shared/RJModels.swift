@@ -6,7 +6,7 @@ enum RecordKind: String, Codable, CaseIterable, Sendable {
     case moment
     case geofence
     case calendar
-    case chat, wish, milestone, checkin, coupon, gratitude
+    case chat, wish, milestone, checkin, coupon, gratitude, album, instant, photo_request
 }
 
 struct UserProfile: Codable, Identifiable, Hashable, Sendable {
@@ -133,6 +133,18 @@ struct RecordPayload: Codable, Hashable, Sendable {
     var endAt: String?
     var notes: String?
     var location: String?
+    var assetIDs: [String]? = nil
+    var mediaKind: String? = nil
+    var albumID: String? = nil
+    var capturedAt: String? = nil
+    var posterBase64: String? = nil
+    var autoplay: Bool? = nil
+    var urgency: Double? = nil
+    var referenceID: String? = nil
+    var recurrence: String? = nil
+    var reminderSync: Bool? = nil
+    var calendarSync: Bool? = nil
+    var requestID: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case title, text, message, completed, caption, comments, reactions, name
@@ -144,6 +156,7 @@ struct RecordPayload: Codable, Hashable, Sendable {
         case mimeType = "mime_type"
         case notifyOnEnter = "notify_on_enter"
         case notifyOnExit = "notify_on_exit"
+        case assetIDs = "asset_ids", mediaKind = "media_kind", albumID = "album_id", capturedAt = "captured_at", posterBase64 = "poster_base64", autoplay, urgency, referenceID = "reference_id", recurrence, reminderSync = "reminder_sync", calendarSync = "calendar_sync", requestID = "request_id"
         case startAt = "start_at"
         case endAt = "end_at"
     }
@@ -274,6 +287,11 @@ struct BootstrapResponse: Codable, Sendable {
     let commands: [RemoteCommand]
     let events: [RemoteEvent]
     let storageUsedBytes: Int
+    var deletedRecordIDs:[String]? = nil
+    var storageByUser: [String:Int]? = nil
+    var thoughtHistory: [ThoughtEvent]? = nil
+    var lastOpened: [String:String]? = nil
+    var openedRecords: [OpenedRecord]? = nil
     let features: ServerFeatures
 
     enum CodingKeys: String, CodingKey {
@@ -281,7 +299,8 @@ struct BootstrapResponse: Codable, Sendable {
         case serverTime = "server_time"
         case localDay = "local_day"
         case myPresence = "my_presence"
-        case storageUsedBytes = "storage_used_bytes"
+        case deletedRecordIDs = "deleted_record_ids"
+        case storageUsedBytes = "storage_used_bytes", storageByUser = "storage_by_user", thoughtHistory = "thought_history", lastOpened = "last_opened", openedRecords = "opened_records"
     }
 }
 

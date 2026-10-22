@@ -46,7 +46,7 @@ struct LoveHubView: View {
         .background(LoveBackground()).navigationTitle("Nur wir zwei").navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("Walkie-Talkie", systemImage: "antenna.radiowaves.left.and.right") { appState.showingRadio = true }
+                NavigationLink { PlannerView() } label: { Image(systemName:"calendar.badge.clock") }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink { TogetherView() } label: { Image(systemName: "tray.full") }
@@ -62,55 +62,7 @@ struct LoveHubView: View {
         }
     }
 
-    private var chatContent: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        VStack(spacing: 8) {
-                            LoveEyebrow(text: "Ein Gespräch. Nur für euch.")
-                            Text(question).font(.system(.title3, design: .serif)).multilineTextAlignment(.center)
-                            Text("Eure Frage für heute").font(.caption2).foregroundStyle(.secondary)
-                        }.padding(24).frame(maxWidth: .infinity).loveGlass(in: RoundedRectangle(cornerRadius: 26)).padding(.bottom, 14)
-                        if chats.isEmpty { Text("Manchmal reichen drei Worte. 💌").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 20) }
-                        ForEach(chats) { record in
-                            let mine = record.ownerID == appState.me?.id
-                            HStack {
-                                if mine { Spacer(minLength: 38) }
-                                VStack(alignment: mine ? .trailing : .leading, spacing: 6) {
-                                    Text(record.payload.text ?? "").textSelection(.enabled)
-                                        .padding(16).foregroundStyle(mine ? Color.white : Color.primary)
-                                        .background(mine ? LovePalette.pink : LovePalette.violet.opacity(0.10), in: RoundedRectangle(cornerRadius: 21))
-                                    if let date = record.createdAt.rjDate {
-                                        Text("\(mine ? "Du" : appState.partner?.displayName ?? "Schatzi") · \(date.formatted(.dateTime.day().month().hour().minute()))")
-                                            .font(.system(size: 10)).foregroundStyle(.tertiary)
-                                    }
-                                }
-                                if !mine { Spacer(minLength: 38) }
-                            }.id(record.id).contextMenu { Button("Löschen", systemImage: "trash", role: .destructive) { deleting = record } }
-                        }
-                    }.padding(20)
-                }
-                .defaultScrollAnchor(.bottom)
-                .onChange(of: chats.count) { _, _ in if let last = chats.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } } }
-            }
-            HStack(alignment: .bottom, spacing: 12) {
-                TextField("Ein paar Worte für dich …", text: $draft, axis: .vertical)
-                    .lineLimit(1...5).padding(14).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 22))
-                Button {
-                    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    sending = true
-                    Task {
-                        if await appState.saveRecord(kind: .chat, payload: RecordPayload(text: text)) != nil { draft = "" }
-                        sending = false
-                    }
-                } label: {
-                    Group { if sending { ProgressView().tint(.white) } else { Image(systemName: "arrow.up").font(.headline) } }
-                        .frame(width: 46, height: 46).foregroundStyle(.white).background(LovePalette.pink, in: Circle())
-                }.disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.count > 4000).accessibilityLabel("Nachricht senden")
-            }.padding(.horizontal, 18).padding(.vertical, 12)
-        }.scrollDismissesKeyboard(.interactively)
-    }
+    private var chatContent: some View { MessengerView() }
     private var question: String {
         let questions = ["Welcher kleine Moment mit mir macht dich glücklich?", "Was möchtest du dieses Jahr mit mir erleben?", "Wobei kann ich dich gerade unterstützen?", "Was war heute dein schönster Gedanke?", "Welchen Ort würdest du mir gern zeigen?", "Wann fühlst du dich mir besonders nah?", "Worauf freust du dich bei unserem nächsten Treffen?"]
         let day = Calendar.current.ordinality(of: .day, in: .era, for: .now) ?? 0

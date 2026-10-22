@@ -123,13 +123,13 @@ struct FartEditorView: View {
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Schließen") { dismiss() }.disabled(saving) } }
         }.interactiveDismissDisabled(saving)
         .task {
-            title = clip.title; end = clip.duration; appState.studio.stopPlayback(); appState.radio.pauseForStudio()
+            title = clip.title; end = clip.duration; appState.studio.stopPlayback()
             do {
                 let bytes = try await appState.api.fartAudio(id: clip.id)
                 let local = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
                 try bytes.write(to: local, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]); url = local
             } catch { self.error = error.localizedDescription }
         }
-        .onDisappear { if let url { try? FileManager.default.removeItem(at: url) }; Task { await appState.radio.restoreIfEnabled(api: appState.api) } }
+        .onDisappear { if let url { try? FileManager.default.removeItem(at: url) } }
     }
 }

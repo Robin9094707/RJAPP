@@ -1,128 +1,69 @@
 import SwiftUI
 
-enum AppTab: Hashable {
-    case home
-    case map
-    case together
-    case moments
-    case settings
-}
-
-struct RootView: View {
+enum AppTab:Hashable {case home,map,together,moments,settings}
+struct RootView:View {
     @Environment(AppState.self) private var appState
-    @ObservedObject private var update = UpdateCoordinator.shared
-
-    var body: some View {
+    @ObservedObject private var update=UpdateCoordinator.shared
+    var body:some View {
         ZStack {
             LoveBackground()
             switch appState.phase {
-            case .setup:
-                ServerSetupView()
-            case .restoring:
-                VStack(spacing: 18) {
-                    Image(systemName: "heart.circle.fill")
-                        .font(.system(size: 68))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, LovePalette.pink)
-                    ProgressView()
-                        .controlSize(.large)
-                    Text(appState.connectionMessage)
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(30)
-                .loveGlass(in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+            case .setup:ServerSetupView()
+            case .restoring:ProgressView(appState.connectionMessage).padding(30)
             case .authenticated:
-                if appState.privacyLock.isUnlocked {
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {
-                        FartRecorderView(autoStart: false)
-                    } else if ProcessInfo.processInfo.arguments.contains("--preview-delivery") {
-                        NavigationStack { DeliveryCenterView() }
-                    } else if ProcessInfo.processInfo.arguments.contains("--preview-radio") {
-                        NavigationStack { WalkieTalkieView() }
-                    } else if ProcessInfo.processInfo.arguments.contains("--preview-setup") {
-                        SetupJourneyView()
-                    } else if ProcessInfo.processInfo.arguments.contains("--preview-health") {
-                        NavigationStack { HealthDashboardView() }
-                    } else { MainTabView() }
-                    #else
-                    MainTabView()
-                    #endif
-                } else {
-                    PrivacyLockView()
-                }
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {FartRecorderView(autoStart:false)}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-delivery") {NavigationStack{DeliveryCenterView()}}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-messenger") {NavigationStack{MessengerView()}}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-setup") {SetupJourneyView()}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-health") {NavigationStack{HealthDashboardView()}}
+                else {MainTabView()}
+                #else
+                MainTabView()
+                #endif
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("rj-root")
-        .previewAccessibilityEnvironment()
-        .overlay { if update.requirement != nil { UpdateRequiredView() } }
-        .task {
-            await appState.activate()
-        }
-        .alert(item: Binding(
-            get: { appState.alert },
-            set: { appState.alert = $0 }
-        )) { value in
-            Alert(title: Text(value.title), message: Text(value.message), dismissButton: .default(Text("OK")))
-        }
+        }.frame(maxWidth:.infinity,maxHeight:.infinity).accessibilityIdentifier("rj-root").previewAccessibilityEnvironment()
+            .overlay{if update.requirement != nil {UpdateRequiredView()}}
+            .task{await appState.activate()}
+            .alert(item:Binding(get:{appState.alert},set:{appState.alert=$0})){Alert(title:Text($0.title),message:Text($0.message),dismissButton:.default(Text("OK")))}
     }
 }
-
-private struct PrivacyLockView: View {
+struct MainTabView:View {
     @Environment(AppState.self) private var appState
-
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "lock.heart.fill")
-                .font(.system(size: 70))
-                .foregroundStyle(LovePalette.pink)
-            Text("RJ Love ist geschützt")
-                .font(.title2.bold())
-            Text("Entsperre eure privaten Inhalte mit Face ID, Touch ID oder deinem Gerätecode.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Button("Entsperren") {
-                Task { _ = await appState.privacyLock.unlock() }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+    var body:some View {
+        @Bindable var state=appState
+        @Bindable var journey=appState.setupJourney
+        TabView(selection:$state.selectedTab) {
+            NavigationStack{HomeView()}.tabItem{Label("Wir",systemImage:"heart.fill")}.tag(AppTab.home)
+            NavigationStack{PartnerMapView()}.tabItem{Label("Karte",systemImage:"location.fill")}.tag(AppTab.map)
+            NavigationStack{LoveHubView()}.tabItem{Label("Für uns",systemImage:"person.2.fill")}.tag(AppTab.together)
+            NavigationStack{ExperienceView()}.tabItem{Label("Spielplatz",systemImage:"sparkles")}.tag(AppTab.moments)
+            NavigationStack{SettingsView()}.tabItem{Label("Mehr",systemImage:"slider.horizontal.3")}.tag(AppTab.settings)
         }
-        .padding(28)
-        .loveCard()
-        .padding(22)
+        .sheet(isPresented:$state.showingFartRecorder,onDismiss:{appState.offerForegroundMoments()}){FartRecorderView(autoStart:appState.quickFartRecording)}
+        .sheet(isPresented:$state.showingChangelog,onDismiss:{appState.didReadChangelog()}){ChangelogView()}
+        .sheet(item:$state.pendingSweet,onDismiss:{appState.offerForegroundMoments()}){SweetPlaybackView(record:$0)}
+        .fullScreenCover(item:$state.pendingPhotoRequest,onDismiss:{appState.offerForegroundMoments()}){InstantCameraView(request:$0)}
+        .fullScreenCover(isPresented:$journey.presented,onDismiss:{Task{_ = await appState.syncNow(showErrors:false)}}){SetupJourneyView()}
     }
 }
-
-struct MainTabView: View {
-    @Environment(AppState.self) private var appState
-
-    var body: some View {
-        @Bindable var state = appState
-        @Bindable var journey = appState.setupJourney
-
-        TabView(selection: $state.selectedTab) {
-            NavigationStack { HomeView() }
-                .tabItem { Label("Wir", systemImage: "heart.fill") }
-                .tag(AppTab.home)
-            NavigationStack { PartnerMapView() }
-                .tabItem { Label("Karte", systemImage: "location.fill") }
-                .tag(AppTab.map)
-            NavigationStack { LoveHubView() }
-                .tabItem { Label("Für uns", systemImage: "person.2.fill") }
-                .tag(AppTab.together)
-            NavigationStack { ExperienceView() }
-                .tabItem { Label("Spielplatz", systemImage: "sparkles") }
-                .tag(AppTab.moments)
-            NavigationStack { SettingsView() }
-                .tabItem { Label("Mehr", systemImage: "slider.horizontal.3") }
-                .tag(AppTab.settings)
-        }
-        .sheet(isPresented: $state.showingFartRecorder, onDismiss: { Task { await appState.radio.restoreIfEnabled(api: appState.api) } }) {
-            FartRecorderView(autoStart: appState.quickFartRecording)
-        }
-        .sheet(isPresented: $state.showingRadio) { NavigationStack { WalkieTalkieView() } }
-        .fullScreenCover(isPresented: $journey.presented) { SetupJourneyView() }
+struct ChangelogView:View {
+    @Environment(AppState.self) private var app
+    var body:some View {
+        NavigationStack {
+            ScrollView {VStack(alignment:.leading,spacing:22){
+                Image(systemName:"heart.text.clipboard.fill").font(.system(size:50)).foregroundStyle(LovePalette.pink)
+                Text("Noch mehr wir.").font(.system(size:36,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 3.0").font(.title3.bold())
+                Label("Messenger mit Fotos, Videos und Sprachnachrichten",systemImage:"bubble.left.and.bubble.right.fill")
+                Label("Momente, Alben und echte Live Photos",systemImage:"photo.stack.fill")
+                Label("Duftpost importieren, lokal sichern und als Playlist hören",systemImage:"wind")
+                Label("Gemeinsame Termine, Jahrestage und optionale Wecker",systemImage:"calendar.badge.clock")
+                Label("Jeder Herzgedanke mit Datum und Sekunden",systemImage:"heart.fill")
+                Text("Neu zunächst eingeschaltet: Aufnahmeorte bei neuer Duftpost, Fotowünsche mit sichtbarem 3-Sekunden-Countdown und abbrechbarer Kamera sowie süße Nachrichten beim Öffnen. iOS-Zugriffsrechte gelten weiterhin. Unter Mehr kannst du diese Optionen jederzeit ändern.").font(.subheadline).foregroundStyle(.secondary)
+                Text("Walkie-Talkie und die eigene Face-ID-Sperre sind entfernt. Eure Konten, Aufnahmen und bisherigen Momente bleiben erhalten.").font(.footnote)
+                Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
+            }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")
+        }.interactiveDismissDisabled()
     }
 }

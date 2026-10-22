@@ -39,7 +39,13 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     private(set) var playbackDuration = 0.0
     private(set) var loadingID: String?
     var errorMessage: String?
-    var playbackRate: Float = 1 { didSet { player?.rate = playbackRate } }
+    var playbackRate: Float = 1 { didSet { funny.rate = playbackRate } }
+    var soundEffect:FartSoundEffect = .original {didSet{funny.effect=soundEffect}}
+    private let funny=FunnyAudioEngine()
+    private var playlist:[FartClip]=[]
+    private var playlistAPI:APIClient?
+    private(set) var queueIndex=0
+    private(set) var queueCount=0
     private var recorder: AVAudioRecorder?
     private var player: AVAudioPlayer?
     private var meterTask: Task<Void, Never>?
@@ -107,7 +113,8 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
             recordingID = UUID().uuidString
             recordedAt = Date.now.rjISO8601
             recordingLocation = nil
-            if LocationService.shared.sharingEnabled, let value = LocationService.shared.lastLocation,
+            LocationService.shared.requestRecordingLocation()
+            if UserDefaults.standard.object(forKey:"rjlove.fart-locations") == nil || UserDefaults.standard.bool(forKey:"rjlove.fart-locations"), let value = LocationService.shared.lastLocation,
                abs(value.timestamp.timeIntervalSinceNow) < 120, value.horizontalAccuracy >= 0, value.horizontalAccuracy <= 1000 {
                 recordingLocation = FartLocation(latitude: value.coordinate.latitude, longitude: value.coordinate.longitude, accuracy: value.horizontalAccuracy, capturedAt: value.timestamp.rjISO8601)
             }; self.ownerID = ownerID
@@ -162,6 +169,9 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     }
     private func persistDraft(duration: Double) {
         guard duration >= 0.2 else { return }
+        if recordingLocation == nil,(UserDefaults.standard.object(forKey:"rjlove.fart-locations") == nil || UserDefaults.standard.bool(forKey:"rjlove.fart-locations")),let point=LocationService.shared.lastLocation,abs(point.timestamp.timeIntervalSinceNow)<120,point.horizontalAccuracy>=0,point.horizontalAccuracy<1000 {
+            recordingLocation=FartLocation(latitude:point.coordinate.latitude,longitude:point.coordinate.longitude,accuracy:point.horizontalAccuracy,capturedAt:point.timestamp.rjISO8601)
+        }
         let value = FartDraft(id: recordingID, ownerID: ownerID, duration: duration, waveform: Self.summarize(allLevels), recordedAt: recordedAt, location: recordingLocation)
         draft = value
         do { try AudioDraftStore.save(value) }
@@ -219,32 +229,36 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
             if self?.loadingID == clip.id { self?.loadingID = nil }
         }
     }
-    private func play(data: Data, id: String) throws {
-        playerTask?.cancel(); playerTask = nil; player?.stop(); player = nil; playingID = nil
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default)
-        try session.setActive(true)
-        let player = try AVAudioPlayer(data: data, fileTypeHint: AVFileType.m4a.rawValue)
-        player.delegate = self; player.enableRate = true; player.rate = playbackRate
-        guard player.prepareToPlay(), player.play() else { throw StudioError.playbackFailed }
-        self.player = player; playingID = id; playbackTime = 0; playbackDuration = player.duration
-        playerTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self, self.playingID == id else { return }
-                self.playbackTime = self.player?.currentTime ?? 0
-                try? await Task.sleep(for: .milliseconds(80))
-            }
-        }
+    func playLocal(url:URL,id:String) {
+        stopPlayback()
+        do{try play(data:Data(contentsOf:url),id:id)}catch{errorMessage=error.localizedDescription}
     }
-    func seek(to fraction: Double) {
-        guard let player else { return }; player.currentTime = max(0, min(1, fraction)) * player.duration
+    func startPlaylist(_ clips:[FartClip],api:APIClient,shuffle:Bool=false) {
+        stopPlayback();playlist=shuffle ? clips.shuffled():clips;playlistAPI=api;queueCount=playlist.count;queueIndex=0;playQueueItem()
     }
-    func stopPlayback() {
-        let hadPlayback = player != nil
-        loadTask?.cancel(); loadTask = nil; loadingID = nil
-        playerTask?.cancel(); playerTask = nil; player?.stop(); player = nil
-        playingID = nil; playbackTime = 0; playbackDuration = 0
-        if hadPlayback && !hasRecording { deactivateSession() }
+    func nextInPlaylist(){guard queueCount>0 else{return};queueIndex += 1;playQueueItem()}
+    private func playQueueItem(){
+        guard queueIndex<playlist.count,let api=playlistAPI else{stopPlayback();return}
+        let clip=playlist[queueIndex];stopPlayback(clearQueue:false);loadingID=clip.id
+        loadTask=Task{[weak self] in do{
+            let data:Data
+            if let saved=LocalFartStore.shared.audioURL(id:clip.id),LocalFartStore.shared.clips.first(where:{$0.id==clip.id})?.clip.revision==clip.revision{data=try Data(contentsOf:saved)}else{data=try await api.fartAudio(id:clip.id)}
+            guard !Task.isCancelled,self?.loadingID==clip.id else{return};try self?.play(data:data,id:clip.id)
+        }catch{if !Task.isCancelled{self?.errorMessage=error.localizedDescription;self?.stopPlayback()}};if self?.loadingID==clip.id{self?.loadingID=nil}}
+    }
+    private func play(data:Data,id:String)throws {
+        funny.stop();playerTask?.cancel()
+        let session=AVAudioSession.sharedInstance();try session.setCategory(.playback,mode:.default);try session.setActive(true)
+        funny.rate=playbackRate;funny.effect=soundEffect
+        try funny.play(data:data){[weak self] in guard let self,self.playingID==id else{return};if self.queueCount>0{self.nextInPlaylist()}else{self.stopPlayback()}}
+        playingID=id;playbackTime=0;playbackDuration=funny.duration
+        playerTask=Task{[weak self] in while !Task.isCancelled{guard let self,self.playingID==id else{return};self.playbackTime=self.funny.currentTime;try? await Task.sleep(for:.milliseconds(80))}}
+    }
+    func seek(to fraction:Double){funny.seek(fraction)}
+    func stopPlayback(clearQueue:Bool=true){
+        loadTask?.cancel();loadTask=nil;loadingID=nil;playerTask?.cancel();playerTask=nil;funny.stop();player?.stop();player=nil;playingID=nil;playbackTime=0;playbackDuration=0
+        if clearQueue{playlist=[];playlistAPI=nil;queueIndex=0;queueCount=0}
+        if !hasRecording{deactivateSession()}
     }
     private func deactivateSession() { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
     private func startRecordingActivity() {

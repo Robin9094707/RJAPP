@@ -36,12 +36,22 @@ final class AppState {
     var selectedTab: AppTab = .home
     var experienceSection: ExperienceSection = .farts
     var showingFartRecorder = false
-    var showingRadio = false
     var quickFartRecording = false
     private(set) var farts: [FartClip] = []
     var fartArchiveVisible = false
     private(set) var loadingFartArchive = false
     var alert: AppAlert?
+    var showingChangelog = false
+    var pendingSweet: SharedRecord?
+    var pendingPhotoRequest: SharedRecord?
+    var storageByUser: [String:Int] = [:]
+    var thoughtHistory: [ThoughtEvent] = []
+    var lastOpened: [String:String] = [:]
+    var openedRecords: [OpenedRecord] = []
+    private var lastHealthRefresh = Date.distantPast
+    private var activating = false
+    private var archiveKinds:Set<RecordKind> = []
+
     var statusMessage: String {
         didSet { UserDefaults.standard.set(statusMessage, forKey: "rjlove.status-message") }
     }
@@ -50,7 +60,6 @@ final class AppState {
     }
 
     let setupJourney = SetupJourney()
-    let radio = WalkieTalkieService.shared
     let studio = AudioStudioService.shared
     let api = APIClient()
     let nearby = NearbyService()
@@ -61,7 +70,6 @@ final class AppState {
     let alarms = AlarmService.shared
     let liveActivity = LiveActivityService.shared
     let calendar = CalendarService.shared
-    let privacyLock = PrivacyLockService.shared
 
     private(set) var profile: ServerProfile?
     private var pollTask: Task<Void, Never>?
@@ -95,7 +103,7 @@ final class AppState {
         } else {
             synchronized = 0
         }
-        return synchronized + WidgetSharedStore.pendingThoughts()
+        return synchronized + WidgetSharedStore.pendingThoughtsToday()
     }
     var partnerThoughtCount: Int {
         guard serverLocalDay == WidgetSharedStore.localDayStamp() else { return 0 }
@@ -107,16 +115,16 @@ final class AppState {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") { return }
         #endif
-        guard UIApplication.shared.applicationState == .active else { return }
+        guard UIApplication.shared.applicationState == .active, !activating else { return }
+        activating = true; defer { activating = false }
+        if phase == .authenticated { try? await api.recordAppOpen() }
+        if health.sharingEnabled { await health.refresh(force:true); lastHealthRefresh = .now }
+
         if profile != nil {
             do { try await api.checkCompatibility() }
             catch { connectionMessage = error.localizedDescription; return }
         }
-        if privacyLock.isEnabled, !privacyLock.isUnlocked {
-            _ = await privacyLock.unlock()
-        }
         guard !isActivated else {
-            await radio.restoreIfEnabled(api: api)
             startPolling()
             await syncNow(showErrors: false)
             return
@@ -135,7 +143,6 @@ final class AppState {
             }
         }
         BackgroundRefreshCoordinator.shared.schedule()
-        await radio.restoreIfEnabled(api: api)
         observeSystemEvents()
         startPolling()
         await scheduleSharedReminders()
@@ -143,13 +150,14 @@ final class AppState {
     }
 
     func deactivateForeground() {
+        location.enterBackground()
         studio.finishRecording()
         studio.stopPlayback()
-        radio.enterBackground()
         nearby.stop(api: api)
+        VoiceNoteService.shared.stop()
+        Task { await liveActivity.stop() }
         pollTask?.cancel()
         pollTask = nil
-        privacyLock.lock()
         BackgroundRefreshCoordinator.shared.schedule()
     }
 
@@ -194,7 +202,6 @@ final class AppState {
     }
 
     func logout() async {
-        radio.disable()
         nearby.stop(api: api)
         await liveActivity.stop()
         await api.logout()
@@ -202,7 +209,7 @@ final class AppState {
         phase = .setup
         me = nil
         partners = []
-        records = []
+        records = []; archiveKinds=[];thoughtHistory=[];lastOpened=[:];openedRecords=[];storageByUser=[:]
         farts = []
         studio.discard()
         showingFartRecorder = false
@@ -229,14 +236,21 @@ final class AppState {
             try await api.checkCompatibility()
             let snapshot = try await api.bootstrap()
             me = snapshot.me
+            if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
-            records = snapshot.records
+            let snapshotIDs=Set(snapshot.records.map(\.id));let deleted=Set(snapshot.deletedRecordIDs ?? [])
+            let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deleted.contains($0.id)}
+            records = snapshot.records + history
             if fartArchiveVisible { farts = try await api.loadFartArchive() }
             else { farts = snapshot.farts ?? [] }
             thoughts = snapshot.thoughts
             serverLocalDay = snapshot.localDay
             storageUsedBytes = snapshot.storageUsedBytes
+            storageByUser = snapshot.storageByUser ?? [:]
+            thoughtHistory = snapshot.thoughtHistory ?? []
+            lastOpened = snapshot.lastOpened ?? [:]
+            openedRecords = snapshot.openedRecords ?? []
             features = snapshot.features
             lastSync = .now
             connectionMessage = "Gerade synchronisiert"
@@ -247,8 +261,11 @@ final class AppState {
             updateWidgetSnapshot()
             await updateLiveActivity()
             persistCache()
-            if health.sharingEnabled { await health.refresh() }
+            if health.sharingEnabled, Date.now.timeIntervalSince(lastHealthRefresh)>60 { await health.refresh(); lastHealthRefresh = .now }
             queuePresenceUpload(force: true)
+            await PlannerService.shared.reconcile(app: self)
+            if !setupJourney.presented, UserDefaults.standard.string(forKey:"rjlove.changelog-seen") != RJVersion.app { showingChangelog = true }
+            offerForegroundMoments()
             return true
         } catch let issue as UpdateRequirement {
             connectionMessage = issue.localizedDescription
@@ -283,7 +300,6 @@ final class AppState {
     }
 
     func openFartRecorder(quick: Bool = false) {
-        radio.pauseForStudio()
         quickFartRecording = quick
         showingFartRecorder = true
     }
@@ -301,7 +317,7 @@ final class AppState {
         farts.sort { $0.createdAt > $1.createdAt }
         persistCache()
     }
-    func shareFart(title: String, caption: String, category: String, includeLocation: Bool = false, situation: String = "alltag") async -> Bool {
+    func shareFart(title: String, caption: String, category: String, includeLocation: Bool = true, situation: String = "alltag") async -> Bool {
         do {
             guard let draft = studio.draft else { return false }
             guard draft.ownerID == me?.id else { studio.discard(); return false }
@@ -350,7 +366,7 @@ final class AppState {
             records.removeAll { $0.id == record.id }
             records.insert(record, at: 0)
             synchronizeGeofences()
-            if kind == .reminder { await scheduleSharedReminders() }
+            if kind == .reminder { await scheduleSharedReminders() }; if [.calendar,.milestone,.reminder].contains(kind) { await PlannerService.shared.reconcile(app: self) }
             persistCache()
             Haptics.success()
             return record
@@ -437,6 +453,34 @@ final class AppState {
         }
     }
 
+    func didReadChangelog() {
+        UserDefaults.standard.set(RJVersion.app,forKey:"rjlove.changelog-seen")
+        showingChangelog = false; offerForegroundMoments()
+    }
+    func offerForegroundMoments() {
+        guard UIApplication.shared.applicationState == .active, !showingChangelog, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey:"rjlove.sweet-autoplay") == nil || defaults.bool(forKey:"rjlove.sweet-autoplay") {
+            pendingSweet = records.filter { $0.kind == .chat && $0.ownerID != me?.id && $0.payload.autoplay == true }.sorted { $0.createdAt < $1.createdAt }.first { record in !openedRecords.contains { $0.recordID == record.id && $0.userID == me?.id } && !defaults.bool(forKey:"rjlove.opened."+record.id) }
+        }
+        if pendingSweet == nil, defaults.object(forKey:"rjlove.instant-enabled") == nil || defaults.bool(forKey:"rjlove.instant-enabled") {
+            pendingPhotoRequest = records.first { $0.kind == .photo_request && $0.payload.targetID == me?.id && $0.payload.completed != true && !defaults.bool(forKey:"rjlove.photo-skip."+$0.id) }
+        }
+    }
+    func markOpened(_ record: SharedRecord) async {
+        UserDefaults.standard.set(true,forKey:"rjlove.opened."+record.id)
+        try? await api.markOpened(id:record.id)
+    }
+    func loadRecordArchive(kind: RecordKind) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview"), !ProcessInfo.processInfo.arguments.contains("--ui-test-server"){return}
+        #endif
+        do {
+            let archive = try await api.recordArchive(kind:kind)
+            records.removeAll { $0.kind == kind }; records += archive;archiveKinds.insert(kind)
+        } catch { if !Task.isCancelled { alert = AppAlert(title:"Archiv",message:error.localizedDescription) } }
+    }
+
     private func configureCallbacks() {
         liveActivity.onPushToken = { [weak self] id, token in
             guard let self, self.phase == .authenticated else { return }
@@ -466,7 +510,6 @@ final class AppState {
             return
         }
         api.configure(baseURL: url, token: token)
-        radio.configure(api: api)
         if let cached = AppCache.load(matching: profile) {
             apply(cached)
         }
@@ -519,8 +562,9 @@ final class AppState {
         var sent = 0
         while WidgetSharedStore.pendingThoughts() > 0, sent < 20 {
             do {
-                let response = try await api.sendThought()
-                if let myID = me?.id { thoughts[myID] = response.count }
+                let pending = WidgetSharedStore.nextPendingThought()
+                let response = try await api.sendThought(id:pending?.id ?? UUID().uuidString, occurredAt:pending?.occurredAt)
+                if response.day == serverLocalDay, let myID = me?.id { thoughts[myID] = response.count }
                 _ = WidgetSharedStore.consumeOnePendingThought()
                 sent += 1
             } catch {
@@ -559,14 +603,13 @@ final class AppState {
         case "farts": selectedTab = .moments; experienceSection = .farts
         case "dates": selectedTab = .moments; experienceSection = .love
         case "record-fart":
-            radio.pauseForStudio()
             selectedTab = .moments; experienceSection = .farts
             quickFartRecording = true; showingFartRecorder = true
         case "stop-recording":
             studio.finishRecording()
             selectedTab = .moments; experienceSection = .farts
             quickFartRecording = false; showingFartRecorder = true
-        case "radio": showingRadio = true
+        case "radio", "messenger": selectedTab = .together
         case "settings", "health": selectedTab = .settings
         default: selectedTab = .home
         }
@@ -605,6 +648,7 @@ final class AppState {
 
     private func apply(_ cached: CachedAppSnapshot) {
         me = cached.me
+        LocalFartStore.shared.configure(server:cached.profile.baseURL,userID:cached.me.id)
         partners = cached.partners
         records = cached.records
         farts = cached.farts ?? []

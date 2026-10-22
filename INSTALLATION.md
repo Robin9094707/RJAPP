@@ -1,8 +1,10 @@
-# RJ Love 2.4 einrichten
+> Aktuelles Update 3.0: Erst [RELEASE-3.0.md](RELEASE-3.0.md) lesen. Serverdatei ersetzen, Konfiguration und Datenordner behalten; danach beide Apps inklusive Widget aktualisieren.
+
+# RJ Love 3.0 einrichten
 
 ## 1. Python-Server
 
-**Vorhandenen Server aktualisieren:** Server stoppen, `rj_love_server.py` durch die Datei aus diesem Paket ersetzen und wieder starten. `rjapp_config.json` und `rjlove_data/` unverändert behalten und vorher sichern. Die neue App benötigt Server 2.4 mit Protokoll 4; deshalb zuerst den Server, danach die App aktualisieren. Die folgenden Schritte mit leerem Ordner gelten ausschließlich für eine erstmalige Einrichtung.
+**Vorhandenen Server aktualisieren:** Server stoppen, `rj_love_server.py` durch die Datei aus diesem Paket ersetzen und wieder starten. `rjapp_config.json` und `rjlove_data/` unverändert behalten und vorher sichern. Die neue App benötigt Server 3.0 mit Protokoll 5; deshalb zuerst den Server, danach die App aktualisieren. Die folgenden Schritte mit leerem Ordner gelten ausschließlich für eine erstmalige Einrichtung.
 
 1. `Backend/rj_love_server.py` in einen neuen leeren Serverordner kopieren. Python 3.11 oder neuer verwenden.
 2. `python3 rj_love_server.py` starten. Die Datei `rjapp_config.json` wird erzeugt. Der erste Lauf beendet sich absichtlich.
@@ -78,7 +80,7 @@ Bewertungen sind dem Gegenüber vorbehalten. Du kannst eigene Aufnahmen löschen
 
 Unter **Liebe**: Date-Ideen auslosen und als Wunsch merken, persönliche Gutscheine verschenken/einlösen und Wertschätzung teilen. Unter **Momente** bleibt die Fotogalerie erreichbar.
 
-Auch beim Update von einer früheren Version: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Die Ergänzung der Tabellen erfolgt automatisch. App und Backend jeweils auf 2.4 aktualisieren.
+Auch beim Update von einer früheren Version: Server stoppen, Python-Datei ersetzen, erneut starten. Konfiguration und Datenordner behalten. Die Ergänzung der Tabellen erfolgt automatisch. App und Backend jeweils auf 3.0 aktualisieren.
 
 ## Update 2.2
 

@@ -56,9 +56,9 @@ try:
                 run('xcrun', 'simctl', 'bootstatus', device, '-b', timeout=360)
             run('xcrun', 'simctl', 'status_bar', device, 'override', '--time', '9:41', '--dataNetwork', 'wifi', '--wifiMode', 'active', '--wifiBars', '3', '--batteryState', 'charged', '--batteryLevel', '100')
             run('xcrun', 'simctl', 'install', device, str(app))
-            screens = [('Wir', []), ('Schnitt', ['--preview-recorder', '--preview-draft']), ('Funk', ['--preview-radio']), ('Einrichtung', ['--preview-setup']), ('Push', ['--preview-delivery'])]
+            screens = [('Wir', []), ('Schnitt', ['--preview-recorder', '--preview-draft']), ('Messenger', ['--preview-messenger']), ('Einrichtung', ['--preview-setup']), ('Push', ['--preview-delivery'])]
             if name == 'iPhone 14 Pro':
-                screens += [('Kalender', ['--preview-fart-calendar']), ('Jahr', ['--preview-fart-year']), ('Furzkarte', ['--preview-fart-map']), ('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Liebe', ['--preview-love']), ('Grossschrift', ['--preview-radio', '--preview-accessibility'])]
+                screens += [('Kalender', ['--preview-fart-calendar']), ('Jahr', ['--preview-fart-year']), ('Furzkarte', ['--preview-fart-map']), ('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Liebe', ['--preview-love']), ('Grossschrift', ['--preview-messenger', '--preview-accessibility'])]
             for title, arguments in screens:
                 launch_preview(device, arguments)
                 time.sleep(3)

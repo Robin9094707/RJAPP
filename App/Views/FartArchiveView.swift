@@ -67,6 +67,12 @@ struct FartStudioView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if room == .sammlung { hero }
+                    HStack {
+                        NavigationLink {FartLibraryView()} label:{Label("Duftschatzkiste & Import",systemImage:"square.and.arrow.down")}
+                        Spacer()
+                        Menu {Button("Alle abspielen"){app.studio.startPlaylist(clips,api:app.api)};Button("Alle durcheinander"){app.studio.startPlaylist(clips,api:app.api,shuffle:true)};Button("Nur meine"){app.studio.startPlaylist(clips.filter{$0.ownerID==app.me?.id},api:app.api)};Button("Nur von meinem Lieblingsmenschen"){app.studio.startPlaylist(clips.filter{$0.ownerID != app.me?.id},api:app.api)}}label:{Image(systemName:"play.square.stack.fill")}.accessibilityLabel("Furz-Playlist")
+                    }.font(.caption.bold())
+                    if app.studio.queueCount>0{HStack{Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)");Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18))}
                     filters
                     if app.loadingFartArchive { ProgressView("Euer vollständiges Archiv wird geladen …").font(.footnote) }
                     switch room {

@@ -8,7 +8,7 @@ import SwiftUI
     private(set) var running = false
     private(set) var step = 0
     private(set) var finished = false
-    let steps = ["Mitteilungen", "Mikrofon", "Standort", "Bewegung & Fitness", "Apple Health", "Kalender", "Weckrufe", "App-Schutz", "Walkie-Talkie"]
+    let steps = ["Mitteilungen", "Mikrofon", "Standort", "Bewegung & Fitness", "Apple Health", "Kalender", "Weckrufe", "Apple Erinnerungen", "Kamera"]
     var accountKey: String?
     func check(profile: ServerProfile?, userID: String?) {
         #if DEBUG
@@ -34,8 +34,8 @@ import SwiftUI
         step = 4; await app.health.requestAuthorization()
         step = 5; _ = await app.calendar.requestAccess()
         step = 6; _ = await app.alarms.requestAuthorization()
-        step = 7; _ = await app.privacyLock.enableAfterAuthentication()
-        step = 8; await app.radio.enable(api: app.api)
+        step = 7; _ = await CalendarService.shared.requestReminderAccess()
+        step = 8; _ = await AVCaptureDevice.requestAccess(for:.video)
         app.queuePresenceUpload(force: true)
         if let accountKey { UserDefaults.standard.set(true, forKey: accountKey) }
         step = steps.count; finished = true; running = false
@@ -54,7 +54,7 @@ struct SetupJourneyView: View {
                     LoveEyebrow(text: "Euer Raum. Einmal richtig einrichten.")
                     Text(journey.finished ? "Bereit für euer Wir." : "Alles, was euch verbindet.")
                         .font(.system(size: 32, weight: .medium, design: .serif)).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-setup-title")
-                    Text("RJ Love fragt die benötigten iPhone-Berechtigungen nacheinander ab und schaltet eure Freigaben ein: Standort, Aktivität, Schlaf, Vitalwerte und WLAN-Name. Walkie-Talkie-Empfang und Vorlesen sind zunächst eingeschaltet. Unter „Mehr“ kannst du alles einzeln ausschalten.")
+                    Text("RJ Love fragt die benötigten iPhone-Berechtigungen nacheinander ab und schaltet eure Freigaben ein: Standort, Aktivität, Schlaf, Vitalwerte und WLAN-Name. Süße Sprachnachrichten beim Öffnen und Fotowünsche mit sichtbarem Countdown sind zunächst eingeschaltet. Unter „Mehr“ kannst du alles einzeln ausschalten.")
                         .font(.subheadline).foregroundStyle(.secondary)
                     VStack(spacing: 16) {
                         ForEach(Array(journey.steps.enumerated()), id: \.offset) { index, name in

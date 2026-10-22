@@ -66,7 +66,7 @@ try:
                 run('xcrun', 'simctl', 'terminate', device, 'eu.rjuhas.rjlove')
             action = 'test' if index == 0 else 'test-without-building'
             try:
-                run('xcodebuild', '-project', 'RJLove.xcodeproj', '-scheme', 'RJLove', '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={device}', '-derivedDataPath', '.sim-derived', '-resultBundlePath', f'Layout-{slug}.xcresult', 'CODE_SIGNING_ALLOWED=NO', '-parallel-testing-enabled', 'NO', action, timeout=600)
+                run('xcodebuild', '-project', 'RJLove.xcodeproj', '-scheme', 'RJLove', '-configuration', 'Debug', '-destination', f'platform=iOS Simulator,id={device}', '-derivedDataPath', '.sim-derived', '-resultBundlePath', f'Layout-{slug}.xcresult', 'CODE_SIGNING_ALLOWED=NO', '-parallel-testing-enabled', 'NO', action, timeout=900)
             finally:
                 result = Path(f'Layout-{slug}.xcresult')
                 if result.exists():

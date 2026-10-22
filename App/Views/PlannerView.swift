@@ -51,12 +51,13 @@ struct PlannerEditor:View {
     @State private var reminder=true
     @State private var calendar=true
     @State private var saving=false
+    @FocusState private var titleFocused: Bool
     var body:some View {
         NavigationStack {Form{
-            Section("Ein schöner Plan"){TextField("Zum Beispiel: Unser Jahrestag",text:$title);TextField("Eine Notiz für uns",text:$notes,axis:.vertical);DatePicker("Beginn",selection:$start);DatePicker("Ende",selection:$end,in:start...)}
+            Section("Ein schöner Plan"){TextField("Zum Beispiel: Unser Jahrestag",text:$title).focused($titleFocused).submitLabel(.done).onSubmit{titleFocused=false};TextField("Eine Notiz für uns",text:$notes,axis:.vertical);DatePicker("Beginn",selection:$start);DatePicker("Ende",selection:$end,in:start...)}
             Section("Wiedersehen"){Toggle("Jedes Jahr",isOn:$yearly);Toggle("Mit AlarmKit-Wecker",isOn:$alarm);Text("Der Wecker wird auf dem anderen iPhone beim nächsten Öffnen der App synchronisiert. Plant wichtige Termine im Voraus.").font(.caption)}
             Section("Apple-Apps"){Toggle("In Apple Kalender synchronisieren",isOn:$calendar);Toggle("In Apple Erinnerungen synchronisieren",isOn:$reminder)}
-        }.navigationTitle(initial == nil ? "Zeit für uns":"Unseren Plan bearbeiten").toolbar{
+        }.scrollDismissesKeyboard(.interactively).navigationTitle(initial == nil ? "Zeit für uns":"Unseren Plan bearbeiten").toolbar{
             ToolbarItem(placement:.cancellationAction){Button("Abbrechen"){dismiss()}.disabled(saving)}
             ToolbarItem(placement:.confirmationAction){Button(saving ? "Speichere …":"Speichern"){
                 saving=true;Task{

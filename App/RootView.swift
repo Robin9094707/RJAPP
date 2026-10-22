@@ -57,9 +57,10 @@ struct ChangelogView:View {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 Image(systemName:"heart.text.clipboard.fill").font(.system(size:50)).foregroundStyle(LovePalette.pink)
                 Text("Noch mehr wir.").font(.system(size:36,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.0").font(.title3.bold())
-                Label("Messenger mit Fotos, Videos und Sprachnachrichten",systemImage:"bubble.left.and.bubble.right.fill")
-                Label("Momente, Alben und echte Live Photos",systemImage:"photo.stack.fill")
+                Text("Willkommen in RJ Love 3.1").font(.title3.bold())
+                Label("Fotos stabil teilen und Fotowünsche direkt beantworten",systemImage:"camera.fill")
+                Label("Deine Startseite: Karten anpassen und auf dem Server speichern",systemImage:"square.grid.2x2.fill")
+                Label("Schlafbalance teilen und aktive UWB-Suche mit Live-Aktivität fortsetzen",systemImage:"moon.stars.fill")
                 Label("Duftpost importieren, lokal sichern und als Playlist hören",systemImage:"wind")
                 Label("Gemeinsame Termine, Jahrestage und optionale Wecker",systemImage:"calendar.badge.clock")
                 Label("Jeder Herzgedanke mit Datum und Sekunden",systemImage:"heart.fill")

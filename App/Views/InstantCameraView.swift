@@ -90,18 +90,27 @@ struct InstantCameraView: View {
                 #endif
                 await camera.start()
             }
-            .onChange(of: camera.running) { _, ready in
-                guard ready, !cancelled, !captured, phase == .active else { return }
-                captured = true; capturedAt = .now; camera.capture()
-            }
-            .onChange(of: camera.photo) { _, value in
-                if value != nil { camera.stop(); beginUpload() }
+            .onAppear { cancelled = false }
+            .onChange(of: camera.running) { _, _ in advanceCamera() }
+            .task(id: camera.photo != nil) {
+                if camera.photo != nil { camera.stop(); advanceCamera() }
             }
             .onChange(of: phase) { _, value in
                 if value != .active { camera.stop() }
-                else if camera.photo == nil, !cancelled { captured = false; Task { await camera.start() } }
+                else { resumeVisibleCamera() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in resumeVisibleCamera() }
             .onDisappear { cancelled = true; uploadTask?.cancel(); camera.stop() }
+    }
+    private func advanceCamera() {
+        guard !cancelled, UIApplication.shared.applicationState == .active else { return }
+        if camera.photo != nil { beginUpload() }
+        else if camera.running, !captured { captured = true; capturedAt = .now; camera.capture() }
+    }
+    private func resumeVisibleCamera() {
+        guard !cancelled else { return }
+        if camera.photo != nil { beginUpload() }
+        else { captured = false; Task { await camera.start(); advanceCamera() } }
     }
     private func skip() {
         cancelled = true
@@ -109,10 +118,12 @@ struct InstantCameraView: View {
         uploadTask?.cancel(); camera.stop(); dismiss()
     }
     private func beginUpload() {
-        guard !cancelled, !sending, phase == .active, let original = camera.photo else { return }
+        guard !cancelled, !sending, UIApplication.shared.applicationState == .active, let original = camera.photo else { return }
+        sending = true; error = nil
         uploadTask = Task {
-            sending = true; error = nil; defer { sending = false }
+            defer { sending = false }
             do {
+                try Task.checkCancellation()
                 guard let data = MediaPicker.Coordinator.cameraJPEG(original) else { throw MediaError.unreadable }
                 let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
                 try data.write(to: file, options: .completeFileProtection)

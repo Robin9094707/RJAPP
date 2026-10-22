@@ -62,7 +62,7 @@ struct HomeView: View {
         case .instant: homeLink(card, detail: "Ein Lächeln nur für euch") { InstantGalleryView() }
         case .milestone:
             if let milestone, card.size == .large { milestoneCard(milestone) }
-            else { homeLink(card, detail: "Legt euren ersten besonderen Tag an") { PlannerView() } }
+            else { homeLink(card, detail: milestone?.payload.title ?? "Legt euren ersten besonderen Tag an") { PlannerView() } }
         case .health:
             if card.size == .compact {
                 HStack { Label("RJ-Schlafbalance", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "–").bold() }.loveCard()

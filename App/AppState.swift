@@ -39,6 +39,8 @@ final class AppState {
     var showingRadio = false
     var quickFartRecording = false
     private(set) var farts: [FartClip] = []
+    var fartArchiveVisible = false
+    private(set) var loadingFartArchive = false
     var alert: AppAlert?
     var statusMessage: String {
         didSet { UserDefaults.standard.set(statusMessage, forKey: "rjlove.status-message") }
@@ -106,6 +108,10 @@ final class AppState {
         if ProcessInfo.processInfo.arguments.contains("--preview") { return }
         #endif
         guard UIApplication.shared.applicationState == .active else { return }
+        if profile != nil {
+            do { try await api.checkCompatibility() }
+            catch { connectionMessage = error.localizedDescription; return }
+        }
         if privacyLock.isEnabled, !privacyLock.isUnlocked {
             _ = await privacyLock.unlock()
         }
@@ -157,6 +163,7 @@ final class AppState {
         let newProfile = ServerProfile(baseURL: url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")), username: username.trimmingCharacters(in: .whitespacesAndNewlines))
         api.configure(baseURL: url, token: nil)
         do {
+            try await api.checkCompatibility()
             let response = try await api.login(username: newProfile.username, password: password, deviceID: deviceID)
             try KeychainStore.set(response.token, for: Self.tokenKey)
             if profile != newProfile {
@@ -219,12 +226,14 @@ final class AppState {
         isSyncing = true
         defer { isSyncing = false }
         do {
+            try await api.checkCompatibility()
             let snapshot = try await api.bootstrap()
             me = snapshot.me
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
             records = snapshot.records
-            farts = snapshot.farts ?? []
+            if fartArchiveVisible { farts = try await api.loadFartArchive() }
+            else { farts = snapshot.farts ?? [] }
             thoughts = snapshot.thoughts
             serverLocalDay = snapshot.localDay
             storageUsedBytes = snapshot.storageUsedBytes
@@ -241,6 +250,9 @@ final class AppState {
             if health.sharingEnabled { await health.refresh() }
             queuePresenceUpload(force: true)
             return true
+        } catch let issue as UpdateRequirement {
+            connectionMessage = issue.localizedDescription
+            return false
         } catch let error as APIClientError {
             if case .server(let status, _) = error, status == 401 {
                 await logout()
@@ -275,21 +287,34 @@ final class AppState {
         quickFartRecording = quick
         showingFartRecorder = true
     }
+    func loadFartArchive() async {
+        guard !loadingFartArchive else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") { return }
+        #endif
+        loadingFartArchive = true; defer { loadingFartArchive = false }
+        do { farts = try await api.loadFartArchive() }
+        catch { if !(error is CancellationError) { alert = AppAlert(title: "Archiv konnte nicht geladen werden", message: error.localizedDescription) } }
+    }
     private func receiveFart(_ clip: FartClip) {
         farts.removeAll { $0.id == clip.id }; farts.insert(clip, at: 0)
         farts.sort { $0.createdAt > $1.createdAt }
         persistCache()
     }
-    func shareFart(title: String, caption: String, category: String) async -> Bool {
+    func shareFart(title: String, caption: String, category: String, includeLocation: Bool = false, situation: String = "alltag") async -> Bool {
         do {
             guard let draft = studio.draft else { return false }
             guard draft.ownerID == me?.id else { studio.discard(); return false }
             let data = try Data(contentsOf: draft.url)
-            let body = FartUpload(id: draft.id, title: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ein kleines Meisterwerk" : title, caption: caption, category: category, duration: draft.duration, waveform: draft.waveform, audioBase64: data.base64EncodedString())
+            let body = FartUpload(id: draft.id, title: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Ein kleines Meisterwerk" : title, caption: caption, category: category, duration: draft.duration, waveform: draft.waveform, recordedAt: draft.recordedAt, location: includeLocation ? draft.location : nil, situation: situation, audioBase64: data.base64EncodedString())
             receiveFart(try await api.uploadFart(body))
             studio.discard(); Haptics.success()
             return true
         } catch { alert = AppAlert(title: "Duftpost wartet noch", message: error.localizedDescription + " Deine lokale Aufnahme bleibt erhalten."); return false }
+    }
+    func removeFartLocation(_ clip: FartClip) async {
+        do { receiveFart(try await api.removeFartLocation(id: clip.id)) }
+        catch { alert = AppAlert(title: "Aufnahmeort entfernen",message: error.localizedDescription) }
     }
     func editFart(_ body: FartUpload) async throws {
         receiveFart(try await api.editFart(body)); studio.stopPlayback(); Haptics.success()
@@ -642,6 +667,11 @@ final class AppState {
 #if DEBUG
 extension AppState {
     func loadPreview() {
+        if ProcessInfo.processInfo.arguments.contains("--preview-empty-recorder") { studio.discard() }
+        for kind in ["old","future"] where ProcessInfo.processInfo.arguments.contains("--preview-"+kind+"-server") {
+            api.configure(baseURL: URL(string: "http://127.0.0.1:8787/"+kind)!,token:nil)
+            Task { try? await api.checkCompatibility() }
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-draft") { studio.preparePreviewDraft() }
         if ProcessInfo.processInfo.arguments.contains("--ui-test-server") { api.configure(baseURL: URL(string: "http://127.0.0.1:8787")!, token: "ui-test-token") }
         phase = .authenticated
@@ -665,6 +695,13 @@ extension AppState {
                      waveform: (0..<60).map { i in max(0.03, abs(sin(Double(i) * 0.43)) * exp(-abs(Double(i) - 27) / 18)) }, sizeBytes: 32000, createdAt: now,
                      ratings: [FartRating(userID: "robin", overall: 5, power: 3, style: 5, comment: "Ein zartes Meisterwerk. 😂", updatedAt: now)], reactions: [FartReaction(userID: "robin", emoji: "❤️"), FartReaction(userID: "raphaela", emoji: "😂")])
         ]
+        for index in 0..<24 {
+            let date = Calendar.current.date(byAdding: .day, value: -index*15, to: .now)!
+            let categories = FartCategory.allCases
+            let point: FartLocation? = index%3 == 0 ? FartLocation(latitude: 51.43+Double(index)*0.0008,longitude:6.76+Double(index)*0.001,accuracy:25,capturedAt:date.rjISO8601) : nil
+            farts.append(FartClip(id: UUID().uuidString,ownerID:index%2 == 0 ? "robin" : "raphaela",title:["Ein Hauch von Sonntag","Ninja im Flur","Kleines Abendkonzert","Donner überm Sofa"][index%4],caption:"Ein kleiner Insider für uns zwei.",category:categories[index%categories.count].rawValue,duration:Double(index%8+1),waveform:(0..<35).map { abs(sin(Double($0)*0.4)) },sizeBytes:24000,createdAt:date.rjISO8601,ratings:[],reactions:[],recordedAt:date.rjISO8601,location:point,situation:FartSituation.allCases[index%8].rawValue))
+        }
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--preview-fart-") }) { selectedTab = .moments; experienceSection = .farts }
         records.append(SharedRecord(id: UUID().uuidString, kind: .coupon, ownerID: "raphaela", payload: RecordPayload(title: "Eine Massage nur für dich", text: "Mit ganz viel Liebe und ohne auf die Uhr zu schauen.", targetID: "robin", completed: false), createdAt: now, updatedAt: now))
         records.append(SharedRecord(id: UUID().uuidString, kind: .gratitude, ownerID: "raphaela", payload: RecordPayload(title: "Heute mag ich an dir …", text: "Dass ich mit dir über jeden Quatsch lachen kann."), createdAt: now, updatedAt: now))
         if ProcessInfo.processInfo.arguments.contains("--preview-hub") { selectedTab = .together }

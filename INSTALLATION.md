@@ -1,4 +1,4 @@
-# RJ Love 2.3 einrichten
+# RJ Love 2.4 einrichten
 
 ## 1. Python-Server
 
@@ -39,7 +39,7 @@ Pro Konto bleibt nur die neueste Anmeldung gültig. Ein altes Gerät verliert de
 
 ## 5. Optionales APNs
 
-Am einfachsten mit `python3 rj_love_server.py --configure-push` einrichten und mit `--check-push` prüfen. Alternativ im `apns`-Block aktivieren, Team-ID, Key-ID, Bundle-ID und Pfad zur privaten `.p8`-Datei eintragen. Server benötigt `curl` mit HTTP/2 und `openssl`. Die APNs-Umgebung wird aus dem installierten Provisioningprofil gelesen; ohne auslesbares Profil verwendet Release Production. Schlüssel und Profile müssen zu derselben App passen. Ein Zertifikat des Signaturdienstes ersetzt keinen verfügbaren APNs-Provider-Schlüssel. Ohne passende Schlüssel bleiben diese Felder deaktiviert.
+Der Server erkennt beim normalen Start und anschließend jede Minute passende Apple-APNs-Zugangsdaten automatisch. Lege die echte `AuthKey_<KEYID>.p8` in den Ordner `push` neben der Konfiguration. Key-ID und gegebenenfalls die eindeutige Team-ID der registrierten iPhones werden übernommen. Optional liefert `push/credentials.json` die fehlenden IDs. Es ist kein Einrichtungsbefehl nötig. Der Server benötigt curl mit HTTP/2 und openssl. Ohne von Apple ausgestellten Schlüssel kann er keine APNs-Zugangsdaten erzeugen. Details: [RELEASE-2.4.md](RELEASE-2.4.md).
 
 Die App registriert Geräte- und Live-Aktivitätstokens automatisch, wenn iOS dies erlaubt. Der Server aktualisiert Live-Aktivitäten höchstens alle 15 Sekunden bei neuen Status-/Herzereignissen; zusätzliche Apple-Limits sind möglich.
 
@@ -85,3 +85,7 @@ Die Änderungen, Einrichtungsanleitung, Medienstruktur, Backup-Befehle und Vorau
 ## 2.3: Hintergrundwecker und Signatur prüfen
 
 Unter **Wir → Push, Wecker & Hintergrund prüfen** Profil, tatsächliches APNs-Topic und Serverantworten prüfen. Bei wichtigen Weckrufen im Voraus planen und die Bestätigung „Auf dem iPhone eingeplant“ abwarten. Hintergrundpushes sind durch iOS nicht garantiert. Eine fremde Bundle-ID übernimmt keine Rechte eines anderen Apple-Teams. Weitere Schritte: [RELEASE-2.3.md](RELEASE-2.3.md).
+
+## 2.4: Erst Server, dann App aktualisieren
+
+Die App benötigt Server 2.4 und Protokoll 4. Python-Datei ersetzen, Konfiguration und Datenordner behalten, neu starten; anschließend App inklusive Widget aktualisieren. Push wird automatisch geprüft: Apples AuthKey-Datei in den Ordner `push` neben der Konfiguration legen; passende IDs werden übernommen, soweit eindeutig verfügbar. Details und Voraussetzungen: [RELEASE-2.4.md](RELEASE-2.4.md).

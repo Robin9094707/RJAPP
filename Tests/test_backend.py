@@ -40,10 +40,12 @@ class RJLoveBackendTests(unittest.TestCase):
         self.thread.join(timeout=3)
         self.temporary.cleanup()
 
-    def request(self, path, method="GET", body=None, token=None):
+    def request(self, path, method="GET", body=None, token=None, version=SERVER.APP_VERSION, protocol=SERVER.PROTOCOL_VERSION):
         encoded = None if body is None else json.dumps(body).encode()
         request = urllib.request.Request(self.base + path, data=encoded, method=method)
         request.add_header("Accept", "application/json")
+        if version is not None: request.add_header("X-RJ-App-Version", version)
+        if protocol is not None: request.add_header("X-RJ-Protocol", str(protocol))
         if body is not None:
             request.add_header("Content-Type", "application/json")
         if token:
@@ -444,7 +446,7 @@ class RJLoveBackendTests(unittest.TestCase):
         self.assertEqual(snapshot["storage_used_bytes"], 0)
         self.assertEqual(self.app.storage_usage("robin"), len(audio))
         self.assertEqual(self.request_error("/v1/farts/" + clip["id"] + "/audio")[0], 401)
-        req = urllib.request.Request(self.base + "/v1/farts/" + clip["id"] + "/audio", headers={"Authorization":"Bearer " + partner})
+        req = urllib.request.Request(self.base + "/v1/farts/" + clip["id"] + "/audio", headers={"Authorization":"Bearer " + partner,"X-RJ-App-Version":SERVER.APP_VERSION,"X-RJ-Protocol":str(SERVER.PROTOCOL_VERSION)})
         with urllib.request.urlopen(req) as response:
             self.assertEqual(response.headers["Content-Type"], "audio/mp4")
             self.assertEqual(response.headers["Cache-Control"], "no-store")
@@ -525,7 +527,7 @@ class RJLoveBackendTests(unittest.TestCase):
         token = self.login()
         readiness = self.request("/v1/push/status",token=token)[1]
         self.assertFalse(readiness["ready"])
-        self.assertTrue(any("ausgeschaltet" in reason for reason in readiness["issues"]))
+        self.assertTrue(any("Zugangsdaten" in reason for reason in readiness["issues"]))
         self.assertEqual(self.request_error("/v1/push/test","POST",{},token)[0],409)
         body = {"device_id":"test-device","device_token":"ab"*32,"environment":"production","bundle_id":"com.zello.client"}
         self.assertEqual(self.request_error("/v1/devices","POST",body,token)[0],422)
@@ -555,6 +557,75 @@ class RJLoveBackendTests(unittest.TestCase):
         readiness = self.request("/v1/push/status",token=token)[1]
         self.assertIn("DeviceTokenNotForTopic",readiness["attempts"][0]["reason"])
         self.assertEqual(readiness["registered_devices"],1)
+
+    def test_client_server_update_gate_runs_before_login_and_writes(self):
+        for version,protocol in [(None,None),("2.3.0",3),("2.4.0",99)]:
+            with self.assertRaises(urllib.error.HTTPError) as raised:
+                self.request("/v1/auth/login","POST",{"username":"robin","password":"robin-test-password","device_id":"test-device"},version=version,protocol=protocol)
+            error = raised.exception
+            try:
+                self.assertEqual(error.code,426)
+                body=json.loads(error.read())
+                self.assertEqual(body["compatibility"]["minimum_app_version"],"2.4.0")
+            finally:error.close()
+        self.assertEqual(self.request("/health",version=None,protocol=None)[1]["minimum_protocol"],4)
+        self.login()
+        self.assertEqual(self.request("/health",version="99.0.0",protocol=99)[0],200)
+
+    def test_complete_archive_paginates_past_one_hundred_and_orders_equal_times(self):
+        import uuid
+        token=self.login()
+        _,(_,clip),_=self.upload_clip(token)
+        with self.app.database.connect() as db:
+            row=dict(db.execute("SELECT * FROM fart_clips WHERE id=?",(clip["id"],)).fetchone())
+            for _ in range(109):
+                row["id"]=str(uuid.uuid4())
+                columns=list(row)
+                db.execute("INSERT INTO fart_clips ("+",".join(columns)+") VALUES ("+",".join("?" for _ in columns)+")",tuple(row[c] for c in columns))
+        first=self.request("/v1/farts?limit=70",token=token)[1]
+        second=self.request("/v1/farts?limit=70&offset="+str(first["next_offset"])+"&before="+urllib.parse.quote(first["before"]),token=token)[1]
+        self.assertTrue(first["has_more"]);self.assertFalse(second["has_more"])
+        self.assertEqual(len({c["id"] for c in first["clips"]+second["clips"]}),110)
+        self.assertEqual(self.request_error("/v1/farts?offset=wrong",token=token)[0],400)
+        self.assertNotIn("audio_base64",first["clips"][0])
+
+    def test_capture_location_date_trim_and_owner_only_location_removal(self):
+        import datetime,uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        recorded=(SERVER.utc_now()-datetime.timedelta(days=35)).isoformat()
+        point={"latitude":51.43,"longitude":6.76,"accuracy":20,"captured_at":recorded}
+        body,(_,clip),_=self.upload_clip(token,recorded_at=recorded,location=point,situation="unterwegs")
+        self.assertEqual(clip["location"],point);self.assertEqual(clip["recorded_at"],recorded)
+        edit=dict(body,base_revision=1,edit_id=str(uuid.uuid4()),location=None,recorded_at=SERVER.iso_now())
+        changed=self.request("/v1/farts/"+clip["id"]+"/edit","POST",edit,token)[1]
+        self.assertEqual(changed["recorded_at"],recorded);self.assertEqual(changed["location"],point)
+        endpoint="/v1/farts/"+clip["id"]+"/location"
+        self.assertEqual(self.request_error(endpoint,"DELETE",token=partner)[0],403)
+        removed=self.request(endpoint,"DELETE",token=token)[1]
+        self.assertIsNone(removed["location"])
+        with self.app.database.connect() as db:
+            row=db.execute("SELECT * FROM fart_clips WHERE id=?",(clip["id"],)).fetchone()
+            manifest=json.loads((self.app.clip_directory(row)/"metadata.json").read_text())
+            self.assertIsNone(manifest.get("location"))
+        for invalid in [dict(point,latitude=91),dict(point,longitude=True),dict(point,accuracy=-1),dict(point,captured_at=SERVER.iso_now())]:
+            with self.assertRaises(urllib.error.HTTPError) as raised:self.upload_clip(token,location=invalid,recorded_at=recorded)
+            raised.exception.close()
+
+    def test_automatic_push_discovers_local_key_and_preserves_missing_key_state(self):
+        from unittest.mock import patch
+        folder=self.config_path.parent/"push";folder.mkdir()
+        self.app.configure_push_automatically(force=True)
+        self.assertFalse(self.app.apns.enabled)
+        self.assertIn("Warte",self.app.push_setup_status)
+        key=folder/"AuthKey_ABCDEFGHIJ.p8";key.write_text("test-only-not-a-real-key")
+        (folder/"credentials.json").write_text(json.dumps({"team_id":"0123456789"}))
+        with patch.object(self.app.apns,"issues",return_value=[]),patch.object(self.app.apns,"provider_token",return_value="test-provider-token"):
+            self.app.configure_push_automatically(force=True)
+        saved=json.loads(self.config_path.read_text())["apns"]
+        self.assertTrue(saved["enabled"]);self.assertEqual(saved["key_id"],"ABCDEFGHIJ")
+        self.assertEqual(saved["team_id"],"0123456789");self.assertEqual(Path(saved["private_key_file"]),key)
+        self.assertNotIn("test-only",self.config_path.read_text())
+        self.config["apns"]["enabled"]=False
 
     def test_coupons_are_redeemable_without_rewriting_gift(self):
         import uuid

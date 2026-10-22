@@ -40,13 +40,17 @@ struct DeliveryCenterView: View {
                         Label(readiness.ready ? "Lokale Voraussetzungen vorhanden" : "Einrichtung noch unvollständig", systemImage: readiness.ready ? "checkmark.circle.fill" : "wrench.adjustable.fill")
                         detail("Server-Topic", readiness.bundleID)
                         detail("Registrierte Geräte dieses Kontos", String(readiness.registeredDevices))
-                        ForEach(readiness.issues, id: \.self) { Text($0).foregroundStyle(.orange) }
+                        if !readiness.issues.isEmpty {
+                            DisclosureGroup("Technische Details anzeigen") { ForEach(readiness.issues,id: \.self) { Text($0).foregroundStyle(.secondary) } }
+                        }
                         Text("Ein grüner Vorabcheck bestätigt weder den Empfang noch eine Hintergrundausführung. Dafür Push-Test auslösen und unten die Rückmeldungen ansehen.").font(.caption).foregroundStyle(.secondary)
                     }
                     Button("Push-Test an dieses iPhone senden", systemImage: "bell.badge.fill") {
                         Task { do { try await app.api.testPush(); message = "Test angefordert. Warte auf die sichtbare Mitteilung und prüfe die Rückmeldung."; await load() } catch { self.error = error.localizedDescription } }
                     }.buttonStyle(.borderedProminent).disabled(loading || readiness?.ready != true)
-                    Text("Serverkonsole: python3 rj_love_server.py --configure-push\nPrüfen: python3 rj_love_server.py --check-push").font(.caption.monospaced()).textSelection(.enabled)
+                    if let status = readiness?.automaticSetup { Text(status).font(.footnote) }
+                    Text("Der Server prüft beim Start und regelmäßig automatisch den Ordner „push“. Lege dort deinen Apple-APNs-Schlüssel ab. Eine passende Datei wird ohne Konsolenbefehl übernommen. Apple muss diesen Schlüssel zuvor ausgestellt haben.").font(.caption).foregroundStyle(.secondary)
+                    Button("Automatische Prüfung jetzt wiederholen") { Task { do { try await app.api.automaticPushSetup(); await load() } catch { self.error = error.localizedDescription } } }.buttonStyle(.bordered)
                     if let message { Text(message).foregroundStyle(LovePalette.cyan) }
                 }.font(.footnote).loveCard()
                 VStack(alignment: .leading, spacing: 14) {

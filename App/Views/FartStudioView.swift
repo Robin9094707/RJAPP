@@ -21,82 +21,6 @@ struct ExperienceView: View {
         }.background(LoveBackground()).animation(reduceMotion ? nil : .snappy(duration: 0.25), value: state.experienceSection)
     }
 }
-private enum FartFilter: String, CaseIterable { case all = "Alle", mine = "Meine", partner = "Deine", favorites = "Lieblinge", best = "Best of" }
-
-struct FartStudioView: View {
-    @Environment(AppState.self) private var appState
-    @State private var filter: FartFilter = .all
-    private var clips: [FartClip] {
-        let filtered = appState.farts.filter { clip in
-            switch filter {
-            case .all, .best: return true
-            case .mine: return clip.ownerID == appState.me?.id
-            case .partner: return clip.ownerID != appState.me?.id
-            case .favorites: return clip.reactions.contains { $0.userID == appState.me?.id && $0.emoji == "❤️" }
-            }
-        }
-        return filter == .best ? filtered.sorted { ($0.stars ?? 0, $0.createdAt) > ($1.stars ?? 0, $1.createdAt) } : filtered
-    }
-    private var winner: FartClip? { appState.farts.filter { $0.stars != nil }.max { ($0.stars ?? 0) < ($1.stars ?? 0) } }
-    var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 22) {
-                hero
-                HStack(spacing: 12) {
-                    LoveMetric(title: "Kleine Meisterwerke", value: appState.farts.count.formatted(), symbol: "waveform", tint: LovePalette.violet)
-                    LoveMetric(title: "Von dir", value: appState.farts.filter { $0.ownerID == appState.me?.id }.count.formatted(), symbol: "mic.fill", tint: LovePalette.pink)
-                }
-                if let winner {
-                    HStack(spacing: 14) {
-                        Text("🏆").font(.largeTitle)
-                        VStack(alignment: .leading, spacing: 5) {
-                            LoveEyebrow(text: "Euer bisheriges Meisterwerk")
-                            Text(winner.title).font(.headline)
-                            Text("\(winner.stars ?? 0) von 5 Jury-Sternen").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }.loveCard()
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(FartFilter.allCases, id: \.self) { value in
-                            Button { filter = value } label: {
-                                Text(value.rawValue).font(.caption.bold()).padding(.horizontal, 15).padding(.vertical, 10)
-                                    .foregroundStyle(filter == value ? Color.white : Color.primary)
-                                    .background(filter == value ? LovePalette.violet : Color.primary.opacity(0.05), in: Capsule())
-                            }.buttonStyle(.plain)
-                        }
-                    }
-                }
-                if clips.isEmpty {
-                    ContentUnavailableView("Noch ganz frische Luft.", systemImage: "wind", description: Text("Nehmt euer erstes Meisterwerk auf. Eure kleine Sammlung bleibt nur für euch beide."))
-                }
-                if let error = appState.studio.errorMessage {
-                    Text(error).font(.footnote).foregroundStyle(.orange).loveCard()
-                }
-                ForEach(clips) { clip in FartClipCard(clip: clip) }
-                Text("Die Wellenform zeigt den aufgenommenen Pegel. Duftnoten und Sterne kommen ausschließlich von euch. 😄")
-                    .font(.caption).foregroundStyle(.secondary).padding(.bottom, 20)
-            }.padding(20)
-        }.navigationTitle("Euer Spielplatz").navigationBarTitleDisplayMode(.large)
-        .refreshable { await appState.syncNow(showErrors: false) }
-        .onDisappear { appState.studio.stopPlayback() }
-    }
-    private var hero: some View {
-        VStack(spacing: 14) {
-            LoveEyebrow(text: "Liebe liegt in der Luft. Manchmal auch mehr.")
-            PuffMascot(active: false).frame(height: 105)
-            Text("Für immer. Fürzeinander.").font(.system(size: 28, weight: .medium, design: .serif)).multilineTextAlignment(.center)
-            Text("Eure private Sammlung großer Gefühle\nund kleiner Druckwellen.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button {
-                appState.openFartRecorder()
-            } label: {
-                Label(appState.studio.draft == nil ? "Meisterwerk aufnehmen" : "Lokalen Entwurf öffnen", systemImage: "mic.fill").frame(maxWidth: .infinity)
-            }.buttonStyle(.borderedProminent).tint(LovePalette.violet).controlSize(.large)
-        }.frame(maxWidth: .infinity).loveCard()
-    }
-}
-
 struct PuffMascot: View {
     var active: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -139,7 +63,7 @@ struct AudioWaveform: View {
     }
 }
 
-private struct FartClipCard: View {
+struct FartClipCard: View {
     let clip: FartClip
     @Environment(AppState.self) private var appState
     @State private var rating = false
@@ -157,7 +81,7 @@ private struct FartClipCard: View {
                 }
                 Spacer(minLength: 0)
                 if mine {
-                    Menu { Button("Schneiden & umbenennen", systemImage: "scissors") { editing = true }; Button("Aufnahme löschen", systemImage: "trash", role: .destructive) { deleting = true } } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Aufnahme verwalten")
+                    Menu { Button("Schneiden & umbenennen", systemImage: "scissors") { editing = true }; if clip.location != nil { Button("Geteilten Ort entfernen",systemImage: "mappin.slash",role: .destructive) { Task { await appState.removeFartLocation(clip) } } }; Button("Aufnahme löschen", systemImage: "trash", role: .destructive) { deleting = true } } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Aufnahme verwalten")
                 }
             }
             if !clip.caption.isEmpty { Text(clip.caption).font(.subheadline).foregroundStyle(.secondary) }
@@ -195,7 +119,11 @@ private struct FartClipCard: View {
                 Text("Wumms \(score.power)/5 · Stil \(score.style)/5").font(.caption2).foregroundStyle(.secondary)
                 if !score.comment.isEmpty { Text("„\(score.comment)“").font(.subheadline).italic() }
             }
-            if let date = clip.createdAt.rjDate { Text(date.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundStyle(.tertiary) }
+            if let date = clip.date { Label(date.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar").font(.caption2).foregroundStyle(.secondary) }
+            HStack {
+                if let situation = FartSituation(rawValue: clip.situation ?? "alltag") { Label(situation.title,systemImage: situation.symbol) }
+                if let point = clip.location { Label("Ort · ca. \(Int(point.accuracy)) m",systemImage: "mappin.circle.fill") }
+            }.font(.caption2).foregroundStyle(LovePalette.violet).fixedSize(horizontal: false, vertical: true)
         }.loveCard()
         .sheet(isPresented: $rating) { FartRatingView(clip: clip) }
         .sheet(isPresented: $editing) { FartEditorView(clip: clip) }
@@ -224,6 +152,9 @@ struct FartRecorderView: View {
     @State private var trimError: String?
     @State private var caption = ""
     @State private var category: FartCategory = .natural
+    @State private var situation: FartSituation = .alltag
+    @State private var quip = ""
+    @State private var includeLocation = false
     @State private var saving = false
     @State private var discard = false
     @State private var starting = false
@@ -233,7 +164,7 @@ struct FartRecorderView: View {
         NavigationStack {
             VStack(spacing: 0) {
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: 18) {
                     ViewThatFits(in: .horizontal) {
                       HStack(spacing: 8) {
                         stage("1", "Aufnehmen", selected: studio.mode != .review)
@@ -245,12 +176,13 @@ struct FartRecorderView: View {
                       Text(studio.mode == .review ? "2 · Schneiden & senden" : "1 · Aufnehmen").font(.caption.bold()).foregroundStyle(LovePalette.violet)
                     }.frame(maxWidth: .infinity)
                     LoveEyebrow(text: studio.hasRecording ? "Das Mikrofon ist für euch offen" : studio.mode == .review ? "Ein kleines Meisterwerk ist geboren" : "Wenn die Natur ruft: Aufnahme.")
-                    PuffMascot(active: studio.isRecording).frame(height: studio.mode == .review ? 66 : 130)
+                    PuffMascot(active: studio.isRecording).frame(height: studio.mode == .review ? 50 : 85)
+                    spruchCard
                     Text(studio.mode == .review ? "Bereit für die Duftpost?" : studio.mode == .paused ? "Kurze Atempause." : studio.isRecording ? "Lass es raus." : "Bühne frei.")
                         .font(.system(size: 29, weight: .medium, design: .serif)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     Text(String(format: "%02d:%02d", Int(studio.elapsed) / 60, Int(studio.elapsed) % 60)).font(.system(size: studio.mode == .review ? 32 : 48, weight: .light, design: .rounded)).monospacedDigit()
-                    AudioWaveform(values: studio.mode == .review ? studio.draft?.waveform ?? [] : studio.liveLevels).frame(height: 75).padding(.horizontal, 12)
-                    recordingControls.disabled(saving)
+                    AudioWaveform(values: studio.mode == .review ? studio.draft?.waveform ?? [] : studio.liveLevels).frame(height: 58).padding(.horizontal, 12)
+                    if studio.mode == .review { recordingControls.disabled(saving) }
                     if studio.mode == .review { reviewForm }
                     if let error = studio.errorMessage { Text(error).font(.footnote).foregroundStyle(.orange) }
                     if failedUpload { Text("Noch nicht geteilt. Dein Entwurf bleibt auf diesem iPhone. Versuche es erneut, sobald der Server erreichbar ist.").font(.footnote).foregroundStyle(.orange) }
@@ -265,6 +197,11 @@ struct FartRecorderView: View {
                             .font(.caption2).foregroundStyle(.secondary)
                     }.padding(.horizontal, 20).padding(.vertical, 12)
                         .frame(maxWidth: .infinity).background(.ultraThinMaterial)
+                } else {
+                    VStack(spacing: 8) {
+                        recordingControls
+                        Text(studio.hasRecording ? "Nur ihr hört mit · maximal 60 Sekunden" : "Ein Tipp. Ein Naturtalent. Eure Erinnerung.").font(.caption).foregroundStyle(.secondary)
+                    }.padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:.infinity).background(.ultraThinMaterial)
                 }
             }.background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Schließen") { dismiss() }.disabled(saving) } }
@@ -277,14 +214,33 @@ struct FartRecorderView: View {
         .task {
             guard let ownerID = appState.me?.id else { return }
             studio.prepare(ownerID: ownerID)
+            if quip.isEmpty {
+                situation = DuftspruchDeck.suggested(hasDraft: studio.draft != nil, motion: appState.deviceStatus.motion)
+                quip = DuftspruchDeck.next(for: situation)
+            }
             trimEnd = studio.draft?.duration ?? 0.2
             if autoStart && studio.draft == nil && !studio.hasRecording {
                 starting = true; await studio.start(ownerID: ownerID); starting = false
             }
         }
+        .onChange(of: situation) { _, value in quip = DuftspruchDeck.next(for: value) }
         .onChange(of: studio.mode) { _, mode in if mode == .review { trimStart = 0; trimEnd = studio.draft?.duration ?? 0.2 } }
         .onChange(of: scenePhase) { _, phase in if phase == .background { studio.finishRecording() } }
         .onDisappear { studio.finishRecording(); studio.stopPlayback() }
+    }
+    private var spruchCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Spruch des Moments",systemImage: "sparkles").font(.caption.bold()).foregroundStyle(LovePalette.violet)
+                Spacer()
+                Button { quip = DuftspruchDeck.next(for: situation) } label: { Image(systemName: "shuffle") }.accessibilityLabel("Anderen Spruch zeigen")
+            }
+            Text(quip).font(.subheadline).fixedSize(horizontal: false,vertical: true).accessibilityIdentifier("duft-quip")
+            Picker("Deine Situation",selection: $situation) {
+                ForEach(FartSituation.allCases) { Label($0.title,systemImage: $0.symbol).tag($0) }
+            }.pickerStyle(.menu).tint(LovePalette.violet).accessibilityIdentifier("duft-situation")
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .loveGlass(in: RoundedRectangle(cornerRadius: 24))
     }
     private func stage(_ number: String, _ title: String, selected: Bool) -> some View {
         HStack(spacing: 5) { Text(number).font(.caption.bold()); Text(title).font(.caption2) }
@@ -324,7 +280,7 @@ struct FartRecorderView: View {
                             trimStart = 0; trimEnd = studio.draft?.duration ?? 0.2
                         }
                     } catch { trimError = error.localizedDescription; saving = false; return }
-                    let success = await appState.shareFart(title: title.trimmingCharacters(in: .whitespacesAndNewlines), caption: caption, category: category.rawValue)
+                    let success = await appState.shareFart(title: title.trimmingCharacters(in: .whitespacesAndNewlines), caption: caption, category: category.rawValue, includeLocation: includeLocation, situation: situation.rawValue)
                     saving = false; failedUpload = !success
                     if success { dismiss() }
                 }
@@ -336,6 +292,8 @@ struct FartRecorderView: View {
 
     private var reviewForm: some View {
         VStack(alignment: .leading, spacing: 17) {
+            Label("Dein Werk. Deine Duftnote.", systemImage: "waveform.path").font(.headline)
+            if let date = studio.draft?.recordedAt?.rjDate { Label(date.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar").font(.caption).foregroundStyle(.secondary) }
             TextField("Name (optional)", text: $title).font(.headline)
             TextField("Eine Duftnote dazu?", text: $caption, axis: .vertical).lineLimit(2...4)
             Text("Ohne Namen heißt deine Aufnahme automatisch „Ein kleines Meisterwerk“.").font(.caption).foregroundStyle(.secondary)
@@ -344,6 +302,12 @@ struct FartRecorderView: View {
             }
             if let trimError { Text(trimError).font(.footnote).foregroundStyle(.orange) }
             if title.count > 100 || caption.count > 500 { Text("Name: maximal 100 Zeichen. Duftnote: maximal 500 Zeichen.").font(.caption).foregroundStyle(.orange) }
+            if let point = studio.draft?.location {
+                Toggle("Aufnahmeort auf eurer Furzkarte teilen", isOn: $includeLocation).tint(LovePalette.violet)
+                Text("Der Ort stammt vom Aufnahmebeginn. Genauigkeit etwa \(Int(point.accuracy)) m. Ohne diesen Schalter wird kein Ort hochgeladen.").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Label("Ohne Aufnahmeort · kein aktueller freigegebener Standort vorhanden", systemImage: "mappin.slash").font(.caption).foregroundStyle(.secondary)
+            }
             Picker("Kategorie", selection: $category) { ForEach(FartCategory.allCases) { Text("\($0.emoji) \($0.rawValue)").tag($0) } }
             Button("Entwurf verwerfen", role: .destructive) { discard = true }.font(.caption).disabled(saving)
         }.loveCard()

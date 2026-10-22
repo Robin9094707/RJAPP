@@ -58,7 +58,7 @@ try:
             run('xcrun', 'simctl', 'install', device, str(app))
             screens = [('Wir', []), ('Schnitt', ['--preview-recorder', '--preview-draft']), ('Funk', ['--preview-radio']), ('Einrichtung', ['--preview-setup']), ('Push', ['--preview-delivery'])]
             if name == 'iPhone 14 Pro':
-                screens += [('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Liebe', ['--preview-love']), ('Grossschrift', ['--preview-radio', '--preview-accessibility'])]
+                screens += [('Kalender', ['--preview-fart-calendar']), ('Jahr', ['--preview-fart-year']), ('Furzkarte', ['--preview-fart-map']), ('Chat', ['--preview-hub']), ('Health', ['--preview-health']), ('Duftpost', ['--preview-farts']), ('Liebe', ['--preview-love']), ('Grossschrift', ['--preview-radio', '--preview-accessibility'])]
             for title, arguments in screens:
                 launch_preview(device, arguments)
                 time.sleep(3)

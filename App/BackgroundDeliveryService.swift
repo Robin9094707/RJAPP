@@ -35,7 +35,8 @@ struct PushReadiness: Decodable {
     let bundleID: String
     let registeredDevices: Int
     let attempts: [PushAttempt]
-    enum CodingKeys: String, CodingKey { case ready, issues, attempts; case bundleID = "bundle_id"; case registeredDevices = "registered_devices" }
+    let automaticSetup: String?
+    enum CodingKeys: String, CodingKey { case ready, issues, attempts; case bundleID = "bundle_id"; case registeredDevices = "registered_devices"; case automaticSetup = "automatic_setup" }
 }
 
 /// Shared foreground/background command pipeline. Completion means AlarmKit accepted
@@ -105,6 +106,7 @@ struct PushReadiness: Decodable {
         let api = APIClient(background: true)
         api.configure(baseURL: url, token: token)
         do {
+            try await api.checkCompatibility()
             let snapshot = try await api.backgroundSnapshot()
             guard !Task.isCancelled else { return false }
             await CommandDeliveryProcessor.shared.process(snapshot.commands, api: api, senderName: snapshot.senderName)

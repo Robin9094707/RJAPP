@@ -73,6 +73,8 @@ final class APIClient: @unchecked Sendable {
         request.httpMethod = method
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(RJVersion.app, forHTTPHeaderField: "X-RJ-App-Version")
+        request.setValue(String(RJVersion.protocolVersion), forHTTPHeaderField: "X-RJ-Protocol")
         if body != nil {
             request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         }
@@ -87,6 +89,13 @@ final class APIClient: @unchecked Sendable {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw APIClientError.invalidResponse }
             guard (200..<300).contains(http.statusCode) else {
+                if http.statusCode == 426 {
+                    struct Envelope: Decodable { let message: String; let compatibility: ServerCompatibility? }
+                    let value = try? decoder.decode(Envelope.self, from: data)
+                    let issue = value?.compatibility.flatMap { RJVersion.requirement($0) } ?? UpdateRequirement(target: "app", message: value?.message ?? "App und Python-Server gemeinsam aktualisieren.")
+                    await MainActor.run { UpdateCoordinator.shared.requirement = issue }
+                    throw issue
+                }
                 let envelope = try? decoder.decode(APIErrorEnvelope.self, from: data)
                 throw APIClientError.server(
                     status: http.statusCode,
@@ -95,11 +104,56 @@ final class APIClient: @unchecked Sendable {
             }
             let decodableData = data.isEmpty ? Data("{}".utf8) : data
             return try decoder.decode(T.self, from: decodableData)
+        } catch let error as UpdateRequirement {
+            throw error
         } catch let error as APIClientError {
             throw error
         } catch {
             throw APIClientError.transport(error.localizedDescription)
         }
+    }
+
+    func checkCompatibility() async throws {
+        let info = try await execute(try request(path: "/health", method: "GET", authenticated: false), as: ServerCompatibility.self)
+        if let issue = RJVersion.requirement(info) {
+            await MainActor.run { UpdateCoordinator.shared.requirement = issue }
+            throw issue
+        }
+        await MainActor.run { UpdateCoordinator.shared.requirement = nil }
+    }
+    func loadFartArchive() async throws -> [FartClip] {
+        try await checkCompatibility()
+        struct Page: Decodable {
+            let clips: [FartClip]
+            let hasMore: Bool
+            let nextOffset: Int
+            let before: String
+            enum CodingKeys: String, CodingKey { case clips, before; case hasMore = "has_more", nextOffset = "next_offset" }
+        }
+        var all: [FartClip] = []
+        var offset = 0
+        var before: String?
+        repeat {
+            try Task.checkCancellation()
+            // URLComponents query belongs in queryItems, not the encoded path.
+            var req = try request(path: "/v1/farts", method: "GET")
+            var url = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)!
+            url.queryItems = [URLQueryItem(name: "limit", value: "200"), URLQueryItem(name: "offset", value: String(offset))]
+            if let before { url.queryItems?.append(URLQueryItem(name: "before", value: before)) }
+            req.url = url.url
+            let page = try await execute(req, as: Page.self)
+            all += page.clips
+            if !page.hasMore { break }
+            guard page.nextOffset > offset else { throw APIClientError.invalidResponse }
+            offset = page.nextOffset; before = page.before
+        } while true
+        return all
+    }
+    func removeFartLocation(id: String) async throws -> FartClip {
+        try await execute(try request(path: "/v1/farts/\(id)/location",method: "DELETE"), as: FartClip.self)
+    }
+    func automaticPushSetup() async throws {
+        _ = try await execute(try request(path: "/v1/push/setup", method: "POST", body: Data("{}".utf8)), as: EmptyResponse.self)
     }
 
     func login(username: String, password: String, deviceID: String) async throws -> LoginResponse {
@@ -245,10 +299,12 @@ final class APIClient: @unchecked Sendable {
     }
 
     func uploadFart(_ body: FartUpload) async throws -> FartClip {
-        try await execute(try request(path: "/v1/farts", method: "POST", body: encoder.encode(body)), as: FartClip.self)
+        try await checkCompatibility()
+        return try await execute(try request(path: "/v1/farts", method: "POST", body: encoder.encode(body)), as: FartClip.self)
     }
     func editFart(_ body: FartUpload) async throws -> FartClip {
-        try await execute(try request(path: "/v1/farts/\(body.id)/edit", method: "POST", body: encoder.encode(body)), as: FartClip.self)
+        try await checkCompatibility()
+        return try await execute(try request(path: "/v1/farts/\(body.id)/edit", method: "POST", body: encoder.encode(body)), as: FartClip.self)
     }
     func rateFart(id: String, overall: Int, power: Int, style: Int, comment: String) async throws -> FartClip {
         struct Body: Encodable { let overall: Int; let power: Int; let style: Int; let comment: String }

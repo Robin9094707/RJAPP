@@ -50,7 +50,9 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.4.0"
+MINIMUM_APP_VERSION = "2.4.0"
+PROTOCOL_VERSION = 4
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
@@ -97,6 +99,18 @@ def safe_text(value: Any, maximum: int, *, allow_empty: bool = True) -> str:
             f"Das Textfeld darf höchstens {maximum} Zeichen enthalten.",
         )
     return value
+
+
+def version_tuple(value: str) -> tuple[int, int, int]:
+    if not isinstance(value, str) or not re.fullmatch(r"\d+\.\d+\.\d+", value):
+        return (0, 0, 0)
+    return tuple(map(int, value.split(".")))
+
+
+def compatibility_info() -> dict[str, Any]:
+    return {"version": APP_VERSION, "minimum_app_version": MINIMUM_APP_VERSION,
+            "minimum_protocol": PROTOCOL_VERSION, "maximum_protocol": PROTOCOL_VERSION,
+            "update_url": "https://github.com/Robin9094707/RJAPP/actions"}
 
 
 class APIError(Exception):
@@ -159,6 +173,7 @@ def default_config() -> dict[str, Any]:
         "ntfy": {"enabled": False, "server_url": "https://ntfy.sh", "access_token": "", "topics": {"robin": "", "raphaela": ""}},
         "apns": {
             "enabled": False,
+            "auto_configure": True,
             "environment": "production",
             "team_id": "",
             "key_id": "",
@@ -398,7 +413,7 @@ class Database:
                 if name not in device_columns:
                     db.execute(f"ALTER TABLE devices ADD COLUMN {name} {declaration}")
             columns = {r["name"] for r in db.execute("PRAGMA table_info(fart_clips)")}
-            for name, declaration in {"audio_path": "TEXT NOT NULL DEFAULT ''", "revision": "INTEGER NOT NULL DEFAULT 1", "updated_at": "TEXT", "last_edit_id": "TEXT"}.items():
+            for name, declaration in {"audio_path": "TEXT NOT NULL DEFAULT ''", "revision": "INTEGER NOT NULL DEFAULT 1", "updated_at": "TEXT", "last_edit_id": "TEXT", "recorded_at": "TEXT", "location": "TEXT", "situation": "TEXT"}.items():
                 if name not in columns:
                     db.execute(f"ALTER TABLE fart_clips ADD COLUMN {name} {declaration}")
             db.execute("CREATE TABLE IF NOT EXISTS audio_versions (clip_id TEXT NOT NULL, revision INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, PRIMARY KEY(clip_id,revision))")
@@ -515,7 +530,7 @@ class APNSProvider:
         config = self.app.config.get("apns", {})
         problems = []
         if not self.enabled:
-            problems.append("APNs ist auf dem Python-Server ausgeschaltet. --configure-push startet die Einrichtung.")
+            problems.append("APNs wartet auf passende Apple-Zugangsdaten. Der Server prüft den Ordner push automatisch; kein Konsolenbefehl nötig.")
         for field, label in (("team_id", "Apple-Team-ID"), ("key_id", "APNs-Key-ID")):
             if not re.fullmatch(r"[A-Z0-9]{10}", str(config.get(field, ""))):
                 problems.append(f"{label} fehlt oder ist ungültig (10 Großbuchstaben/Ziffern).")
@@ -611,6 +626,9 @@ class RJLoveApplication:
         self.logger = self._make_logger()
         self.login_limiter = LoginLimiter(config["security"].get("login_attempts_per_10_minutes", 10))
         self.apns = APNSProvider(self)
+        self.push_setup_lock = threading.Lock()
+        self.last_push_setup = -1000.0
+        self.push_setup_status = "Automatische Prüfung beim Serverstart."
         self.live_push_lock = threading.Lock()
         self.last_live_push = {}
         self.timezone = ZoneInfo(config["server"].get("timezone", "Europe/Berlin"))
@@ -710,6 +728,78 @@ class RJLoveApplication:
     def resolve_config_path(self, value: str) -> Path:
         path = Path(value).expanduser()
         return path if path.is_absolute() else (self.config_path.parent / path).resolve()
+
+    def configure_push_automatically(self, *, force: bool = False) -> None:
+        if not self.push_setup_lock.acquire(blocking=False):
+            return
+        try:
+            if not force and time.monotonic()-self.last_push_setup<60:
+                return
+            self.last_push_setup = time.monotonic()
+            current = self.config["apns"]
+            if current.get("auto_configure", True) is False:
+                self.push_setup_status = "Automatische Einrichtung ausgeschaltet."
+                return
+            folder = self.config_path.parent / "push"
+            folder.mkdir(exist_ok=True, mode=0o700)
+            instructions = folder / "LIESMICH.txt"
+            if not instructions.exists():
+                instructions.write_text("APNs-AuthKey_<KEYID>.p8 hier ablegen. Optional credentials.json mit team_id, key_id und bundle_id. Der Server erkennt die Datei beim Start und jede Minute. Die Team-ID kann er aus den angemeldeten iPhones übernehmen, wenn sie übereinstimmen. Apple muss diesen privaten APNs-Schlüssel bereitstellen; App-Signatur-.p12 genügt nicht. Keine Schlüssel in Git hochladen.\n", encoding="utf-8")
+            candidate = dict(current)
+            metadata = folder / "credentials.json"
+            if metadata.is_file():
+                try:
+                    document = json.loads(metadata.read_text())
+                    for field in ("team_id","key_id","bundle_id","private_key_file"):
+                        if isinstance(document.get(field),str) and document[field]:
+                            candidate[field] = document[field]
+                except (OSError, ValueError):
+                    self.push_setup_status = "push/credentials.json ist nicht lesbar."
+                    return
+            for field, env in (("team_id","RJ_APNS_TEAM_ID"),("key_id","RJ_APNS_KEY_ID"),("bundle_id","RJ_APNS_BUNDLE_ID"),("private_key_file","RJ_APNS_KEY_FILE")):
+                if os.environ.get(env):
+                    candidate[field] = os.environ[env]
+            if not candidate.get("private_key_file"):
+                keys = sorted({*folder.glob("AuthKey_*.p8"),*self.config_path.parent.glob("AuthKey_*.p8")})
+                if len(keys)>1:
+                    self.push_setup_status = "Mehrere Apple-Schlüssel gefunden. Den gewünschten Pfad in push/credentials.json angeben."
+                    return
+                if keys:
+                    candidate["private_key_file"] = str(keys[0].resolve())
+            key_path = self.resolve_config_path(candidate.get("private_key_file", ""))
+            match = re.fullmatch(r"AuthKey_([A-Z0-9]{10})\.p8", key_path.name)
+            if not candidate.get("key_id") and match:
+                candidate["key_id"] = match.group(1)
+            with self.database.connect() as db:
+                teams = {r[0] for r in db.execute("SELECT DISTINCT team_id FROM devices WHERE team_id IS NOT NULL AND team_id<>''")}
+            if not candidate.get("team_id") and len(teams)==1:
+                candidate["team_id"] = teams.pop()
+            if not candidate.get("private_key_file") or not key_path.is_file():
+                self.push_setup_status = "Warte auf die Apple-APNs-Schlüsseldatei im Ordner push. Kein Konsolenbefehl nötig."
+                return
+            if not re.fullmatch(r"[A-Z0-9]{10}",candidate.get("team_id", "")):
+                self.push_setup_status = "Apple-Schlüssel erkannt. Warte auf eine eindeutige Team-ID vom iPhone oder aus push/credentials.json."
+                return
+            previous = dict(current)
+            candidate["enabled"] = True
+            self.config["apns"] = candidate
+            problems = self.apns.issues()
+            try:
+                if problems:
+                    raise ValueError(" ".join(problems))
+                if candidate != previous:
+                    with self.apns._lock:
+                        self.apns._jwt = None
+                self.apns.provider_token()
+            except Exception:
+                self.config["apns"] = previous
+                self.push_setup_status = "Apple-Datei erkannt, Prüfung fehlgeschlagen. Schlüssel, IDs und HTTP/2-Werkzeuge prüfen."
+                return
+            self.push_setup_status = "Apple-Schlüssel automatisch übernommen; lokaler Vorabcheck bestanden. Empfang separat testen."
+            if candidate != previous:
+                self.save_config()
+        finally:
+            self.push_setup_lock.release()
 
     def public_user(self, user: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -1148,11 +1238,14 @@ class RJLoveApplication:
         owns = db is None
         connection = db or self.database.connect()
         try:
-            row = connection.execute("SELECT id,owner_id,title,caption,category,duration,waveform,size_bytes,created_at,revision,updated_at FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
+            row = connection.execute("SELECT id,owner_id,title,caption,category,duration,waveform,size_bytes,created_at,revision,updated_at,recorded_at,location,situation FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
             if row is None:
                 raise APIError(404, "clip_not_found", "Diese Duftpost gibt es nicht mehr.")
             result = dict(row)
             result["waveform"] = json.loads(result["waveform"])
+            result["recorded_at"] = result["recorded_at"] or result["created_at"]
+            result["location"] = json.loads(result["location"]) if result["location"] else None
+            result["situation"] = result["situation"] or "alltag"
             result["ratings"] = [dict(r) for r in connection.execute("SELECT user_id,overall,power,style,comment,updated_at FROM fart_ratings WHERE clip_id=?", (clip_id,))]
             result["reactions"] = [dict(r) for r in connection.execute("SELECT user_id,emoji FROM fart_reactions WHERE clip_id=?", (clip_id,))]
             return result
@@ -1160,9 +1253,9 @@ class RJLoveApplication:
             if owns:
                 connection.close()
 
-    def list_farts(self) -> list[dict[str, Any]]:
+    def list_farts(self, limit: int = 100, offset: int = 0, before: str | None = None) -> list[dict[str, Any]]:
         with self.database.connect() as db:
-            ids = [r["id"] for r in db.execute("SELECT id FROM fart_clips ORDER BY created_at DESC LIMIT 100")]
+            ids = [r["id"] for r in db.execute("SELECT id FROM fart_clips WHERE created_at<=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?", (before or iso_now(),limit,offset))]
             return [self.fart_clip(clip_id, db) for clip_id in ids]
 
     def background_snapshot(self, user_id: str) -> dict[str, Any]:
@@ -1267,6 +1360,7 @@ class RJLoveApplication:
         while not self._cleanup_stop.wait(60):
             with contextlib.suppress(Exception):
                 self.cleanup()
+                self.configure_push_automatically()
 
     def close(self) -> None:
         self._cleanup_stop.set()
@@ -1337,6 +1431,13 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
     def route(self) -> tuple[str, list[str], dict[str, list[str]]]:
         parsed = urlparse(self.path)
         parts = [part for part in parsed.path.split("/") if part]
+        if parsed.path.startswith("/v1/"):
+            version = self.headers.get("X-RJ-App-Version", "")
+            protocol = self.headers.get("X-RJ-Protocol", "")
+            if version_tuple(version) < version_tuple(MINIMUM_APP_VERSION):
+                raise APIError(426, "app_update_required", f"Bitte RJ Love auf mindestens {MINIMUM_APP_VERSION} aktualisieren. Der Python-Server ist {APP_VERSION}. Eure Daten und Anmeldungen bleiben erhalten.")
+            if protocol != str(PROTOCOL_VERSION):
+                raise APIError(426, "protocol_update_required", "App und Python-Server benötigen dieselbe unterstützte Protokollgeneration. Bitte beide aus dem aktuellen Komplettpaket aktualisieren.")
         return parsed.path, parts, parse_qs(parsed.query)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
@@ -1352,7 +1453,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 self._radio_feed(self.current_user(), query)
                 return
             if path == "/health":
-                self.send_json(HTTPStatus.OK, {"status": "ok", "version": APP_VERSION, "time": iso_now()})
+                self.send_json(HTTPStatus.OK, {"status": "ok", "time": iso_now(), **compatibility_info()})
                 return
             if path == "/v1/background":
                 user_id = self.current_user()
@@ -1367,14 +1468,23 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 with self.app.database.connect() as db:
                     devices = db.execute("SELECT COUNT(*) FROM devices WHERE user_id=?", (user_id,)).fetchone()[0]
                     attempts = [dict(r) for r in db.execute("SELECT id,kind,status,reason,created_at FROM push_deliveries WHERE target_id=? ORDER BY created_at DESC LIMIT 15", (user_id,))]
-                self.send_json(200, {"ready": not issues and devices > 0, "issues": issues, "bundle_id": self.app.config["apns"].get("bundle_id", ""), "registered_devices": devices, "attempts": attempts})
+                self.send_json(200, {"ready": not issues and devices > 0, "issues": issues, "bundle_id": self.app.config["apns"].get("bundle_id", ""), "registered_devices": devices, "attempts": attempts, "automatic_setup": self.app.push_setup_status})
                 return
             if path == "/v1/bootstrap":
                 self.send_json(HTTPStatus.OK, self.app.bootstrap(self.current_user()))
                 return
             if path == "/v1/farts":
                 self.current_user()
-                self.send_json(200, {"clips": self.app.list_farts()})
+                try:
+                    limit = min(200, max(1, int(query.get("limit", ["100"])[0])))
+                    offset = max(0, int(query.get("offset", ["0"])[0]))
+                except (ValueError, TypeError):
+                    raise APIError(400, "invalid_page", "Ungültige Archivseite.")
+                before = query.get("before", [iso_now()])[0]
+                if parse_iso(before) is None:
+                    raise APIError(400, "invalid_page", "Ungültiger Archivzeitpunkt.")
+                clips = self.app.list_farts(limit + 1, offset, before)
+                self.send_json(200, {"clips": clips[:limit], "has_more": len(clips)>limit, "next_offset": offset+min(limit,len(clips)), "before": before})
                 return
             if len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] == "audio":
                 self.current_user()
@@ -1391,7 +1501,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
             raise APIError(HTTPStatus.NOT_FOUND, "not_found", "Route nicht gefunden.")
         except APIError as exc:
-            self.send_json(exc.status, {"error": exc.code, "message": exc.message})
+            self.send_json(exc.status, {"error": exc.code, "message": exc.message, **({"compatibility": compatibility_info()} if exc.status == 426 else {})})
         except Exception:
             request_id = secrets.token_hex(6)
             self.app.logger.exception("Unhandled GET error %s", request_id)
@@ -1408,7 +1518,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
-            if path == "/v1/push/test":
+            if path == "/v1/push/setup":
+                self.read_json()
+                self.app.configure_push_automatically(force=True)
+                self.send_empty()
+            elif path == "/v1/push/test":
                 problems = self.app.apns.issues()
                 if problems:
                     raise APIError(409, "push_not_configured", " ".join(problems))
@@ -1478,7 +1592,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             else:
                 raise APIError(HTTPStatus.NOT_FOUND, "not_found", "Route nicht gefunden.")
         except APIError as exc:
-            self.send_json(exc.status, {"error": exc.code, "message": exc.message})
+            self.send_json(exc.status, {"error": exc.code, "message": exc.message, **({"compatibility": compatibility_info()} if exc.status == 426 else {})})
         except Exception:
             request_id = secrets.token_hex(6)
             self.app.logger.exception("Unhandled POST error %s", request_id)
@@ -1488,7 +1602,16 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         try:
             _, parts, _ = self.route()
             user_id = self.current_user()
-            if len(parts) == 3 and parts[:2] == ["v1", "farts"]:
+            if len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] == "location":
+                with self.app.media_lock, self.app.database.connect() as db:
+                    db.execute("BEGIN IMMEDIATE")
+                    clip = self.app.fart_clip(parts[2],db)
+                    if clip["owner_id"] != user_id:
+                        raise APIError(403,"not_owner","Nur die eigene Aufnahme kann ihren Ort entfernen.")
+                    db.execute("UPDATE fart_clips SET location=NULL WHERE id=?",(parts[2],))
+                    self.app.write_clip_manifest(parts[2],db)
+                self.send_json(200,self.app.fart_clip(parts[2]))
+            elif len(parts) == 3 and parts[:2] == ["v1", "farts"]:
                 self._delete_fart(user_id, parts[2])
             elif len(parts) == 3 and parts[:2] == ["v1", "records"]:
                 self._delete_record(user_id, parts[2])
@@ -1497,7 +1620,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             else:
                 raise APIError(HTTPStatus.NOT_FOUND, "not_found", "Route nicht gefunden.")
         except APIError as exc:
-            self.send_json(exc.status, {"error": exc.code, "message": exc.message})
+            self.send_json(exc.status, {"error": exc.code, "message": exc.message, **({"compatibility": compatibility_info()} if exc.status == 426 else {})})
         except Exception:
             request_id = secrets.token_hex(6)
             self.app.logger.exception("Unhandled DELETE error %s", request_id)
@@ -1869,6 +1992,26 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         wave = body.get("waveform", [])
         if not isinstance(wave, list) or not 1 <= len(wave) <= 80 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 1 for v in wave):
             raise APIError(400, "invalid_waveform", "Ungültige Wellenform.")
+        recorded = parse_iso(body.get("recorded_at"))
+        if body.get("recorded_at") is not None and recorded is None:
+            raise APIError(400,"invalid_recorded_at","Ungültiges Aufnahmedatum.")
+        recorded = recorded or utc_now()
+        if recorded > utc_now() + dt.timedelta(minutes=5):
+            raise APIError(400, "invalid_recorded_at", "Aufnahmedatum liegt in der Zukunft.")
+        situation = body.get("situation", "alltag")
+        if situation not in {"alltag","morgen","nacht","unterwegs","date","essen","leise","zugabe"}:
+            raise APIError(400, "invalid_situation", "Unbekannte Aufnahmesituation.")
+        location = body.get("location")
+        if location is not None:
+            if not isinstance(location, dict) or set(location)-{"latitude","longitude","accuracy","captured_at"}:
+                raise APIError(400,"invalid_clip_location","Ungültiger Aufnahmeort.")
+            for key,maximum in (("latitude",90),("longitude",180),("accuracy",10000)):
+                value = location.get(key)
+                if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or abs(value)>maximum or (key=="accuracy" and value<0):
+                    raise APIError(400,"invalid_clip_location","Ungültige Ortskoordinaten oder Genauigkeit.")
+            captured = parse_iso(location.get("captured_at"))
+            if captured is None or abs((captured-recorded).total_seconds())>600:
+                raise APIError(400,"invalid_clip_location","Der Ort muss zur Aufnahmezeit erfasst worden sein.")
         encoded = body.get("audio_base64")
         if not isinstance(encoded, str) or len(encoded) > 5_600_000:
             raise APIError(413, "audio_too_large", "Die Aufnahme überschreitet 4 MB.")
@@ -1916,6 +2059,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     db.execute("UPDATE fart_clips SET title=?,duration=?,waveform=?,audio_path=?,size_bytes=?,revision=?,updated_at=?,last_edit_id=? WHERE id=?", (title, float(duration), json.dumps(wave), relative, len(audio), revision, iso_now(), edit_id, clip_id))
                 else:
                     db.execute("INSERT INTO fart_clips (id,owner_id,title,caption,category,duration,waveform,audio,size_bytes,created_at,audio_path,revision,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", (clip_id,user_id,title,caption,category,float(duration),json.dumps(wave),b"",len(audio),created,relative,1,created))
+                if old is None:
+                    db.execute("UPDATE fart_clips SET recorded_at=?,location=?,situation=? WHERE id=?", (recorded.isoformat(),json.dumps(location) if location is not None else None,situation,clip_id))
                 db.execute("INSERT INTO audio_versions VALUES(?,?,?,?)", (clip_id,revision,relative,len(audio)))
                 self.app.write_clip_manifest(clip_id, db)
             except Exception:
@@ -2104,6 +2249,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 (device_id, user_id, token, environment, iso_now()),
             )
             db.execute("UPDATE devices SET bundle_id=?,team_id=? WHERE id=?", (bundle_id,team_id,device_id))
+        self.app.configure_push_automatically(force=True)
         self.send_empty()
 
     def _delete_device(self, user_id: str, device_id: str) -> None:
@@ -2172,7 +2318,7 @@ def config_path_from_environment() -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="RJ Love 2.3 – privater Partner-Server")
+    parser = argparse.ArgumentParser(description="RJ Love 2.4 – privater Partner-Server")
     parser.add_argument("--configure-push", action="store_true", help="APNs mit eigenem bzw. vom Signing-Team bereitgestelltem .p8-Schlüssel einrichten")
     parser.add_argument("--check-push", action="store_true", help="APNs-Konfiguration lokal prüfen, ohne Push zu senden")
     parser.add_argument("--reset-user", choices=["robin", "raphaela"], help="Passwort sicher zurücksetzen und alle Sitzungen widerrufen")
@@ -2236,6 +2382,8 @@ def main() -> int:
                 return 0
             finally:
                 app.close()
+        app.configure_push_automatically(force=True)
+        app.logger.info("Push: %s", app.push_setup_status)
         server = build_server(app)
     except Exception as exc:
         print(f"RJ Love kann nicht starten: {exc}", file=sys.stderr)

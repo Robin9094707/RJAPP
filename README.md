@@ -1,6 +1,6 @@
-# RJ Love 2.3 — Robin & Raphaela
+# RJ Love 2.4 — Robin & Raphaela
 
-Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.3.0 (230)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
+Ein privater, nativer iOS-Raum für zwei Menschen. Version **2.4.0 (240)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
 
 Die neue Wir-Seite verbindet warme Rosé-Farben, ruhige Typografie, native Liquid-Glass-Flächen und einen interaktiven Herzgedanken. Dazu kommen privater Chat mit Tagesfrage, Wunschliste, besondere Tage mit Countdown, Gefühle, Karte, Nahbereichssuche, gemeinsame Notizen, Termine, Erinnerungen und Fotomomente.
 
@@ -95,3 +95,7 @@ Duftpost lässt sich ohne Namenseingabe senden und vor oder nach dem Teilen schn
 ## Neu in 2.3
 
 Automatisch passende Ansichten, Prüfung auf drei iPhone-Größen, unabhängige Hintergrund-Weckplanung, vorausgeplante AlarmKit-Wecker, Empfängerbestätigungen und ein Push-/Signatur-Diagnosezentrum. APNs-Einrichtung per `--configure-push`, Prüfung per `--check-push`. Details und Grenzen: [RELEASE-2.3.md](RELEASE-2.3.md).
+
+## Neu in 2.4
+
+Duftstudio mit vollständigem Archiv, Suche, Monats-/Jahreskalender, optionaler Furzkarte, echter Bilanz, 400 offline verfügbaren Spruchkombinationen und neuem Recorder. App/Server-Updateprüfung und automatische APNs-Erkennung ohne Konsolenbefehl: [RELEASE-2.4.md](RELEASE-2.4.md).

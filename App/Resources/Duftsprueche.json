@@ -1,0 +1,2002 @@
+[
+  {
+    "id": "alltag-0-0",
+    "situation": "alltag",
+    "text": "Das ist keine Aufnahme. Das ist ein Luftbild mit Ton. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-0-1",
+    "situation": "alltag",
+    "text": "Das ist keine Aufnahme. Das ist ein Luftbild mit Ton. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-0-2",
+    "situation": "alltag",
+    "text": "Das ist keine Aufnahme. Das ist ein Luftbild mit Ton. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-0-3",
+    "situation": "alltag",
+    "text": "Das ist keine Aufnahme. Das ist ein Luftbild mit Ton. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-0-4",
+    "situation": "alltag",
+    "text": "Das ist keine Aufnahme. Das ist ein Luftbild mit Ton. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-1-0",
+    "situation": "alltag",
+    "text": "Liebe geht durch den Magen. Die Zugabe nimmt den Hinterausgang. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-1-1",
+    "situation": "alltag",
+    "text": "Liebe geht durch den Magen. Die Zugabe nimmt den Hinterausgang. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-1-2",
+    "situation": "alltag",
+    "text": "Liebe geht durch den Magen. Die Zugabe nimmt den Hinterausgang. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-1-3",
+    "situation": "alltag",
+    "text": "Liebe geht durch den Magen. Die Zugabe nimmt den Hinterausgang. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-1-4",
+    "situation": "alltag",
+    "text": "Liebe geht durch den Magen. Die Zugabe nimmt den Hinterausgang. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-2-0",
+    "situation": "alltag",
+    "text": "Manche sagen nichts und drücken trotzdem viel aus. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-2-1",
+    "situation": "alltag",
+    "text": "Manche sagen nichts und drücken trotzdem viel aus. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-2-2",
+    "situation": "alltag",
+    "text": "Manche sagen nichts und drücken trotzdem viel aus. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-2-3",
+    "situation": "alltag",
+    "text": "Manche sagen nichts und drücken trotzdem viel aus. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-2-4",
+    "situation": "alltag",
+    "text": "Manche sagen nichts und drücken trotzdem viel aus. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-3-0",
+    "situation": "alltag",
+    "text": "Heute bekommt die Stille einen eigenen Soundtrack. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-3-1",
+    "situation": "alltag",
+    "text": "Heute bekommt die Stille einen eigenen Soundtrack. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-3-2",
+    "situation": "alltag",
+    "text": "Heute bekommt die Stille einen eigenen Soundtrack. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-3-3",
+    "situation": "alltag",
+    "text": "Heute bekommt die Stille einen eigenen Soundtrack. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-3-4",
+    "situation": "alltag",
+    "text": "Heute bekommt die Stille einen eigenen Soundtrack. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-4-0",
+    "situation": "alltag",
+    "text": "Das Mikrofon ist bereit für deine innere Wetterlage. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-4-1",
+    "situation": "alltag",
+    "text": "Das Mikrofon ist bereit für deine innere Wetterlage. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-4-2",
+    "situation": "alltag",
+    "text": "Das Mikrofon ist bereit für deine innere Wetterlage. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-4-3",
+    "situation": "alltag",
+    "text": "Das Mikrofon ist bereit für deine innere Wetterlage. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-4-4",
+    "situation": "alltag",
+    "text": "Das Mikrofon ist bereit für deine innere Wetterlage. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-5-0",
+    "situation": "alltag",
+    "text": "Ein kleiner Schritt für dich. Ein großer Luftzug für uns. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-5-1",
+    "situation": "alltag",
+    "text": "Ein kleiner Schritt für dich. Ein großer Luftzug für uns. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-5-2",
+    "situation": "alltag",
+    "text": "Ein kleiner Schritt für dich. Ein großer Luftzug für uns. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-5-3",
+    "situation": "alltag",
+    "text": "Ein kleiner Schritt für dich. Ein großer Luftzug für uns. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-5-4",
+    "situation": "alltag",
+    "text": "Ein kleiner Schritt für dich. Ein großer Luftzug für uns. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-6-0",
+    "situation": "alltag",
+    "text": "Hier wird aus Bauchgefühl ein Hörgefühl. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-6-1",
+    "situation": "alltag",
+    "text": "Hier wird aus Bauchgefühl ein Hörgefühl. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-6-2",
+    "situation": "alltag",
+    "text": "Hier wird aus Bauchgefühl ein Hörgefühl. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-6-3",
+    "situation": "alltag",
+    "text": "Hier wird aus Bauchgefühl ein Hörgefühl. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-6-4",
+    "situation": "alltag",
+    "text": "Hier wird aus Bauchgefühl ein Hörgefühl. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-7-0",
+    "situation": "alltag",
+    "text": "Kein Studiovertrag nötig. Nur ein bisschen Naturtalent. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-7-1",
+    "situation": "alltag",
+    "text": "Kein Studiovertrag nötig. Nur ein bisschen Naturtalent. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-7-2",
+    "situation": "alltag",
+    "text": "Kein Studiovertrag nötig. Nur ein bisschen Naturtalent. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-7-3",
+    "situation": "alltag",
+    "text": "Kein Studiovertrag nötig. Nur ein bisschen Naturtalent. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-7-4",
+    "situation": "alltag",
+    "text": "Kein Studiovertrag nötig. Nur ein bisschen Naturtalent. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-8-0",
+    "situation": "alltag",
+    "text": "Wenn der Alltag drückt, bekommt er eine Tonspur. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-8-1",
+    "situation": "alltag",
+    "text": "Wenn der Alltag drückt, bekommt er eine Tonspur. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-8-2",
+    "situation": "alltag",
+    "text": "Wenn der Alltag drückt, bekommt er eine Tonspur. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-8-3",
+    "situation": "alltag",
+    "text": "Wenn der Alltag drückt, bekommt er eine Tonspur. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-8-4",
+    "situation": "alltag",
+    "text": "Wenn der Alltag drückt, bekommt er eine Tonspur. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "alltag-9-0",
+    "situation": "alltag",
+    "text": "Dein Körper hat offenbar eine Sprachnachricht vorbereitet. Die Duftjury wartet."
+  },
+  {
+    "id": "alltag-9-1",
+    "situation": "alltag",
+    "text": "Dein Körper hat offenbar eine Sprachnachricht vorbereitet. Dein Lieblingsmensch ist dein Publikum."
+  },
+  {
+    "id": "alltag-9-2",
+    "situation": "alltag",
+    "text": "Dein Körper hat offenbar eine Sprachnachricht vorbereitet. Einmal festhalten, später zusammen lachen."
+  },
+  {
+    "id": "alltag-9-3",
+    "situation": "alltag",
+    "text": "Dein Körper hat offenbar eine Sprachnachricht vorbereitet. Hier zählt Persönlichkeit, keine Perfektion."
+  },
+  {
+    "id": "alltag-9-4",
+    "situation": "alltag",
+    "text": "Dein Körper hat offenbar eine Sprachnachricht vorbereitet. Bereit für euren nächsten Insider?"
+  },
+  {
+    "id": "morgen-0-0",
+    "situation": "morgen",
+    "text": "Guten Morgen. Der Bauch hat schon ein Update. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-0-1",
+    "situation": "morgen",
+    "text": "Guten Morgen. Der Bauch hat schon ein Update. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-0-2",
+    "situation": "morgen",
+    "text": "Guten Morgen. Der Bauch hat schon ein Update. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-0-3",
+    "situation": "morgen",
+    "text": "Guten Morgen. Der Bauch hat schon ein Update. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-0-4",
+    "situation": "morgen",
+    "text": "Guten Morgen. Der Bauch hat schon ein Update. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-1-0",
+    "situation": "morgen",
+    "text": "Die erste Durchsage kommt heute aus dem Bett. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-1-1",
+    "situation": "morgen",
+    "text": "Die erste Durchsage kommt heute aus dem Bett. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-1-2",
+    "situation": "morgen",
+    "text": "Die erste Durchsage kommt heute aus dem Bett. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-1-3",
+    "situation": "morgen",
+    "text": "Die erste Durchsage kommt heute aus dem Bett. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-1-4",
+    "situation": "morgen",
+    "text": "Die erste Durchsage kommt heute aus dem Bett. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-2-0",
+    "situation": "morgen",
+    "text": "Kaffee läuft. Naturtalent möglicherweise auch. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-2-1",
+    "situation": "morgen",
+    "text": "Kaffee läuft. Naturtalent möglicherweise auch. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-2-2",
+    "situation": "morgen",
+    "text": "Kaffee läuft. Naturtalent möglicherweise auch. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-2-3",
+    "situation": "morgen",
+    "text": "Kaffee läuft. Naturtalent möglicherweise auch. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-2-4",
+    "situation": "morgen",
+    "text": "Kaffee läuft. Naturtalent möglicherweise auch. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-3-0",
+    "situation": "morgen",
+    "text": "Ein neuer Tag verdient einen eigenen Eröffnungston. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-3-1",
+    "situation": "morgen",
+    "text": "Ein neuer Tag verdient einen eigenen Eröffnungston. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-3-2",
+    "situation": "morgen",
+    "text": "Ein neuer Tag verdient einen eigenen Eröffnungston. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-3-3",
+    "situation": "morgen",
+    "text": "Ein neuer Tag verdient einen eigenen Eröffnungston. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-3-4",
+    "situation": "morgen",
+    "text": "Ein neuer Tag verdient einen eigenen Eröffnungston. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-4-0",
+    "situation": "morgen",
+    "text": "Frühstücksradio, aber sehr persönlich. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-4-1",
+    "situation": "morgen",
+    "text": "Frühstücksradio, aber sehr persönlich. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-4-2",
+    "situation": "morgen",
+    "text": "Frühstücksradio, aber sehr persönlich. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-4-3",
+    "situation": "morgen",
+    "text": "Frühstücksradio, aber sehr persönlich. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-4-4",
+    "situation": "morgen",
+    "text": "Frühstücksradio, aber sehr persönlich. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-5-0",
+    "situation": "morgen",
+    "text": "Der Wecker war nur die Vorband. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-5-1",
+    "situation": "morgen",
+    "text": "Der Wecker war nur die Vorband. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-5-2",
+    "situation": "morgen",
+    "text": "Der Wecker war nur die Vorband. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-5-3",
+    "situation": "morgen",
+    "text": "Der Wecker war nur die Vorband. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-5-4",
+    "situation": "morgen",
+    "text": "Der Wecker war nur die Vorband. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-6-0",
+    "situation": "morgen",
+    "text": "Noch müde? Dein inneres Blasorchester probt schon. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-6-1",
+    "situation": "morgen",
+    "text": "Noch müde? Dein inneres Blasorchester probt schon. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-6-2",
+    "situation": "morgen",
+    "text": "Noch müde? Dein inneres Blasorchester probt schon. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-6-3",
+    "situation": "morgen",
+    "text": "Noch müde? Dein inneres Blasorchester probt schon. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-6-4",
+    "situation": "morgen",
+    "text": "Noch müde? Dein inneres Blasorchester probt schon. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-7-0",
+    "situation": "morgen",
+    "text": "Sonnenaufgang mit einer kleinen Druckwelle. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-7-1",
+    "situation": "morgen",
+    "text": "Sonnenaufgang mit einer kleinen Druckwelle. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-7-2",
+    "situation": "morgen",
+    "text": "Sonnenaufgang mit einer kleinen Druckwelle. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-7-3",
+    "situation": "morgen",
+    "text": "Sonnenaufgang mit einer kleinen Druckwelle. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-7-4",
+    "situation": "morgen",
+    "text": "Sonnenaufgang mit einer kleinen Druckwelle. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-8-0",
+    "situation": "morgen",
+    "text": "Morgenstund hat Luft im Bund. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-8-1",
+    "situation": "morgen",
+    "text": "Morgenstund hat Luft im Bund. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-8-2",
+    "situation": "morgen",
+    "text": "Morgenstund hat Luft im Bund. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-8-3",
+    "situation": "morgen",
+    "text": "Morgenstund hat Luft im Bund. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-8-4",
+    "situation": "morgen",
+    "text": "Morgenstund hat Luft im Bund. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "morgen-9-0",
+    "situation": "morgen",
+    "text": "Vor dem ersten guten Morgen kommt manchmal ein guter Ton. Das wird ein persönlicher Morgengruß."
+  },
+  {
+    "id": "morgen-9-1",
+    "situation": "morgen",
+    "text": "Vor dem ersten guten Morgen kommt manchmal ein guter Ton. Die Jury bewertet auch vor dem Frühstück."
+  },
+  {
+    "id": "morgen-9-2",
+    "situation": "morgen",
+    "text": "Vor dem ersten guten Morgen kommt manchmal ein guter Ton. Erst aufnehmen, dann weiterschlummern."
+  },
+  {
+    "id": "morgen-9-3",
+    "situation": "morgen",
+    "text": "Vor dem ersten guten Morgen kommt manchmal ein guter Ton. Ein bisschen Humor zum Wachwerden."
+  },
+  {
+    "id": "morgen-9-4",
+    "situation": "morgen",
+    "text": "Vor dem ersten guten Morgen kommt manchmal ein guter Ton. Habt einen luftigen Start in den Tag."
+  },
+  {
+    "id": "nacht-0-0",
+    "situation": "nacht",
+    "text": "Pssst. Die Nacht hat Ohren. Und gleich eine Aufnahme. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-0-1",
+    "situation": "nacht",
+    "text": "Pssst. Die Nacht hat Ohren. Und gleich eine Aufnahme. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-0-2",
+    "situation": "nacht",
+    "text": "Pssst. Die Nacht hat Ohren. Und gleich eine Aufnahme. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-0-3",
+    "situation": "nacht",
+    "text": "Pssst. Die Nacht hat Ohren. Und gleich eine Aufnahme. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-0-4",
+    "situation": "nacht",
+    "text": "Pssst. Die Nacht hat Ohren. Und gleich eine Aufnahme. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-1-0",
+    "situation": "nacht",
+    "text": "Ein Schlaflied aus der Abteilung Naturgeräusche. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-1-1",
+    "situation": "nacht",
+    "text": "Ein Schlaflied aus der Abteilung Naturgeräusche. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-1-2",
+    "situation": "nacht",
+    "text": "Ein Schlaflied aus der Abteilung Naturgeräusche. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-1-3",
+    "situation": "nacht",
+    "text": "Ein Schlaflied aus der Abteilung Naturgeräusche. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-1-4",
+    "situation": "nacht",
+    "text": "Ein Schlaflied aus der Abteilung Naturgeräusche. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-2-0",
+    "situation": "nacht",
+    "text": "Die Sterne funkeln. Der Bauch funkt zurück. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-2-1",
+    "situation": "nacht",
+    "text": "Die Sterne funkeln. Der Bauch funkt zurück. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-2-2",
+    "situation": "nacht",
+    "text": "Die Sterne funkeln. Der Bauch funkt zurück. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-2-3",
+    "situation": "nacht",
+    "text": "Die Sterne funkeln. Der Bauch funkt zurück. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-2-4",
+    "situation": "nacht",
+    "text": "Die Sterne funkeln. Der Bauch funkt zurück. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-3-0",
+    "situation": "nacht",
+    "text": "Nachtruhe ist eine Empfehlung. Dein Mikrofon hört trotzdem zu. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-3-1",
+    "situation": "nacht",
+    "text": "Nachtruhe ist eine Empfehlung. Dein Mikrofon hört trotzdem zu. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-3-2",
+    "situation": "nacht",
+    "text": "Nachtruhe ist eine Empfehlung. Dein Mikrofon hört trotzdem zu. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-3-3",
+    "situation": "nacht",
+    "text": "Nachtruhe ist eine Empfehlung. Dein Mikrofon hört trotzdem zu. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-3-4",
+    "situation": "nacht",
+    "text": "Nachtruhe ist eine Empfehlung. Dein Mikrofon hört trotzdem zu. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-4-0",
+    "situation": "nacht",
+    "text": "Bettdecke bereit für die akustische Premiere. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-4-1",
+    "situation": "nacht",
+    "text": "Bettdecke bereit für die akustische Premiere. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-4-2",
+    "situation": "nacht",
+    "text": "Bettdecke bereit für die akustische Premiere. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-4-3",
+    "situation": "nacht",
+    "text": "Bettdecke bereit für die akustische Premiere. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-4-4",
+    "situation": "nacht",
+    "text": "Bettdecke bereit für die akustische Premiere. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-5-0",
+    "situation": "nacht",
+    "text": "Späte Stunde, frühe Wetterwarnung. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-5-1",
+    "situation": "nacht",
+    "text": "Späte Stunde, frühe Wetterwarnung. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-5-2",
+    "situation": "nacht",
+    "text": "Späte Stunde, frühe Wetterwarnung. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-5-3",
+    "situation": "nacht",
+    "text": "Späte Stunde, frühe Wetterwarnung. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-5-4",
+    "situation": "nacht",
+    "text": "Späte Stunde, frühe Wetterwarnung. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-6-0",
+    "situation": "nacht",
+    "text": "Der Mond bekommt heute eine kleine Zugabe. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-6-1",
+    "situation": "nacht",
+    "text": "Der Mond bekommt heute eine kleine Zugabe. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-6-2",
+    "situation": "nacht",
+    "text": "Der Mond bekommt heute eine kleine Zugabe. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-6-3",
+    "situation": "nacht",
+    "text": "Der Mond bekommt heute eine kleine Zugabe. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-6-4",
+    "situation": "nacht",
+    "text": "Der Mond bekommt heute eine kleine Zugabe. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-7-0",
+    "situation": "nacht",
+    "text": "Wenn Träume einen Soundcheck brauchen. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-7-1",
+    "situation": "nacht",
+    "text": "Wenn Träume einen Soundcheck brauchen. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-7-2",
+    "situation": "nacht",
+    "text": "Wenn Träume einen Soundcheck brauchen. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-7-3",
+    "situation": "nacht",
+    "text": "Wenn Träume einen Soundcheck brauchen. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-7-4",
+    "situation": "nacht",
+    "text": "Wenn Träume einen Soundcheck brauchen. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-8-0",
+    "situation": "nacht",
+    "text": "Ganz leise. Das hier wird ein Mitternachtsklassiker. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-8-1",
+    "situation": "nacht",
+    "text": "Ganz leise. Das hier wird ein Mitternachtsklassiker. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-8-2",
+    "situation": "nacht",
+    "text": "Ganz leise. Das hier wird ein Mitternachtsklassiker. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-8-3",
+    "situation": "nacht",
+    "text": "Ganz leise. Das hier wird ein Mitternachtsklassiker. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-8-4",
+    "situation": "nacht",
+    "text": "Ganz leise. Das hier wird ein Mitternachtsklassiker. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "nacht-9-0",
+    "situation": "nacht",
+    "text": "Kuschelniveau hoch. Luftdruck offenbar ebenfalls. Bitte die Nachbarn weiterschlafen lassen."
+  },
+  {
+    "id": "nacht-9-1",
+    "situation": "nacht",
+    "text": "Kuschelniveau hoch. Luftdruck offenbar ebenfalls. Morgen klingt es bestimmt noch lustiger."
+  },
+  {
+    "id": "nacht-9-2",
+    "situation": "nacht",
+    "text": "Kuschelniveau hoch. Luftdruck offenbar ebenfalls. Euer kleines Geheimnis für die Nacht."
+  },
+  {
+    "id": "nacht-9-3",
+    "situation": "nacht",
+    "text": "Kuschelniveau hoch. Luftdruck offenbar ebenfalls. Die Jury darf auch ausgeschlafen urteilen."
+  },
+  {
+    "id": "nacht-9-4",
+    "situation": "nacht",
+    "text": "Kuschelniveau hoch. Luftdruck offenbar ebenfalls. Einmal sichern, dann wieder einkuscheln."
+  },
+  {
+    "id": "unterwegs-0-0",
+    "situation": "unterwegs",
+    "text": "Grüße von unterwegs. Mit natürlichem Rückenwind. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-0-1",
+    "situation": "unterwegs",
+    "text": "Grüße von unterwegs. Mit natürlichem Rückenwind. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-0-2",
+    "situation": "unterwegs",
+    "text": "Grüße von unterwegs. Mit natürlichem Rückenwind. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-0-3",
+    "situation": "unterwegs",
+    "text": "Grüße von unterwegs. Mit natürlichem Rückenwind. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-0-4",
+    "situation": "unterwegs",
+    "text": "Grüße von unterwegs. Mit natürlichem Rückenwind. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-1-0",
+    "situation": "unterwegs",
+    "text": "Reisetagebuch, Kapitel kleine Druckwelle. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-1-1",
+    "situation": "unterwegs",
+    "text": "Reisetagebuch, Kapitel kleine Druckwelle. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-1-2",
+    "situation": "unterwegs",
+    "text": "Reisetagebuch, Kapitel kleine Druckwelle. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-1-3",
+    "situation": "unterwegs",
+    "text": "Reisetagebuch, Kapitel kleine Druckwelle. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-1-4",
+    "situation": "unterwegs",
+    "text": "Reisetagebuch, Kapitel kleine Druckwelle. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-2-0",
+    "situation": "unterwegs",
+    "text": "Dieser Spaziergang bekommt jetzt eine Tonspur. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-2-1",
+    "situation": "unterwegs",
+    "text": "Dieser Spaziergang bekommt jetzt eine Tonspur. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-2-2",
+    "situation": "unterwegs",
+    "text": "Dieser Spaziergang bekommt jetzt eine Tonspur. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-2-3",
+    "situation": "unterwegs",
+    "text": "Dieser Spaziergang bekommt jetzt eine Tonspur. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-2-4",
+    "situation": "unterwegs",
+    "text": "Dieser Spaziergang bekommt jetzt eine Tonspur. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-3-0",
+    "situation": "unterwegs",
+    "text": "Wo du auch bist: Dein Bauch hat Empfang. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-3-1",
+    "situation": "unterwegs",
+    "text": "Wo du auch bist: Dein Bauch hat Empfang. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-3-2",
+    "situation": "unterwegs",
+    "text": "Wo du auch bist: Dein Bauch hat Empfang. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-3-3",
+    "situation": "unterwegs",
+    "text": "Wo du auch bist: Dein Bauch hat Empfang. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-3-4",
+    "situation": "unterwegs",
+    "text": "Wo du auch bist: Dein Bauch hat Empfang. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-4-0",
+    "situation": "unterwegs",
+    "text": "Ein kleiner Ortswechsel für ein großes Naturtalent. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-4-1",
+    "situation": "unterwegs",
+    "text": "Ein kleiner Ortswechsel für ein großes Naturtalent. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-4-2",
+    "situation": "unterwegs",
+    "text": "Ein kleiner Ortswechsel für ein großes Naturtalent. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-4-3",
+    "situation": "unterwegs",
+    "text": "Ein kleiner Ortswechsel für ein großes Naturtalent. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-4-4",
+    "situation": "unterwegs",
+    "text": "Ein kleiner Ortswechsel für ein großes Naturtalent. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-5-0",
+    "situation": "unterwegs",
+    "text": "Outdoor-Konzert. Eintritt frei, Aufnahme privat. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-5-1",
+    "situation": "unterwegs",
+    "text": "Outdoor-Konzert. Eintritt frei, Aufnahme privat. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-5-2",
+    "situation": "unterwegs",
+    "text": "Outdoor-Konzert. Eintritt frei, Aufnahme privat. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-5-3",
+    "situation": "unterwegs",
+    "text": "Outdoor-Konzert. Eintritt frei, Aufnahme privat. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-5-4",
+    "situation": "unterwegs",
+    "text": "Outdoor-Konzert. Eintritt frei, Aufnahme privat. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-6-0",
+    "situation": "unterwegs",
+    "text": "Heute erkunden wir akustisches Neuland. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-6-1",
+    "situation": "unterwegs",
+    "text": "Heute erkunden wir akustisches Neuland. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-6-2",
+    "situation": "unterwegs",
+    "text": "Heute erkunden wir akustisches Neuland. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-6-3",
+    "situation": "unterwegs",
+    "text": "Heute erkunden wir akustisches Neuland. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-6-4",
+    "situation": "unterwegs",
+    "text": "Heute erkunden wir akustisches Neuland. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-7-0",
+    "situation": "unterwegs",
+    "text": "Kein Reiseführer erwähnt diese Sehenshörigkeit. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-7-1",
+    "situation": "unterwegs",
+    "text": "Kein Reiseführer erwähnt diese Sehenshörigkeit. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-7-2",
+    "situation": "unterwegs",
+    "text": "Kein Reiseführer erwähnt diese Sehenshörigkeit. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-7-3",
+    "situation": "unterwegs",
+    "text": "Kein Reiseführer erwähnt diese Sehenshörigkeit. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-7-4",
+    "situation": "unterwegs",
+    "text": "Kein Reiseführer erwähnt diese Sehenshörigkeit. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-8-0",
+    "situation": "unterwegs",
+    "text": "Mit leichtem Gepäck und einer hörbaren Geschichte. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-8-1",
+    "situation": "unterwegs",
+    "text": "Mit leichtem Gepäck und einer hörbaren Geschichte. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-8-2",
+    "situation": "unterwegs",
+    "text": "Mit leichtem Gepäck und einer hörbaren Geschichte. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-8-3",
+    "situation": "unterwegs",
+    "text": "Mit leichtem Gepäck und einer hörbaren Geschichte. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-8-4",
+    "situation": "unterwegs",
+    "text": "Mit leichtem Gepäck und einer hörbaren Geschichte. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "unterwegs-9-0",
+    "situation": "unterwegs",
+    "text": "Eine Durchsage von deinem aktuellen Abenteuer. Der Aufnahmeort bleibt auf Wunsch privat."
+  },
+  {
+    "id": "unterwegs-9-1",
+    "situation": "unterwegs",
+    "text": "Eine Durchsage von deinem aktuellen Abenteuer. Nur ihr entscheidet, ob ein Ort mitkommt."
+  },
+  {
+    "id": "unterwegs-9-2",
+    "situation": "unterwegs",
+    "text": "Eine Durchsage von deinem aktuellen Abenteuer. Euer nächster Insider reist mit."
+  },
+  {
+    "id": "unterwegs-9-3",
+    "situation": "unterwegs",
+    "text": "Eine Durchsage von deinem aktuellen Abenteuer. Den Wind müsst ihr selbst bewerten."
+  },
+  {
+    "id": "unterwegs-9-4",
+    "situation": "unterwegs",
+    "text": "Eine Durchsage von deinem aktuellen Abenteuer. Ein Andenken mit Wellenform."
+  },
+  {
+    "id": "date-0-0",
+    "situation": "date",
+    "text": "Romantik ist, wenn man auch darüber gemeinsam lacht. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-0-1",
+    "situation": "date",
+    "text": "Romantik ist, wenn man auch darüber gemeinsam lacht. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-0-2",
+    "situation": "date",
+    "text": "Romantik ist, wenn man auch darüber gemeinsam lacht. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-0-3",
+    "situation": "date",
+    "text": "Romantik ist, wenn man auch darüber gemeinsam lacht. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-0-4",
+    "situation": "date",
+    "text": "Romantik ist, wenn man auch darüber gemeinsam lacht. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-1-0",
+    "situation": "date",
+    "text": "Ein Liebesbrief mit eingebautem Luftpolster. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-1-1",
+    "situation": "date",
+    "text": "Ein Liebesbrief mit eingebautem Luftpolster. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-1-2",
+    "situation": "date",
+    "text": "Ein Liebesbrief mit eingebautem Luftpolster. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-1-3",
+    "situation": "date",
+    "text": "Ein Liebesbrief mit eingebautem Luftpolster. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-1-4",
+    "situation": "date",
+    "text": "Ein Liebesbrief mit eingebautem Luftpolster. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-2-0",
+    "situation": "date",
+    "text": "Schmetterlinge im Bauch? Einer sucht den Ausgang. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-2-1",
+    "situation": "date",
+    "text": "Schmetterlinge im Bauch? Einer sucht den Ausgang. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-2-2",
+    "situation": "date",
+    "text": "Schmetterlinge im Bauch? Einer sucht den Ausgang. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-2-3",
+    "situation": "date",
+    "text": "Schmetterlinge im Bauch? Einer sucht den Ausgang. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-2-4",
+    "situation": "date",
+    "text": "Schmetterlinge im Bauch? Einer sucht den Ausgang. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-3-0",
+    "situation": "date",
+    "text": "Für immer. Fürzeinander. Auch an diesem schönen Abend. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-3-1",
+    "situation": "date",
+    "text": "Für immer. Fürzeinander. Auch an diesem schönen Abend. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-3-2",
+    "situation": "date",
+    "text": "Für immer. Fürzeinander. Auch an diesem schönen Abend. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-3-3",
+    "situation": "date",
+    "text": "Für immer. Fürzeinander. Auch an diesem schönen Abend. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-3-4",
+    "situation": "date",
+    "text": "Für immer. Fürzeinander. Auch an diesem schönen Abend. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-4-0",
+    "situation": "date",
+    "text": "Das ist eure sehr persönliche Sprache der Liebe. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-4-1",
+    "situation": "date",
+    "text": "Das ist eure sehr persönliche Sprache der Liebe. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-4-2",
+    "situation": "date",
+    "text": "Das ist eure sehr persönliche Sprache der Liebe. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-4-3",
+    "situation": "date",
+    "text": "Das ist eure sehr persönliche Sprache der Liebe. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-4-4",
+    "situation": "date",
+    "text": "Das ist eure sehr persönliche Sprache der Liebe. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-5-0",
+    "situation": "date",
+    "text": "Echte Nähe hält auch einen kleinen Soundcheck aus. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-5-1",
+    "situation": "date",
+    "text": "Echte Nähe hält auch einen kleinen Soundcheck aus. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-5-2",
+    "situation": "date",
+    "text": "Echte Nähe hält auch einen kleinen Soundcheck aus. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-5-3",
+    "situation": "date",
+    "text": "Echte Nähe hält auch einen kleinen Soundcheck aus. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-5-4",
+    "situation": "date",
+    "text": "Echte Nähe hält auch einen kleinen Soundcheck aus. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-6-0",
+    "situation": "date",
+    "text": "Ein Herzschlag, zwei Menschen, eine überraschende Zugabe. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-6-1",
+    "situation": "date",
+    "text": "Ein Herzschlag, zwei Menschen, eine überraschende Zugabe. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-6-2",
+    "situation": "date",
+    "text": "Ein Herzschlag, zwei Menschen, eine überraschende Zugabe. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-6-3",
+    "situation": "date",
+    "text": "Ein Herzschlag, zwei Menschen, eine überraschende Zugabe. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-6-4",
+    "situation": "date",
+    "text": "Ein Herzschlag, zwei Menschen, eine überraschende Zugabe. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-7-0",
+    "situation": "date",
+    "text": "Dieser Moment gehört nur euch und dem Mikrofon. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-7-1",
+    "situation": "date",
+    "text": "Dieser Moment gehört nur euch und dem Mikrofon. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-7-2",
+    "situation": "date",
+    "text": "Dieser Moment gehört nur euch und dem Mikrofon. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-7-3",
+    "situation": "date",
+    "text": "Dieser Moment gehört nur euch und dem Mikrofon. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-7-4",
+    "situation": "date",
+    "text": "Dieser Moment gehört nur euch und dem Mikrofon. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-8-0",
+    "situation": "date",
+    "text": "Ein leises Ich-liebe-dich aus dem Naturstudio. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-8-1",
+    "situation": "date",
+    "text": "Ein leises Ich-liebe-dich aus dem Naturstudio. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-8-2",
+    "situation": "date",
+    "text": "Ein leises Ich-liebe-dich aus dem Naturstudio. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-8-3",
+    "situation": "date",
+    "text": "Ein leises Ich-liebe-dich aus dem Naturstudio. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-8-4",
+    "situation": "date",
+    "text": "Ein leises Ich-liebe-dich aus dem Naturstudio. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "date-9-0",
+    "situation": "date",
+    "text": "Kerzenlicht an. Bauchgefühl auf Aufnahme. Mit Liebe aufnehmen, mit Humor bewerten."
+  },
+  {
+    "id": "date-9-1",
+    "situation": "date",
+    "text": "Kerzenlicht an. Bauchgefühl auf Aufnahme. Fünf Sterne für gegenseitiges Vertrauen."
+  },
+  {
+    "id": "date-9-2",
+    "situation": "date",
+    "text": "Kerzenlicht an. Bauchgefühl auf Aufnahme. Das zählt als gemeinsame Erinnerung."
+  },
+  {
+    "id": "date-9-3",
+    "situation": "date",
+    "text": "Kerzenlicht an. Bauchgefühl auf Aufnahme. Eure Zweisamkeit hat Humor."
+  },
+  {
+    "id": "date-9-4",
+    "situation": "date",
+    "text": "Kerzenlicht an. Bauchgefühl auf Aufnahme. Das schönste Publikum ist genau ein Mensch."
+  },
+  {
+    "id": "essen-0-0",
+    "situation": "essen",
+    "text": "Das Menü bekommt eine akustische Nachspeise. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-0-1",
+    "situation": "essen",
+    "text": "Das Menü bekommt eine akustische Nachspeise. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-0-2",
+    "situation": "essen",
+    "text": "Das Menü bekommt eine akustische Nachspeise. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-0-3",
+    "situation": "essen",
+    "text": "Das Menü bekommt eine akustische Nachspeise. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-0-4",
+    "situation": "essen",
+    "text": "Das Menü bekommt eine akustische Nachspeise. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-1-0",
+    "situation": "essen",
+    "text": "Der Koch war gut. Dein Bauch übernimmt das Finale. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-1-1",
+    "situation": "essen",
+    "text": "Der Koch war gut. Dein Bauch übernimmt das Finale. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-1-2",
+    "situation": "essen",
+    "text": "Der Koch war gut. Dein Bauch übernimmt das Finale. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-1-3",
+    "situation": "essen",
+    "text": "Der Koch war gut. Dein Bauch übernimmt das Finale. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-1-4",
+    "situation": "essen",
+    "text": "Der Koch war gut. Dein Bauch übernimmt das Finale. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-2-0",
+    "situation": "essen",
+    "text": "Von der Vorspeise zur Vorführung. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-2-1",
+    "situation": "essen",
+    "text": "Von der Vorspeise zur Vorführung. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-2-2",
+    "situation": "essen",
+    "text": "Von der Vorspeise zur Vorführung. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-2-3",
+    "situation": "essen",
+    "text": "Von der Vorspeise zur Vorführung. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-2-4",
+    "situation": "essen",
+    "text": "Von der Vorspeise zur Vorführung. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-3-0",
+    "situation": "essen",
+    "text": "Bauchgefühl mit Tageskarte. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-3-1",
+    "situation": "essen",
+    "text": "Bauchgefühl mit Tageskarte. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-3-2",
+    "situation": "essen",
+    "text": "Bauchgefühl mit Tageskarte. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-3-3",
+    "situation": "essen",
+    "text": "Bauchgefühl mit Tageskarte. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-3-4",
+    "situation": "essen",
+    "text": "Bauchgefühl mit Tageskarte. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-4-0",
+    "situation": "essen",
+    "text": "Das Essen war ein Gedicht. Jetzt kommt die Vertonung. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-4-1",
+    "situation": "essen",
+    "text": "Das Essen war ein Gedicht. Jetzt kommt die Vertonung. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-4-2",
+    "situation": "essen",
+    "text": "Das Essen war ein Gedicht. Jetzt kommt die Vertonung. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-4-3",
+    "situation": "essen",
+    "text": "Das Essen war ein Gedicht. Jetzt kommt die Vertonung. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-4-4",
+    "situation": "essen",
+    "text": "Das Essen war ein Gedicht. Jetzt kommt die Vertonung. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-5-0",
+    "situation": "essen",
+    "text": "Ein kleiner Gruß aus der Verdauungsküche. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-5-1",
+    "situation": "essen",
+    "text": "Ein kleiner Gruß aus der Verdauungsküche. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-5-2",
+    "situation": "essen",
+    "text": "Ein kleiner Gruß aus der Verdauungsküche. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-5-3",
+    "situation": "essen",
+    "text": "Ein kleiner Gruß aus der Verdauungsküche. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-5-4",
+    "situation": "essen",
+    "text": "Ein kleiner Gruß aus der Verdauungsküche. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-6-0",
+    "situation": "essen",
+    "text": "Die Speisekarte hat diesen Gang verschwiegen. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-6-1",
+    "situation": "essen",
+    "text": "Die Speisekarte hat diesen Gang verschwiegen. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-6-2",
+    "situation": "essen",
+    "text": "Die Speisekarte hat diesen Gang verschwiegen. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-6-3",
+    "situation": "essen",
+    "text": "Die Speisekarte hat diesen Gang verschwiegen. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-6-4",
+    "situation": "essen",
+    "text": "Die Speisekarte hat diesen Gang verschwiegen. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-7-0",
+    "situation": "essen",
+    "text": "Nach dem Essen ist vor der Aufnahme. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-7-1",
+    "situation": "essen",
+    "text": "Nach dem Essen ist vor der Aufnahme. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-7-2",
+    "situation": "essen",
+    "text": "Nach dem Essen ist vor der Aufnahme. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-7-3",
+    "situation": "essen",
+    "text": "Nach dem Essen ist vor der Aufnahme. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-7-4",
+    "situation": "essen",
+    "text": "Nach dem Essen ist vor der Aufnahme. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-8-0",
+    "situation": "essen",
+    "text": "Das ist kein Küchenradio. Es klingt nur so persönlich. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-8-1",
+    "situation": "essen",
+    "text": "Das ist kein Küchenradio. Es klingt nur so persönlich. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-8-2",
+    "situation": "essen",
+    "text": "Das ist kein Küchenradio. Es klingt nur so persönlich. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-8-3",
+    "situation": "essen",
+    "text": "Das ist kein Küchenradio. Es klingt nur so persönlich. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-8-4",
+    "situation": "essen",
+    "text": "Das ist kein Küchenradio. Es klingt nur so persönlich. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "essen-9-0",
+    "situation": "essen",
+    "text": "Ein Nachklang mit einer ganz eigenen Geschmacksnote. Die Jury kennt das Rezept nicht."
+  },
+  {
+    "id": "essen-9-1",
+    "situation": "essen",
+    "text": "Ein Nachklang mit einer ganz eigenen Geschmacksnote. Nur der Ton wird serviert."
+  },
+  {
+    "id": "essen-9-2",
+    "situation": "essen",
+    "text": "Ein Nachklang mit einer ganz eigenen Geschmacksnote. Bitte keine Sterne für den Koch abziehen."
+  },
+  {
+    "id": "essen-9-3",
+    "situation": "essen",
+    "text": "Ein Nachklang mit einer ganz eigenen Geschmacksnote. Einmal sichern statt lange erklären."
+  },
+  {
+    "id": "essen-9-4",
+    "situation": "essen",
+    "text": "Ein Nachklang mit einer ganz eigenen Geschmacksnote. Guten Appetit auf euren nächsten Insider."
+  },
+  {
+    "id": "leise-0-0",
+    "situation": "leise",
+    "text": "Agent Luft meldet sich aus dem Tarnmodus. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-0-1",
+    "situation": "leise",
+    "text": "Agent Luft meldet sich aus dem Tarnmodus. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-0-2",
+    "situation": "leise",
+    "text": "Agent Luft meldet sich aus dem Tarnmodus. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-0-3",
+    "situation": "leise",
+    "text": "Agent Luft meldet sich aus dem Tarnmodus. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-0-4",
+    "situation": "leise",
+    "text": "Agent Luft meldet sich aus dem Tarnmodus. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-1-0",
+    "situation": "leise",
+    "text": "Manche Meisterwerke kommen auf Zehenspitzen. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-1-1",
+    "situation": "leise",
+    "text": "Manche Meisterwerke kommen auf Zehenspitzen. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-1-2",
+    "situation": "leise",
+    "text": "Manche Meisterwerke kommen auf Zehenspitzen. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-1-3",
+    "situation": "leise",
+    "text": "Manche Meisterwerke kommen auf Zehenspitzen. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-1-4",
+    "situation": "leise",
+    "text": "Manche Meisterwerke kommen auf Zehenspitzen. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-2-0",
+    "situation": "leise",
+    "text": "Die leiseste Nachricht kann den größten Lacher bringen. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-2-1",
+    "situation": "leise",
+    "text": "Die leiseste Nachricht kann den größten Lacher bringen. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-2-2",
+    "situation": "leise",
+    "text": "Die leiseste Nachricht kann den größten Lacher bringen. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-2-3",
+    "situation": "leise",
+    "text": "Die leiseste Nachricht kann den größten Lacher bringen. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-2-4",
+    "situation": "leise",
+    "text": "Die leiseste Nachricht kann den größten Lacher bringen. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-3-0",
+    "situation": "leise",
+    "text": "Ninja-Modus: fast unsichtbar, hoffentlich hörbar. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-3-1",
+    "situation": "leise",
+    "text": "Ninja-Modus: fast unsichtbar, hoffentlich hörbar. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-3-2",
+    "situation": "leise",
+    "text": "Ninja-Modus: fast unsichtbar, hoffentlich hörbar. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-3-3",
+    "situation": "leise",
+    "text": "Ninja-Modus: fast unsichtbar, hoffentlich hörbar. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-3-4",
+    "situation": "leise",
+    "text": "Ninja-Modus: fast unsichtbar, hoffentlich hörbar. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-4-0",
+    "situation": "leise",
+    "text": "Psst. Das Mikrofon kann ein Geheimnis für euch bewahren. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-4-1",
+    "situation": "leise",
+    "text": "Psst. Das Mikrofon kann ein Geheimnis für euch bewahren. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-4-2",
+    "situation": "leise",
+    "text": "Psst. Das Mikrofon kann ein Geheimnis für euch bewahren. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-4-3",
+    "situation": "leise",
+    "text": "Psst. Das Mikrofon kann ein Geheimnis für euch bewahren. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-4-4",
+    "situation": "leise",
+    "text": "Psst. Das Mikrofon kann ein Geheimnis für euch bewahren. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-5-0",
+    "situation": "leise",
+    "text": "Ein kleiner Flüsterton aus dem Baucharchiv. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-5-1",
+    "situation": "leise",
+    "text": "Ein kleiner Flüsterton aus dem Baucharchiv. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-5-2",
+    "situation": "leise",
+    "text": "Ein kleiner Flüsterton aus dem Baucharchiv. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-5-3",
+    "situation": "leise",
+    "text": "Ein kleiner Flüsterton aus dem Baucharchiv. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-5-4",
+    "situation": "leise",
+    "text": "Ein kleiner Flüsterton aus dem Baucharchiv. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-6-0",
+    "situation": "leise",
+    "text": "Heute wird die Stille ganz vorsichtig unterbrochen. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-6-1",
+    "situation": "leise",
+    "text": "Heute wird die Stille ganz vorsichtig unterbrochen. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-6-2",
+    "situation": "leise",
+    "text": "Heute wird die Stille ganz vorsichtig unterbrochen. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-6-3",
+    "situation": "leise",
+    "text": "Heute wird die Stille ganz vorsichtig unterbrochen. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-6-4",
+    "situation": "leise",
+    "text": "Heute wird die Stille ganz vorsichtig unterbrochen. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-7-0",
+    "situation": "leise",
+    "text": "Das Geheimkonzert beginnt gleich. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-7-1",
+    "situation": "leise",
+    "text": "Das Geheimkonzert beginnt gleich. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-7-2",
+    "situation": "leise",
+    "text": "Das Geheimkonzert beginnt gleich. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-7-3",
+    "situation": "leise",
+    "text": "Das Geheimkonzert beginnt gleich. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-7-4",
+    "situation": "leise",
+    "text": "Das Geheimkonzert beginnt gleich. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-8-0",
+    "situation": "leise",
+    "text": "Zarte Töne. Große Hoffnungen der Duftjury. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-8-1",
+    "situation": "leise",
+    "text": "Zarte Töne. Große Hoffnungen der Duftjury. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-8-2",
+    "situation": "leise",
+    "text": "Zarte Töne. Große Hoffnungen der Duftjury. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-8-3",
+    "situation": "leise",
+    "text": "Zarte Töne. Große Hoffnungen der Duftjury. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-8-4",
+    "situation": "leise",
+    "text": "Zarte Töne. Große Hoffnungen der Duftjury. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "leise-9-0",
+    "situation": "leise",
+    "text": "Wenn Understatement einen eigenen Audiokanal hätte. Die Jury hört bei Bedarf einfach noch einmal hin."
+  },
+  {
+    "id": "leise-9-1",
+    "situation": "leise",
+    "text": "Wenn Understatement einen eigenen Audiokanal hätte. Kleine Welle, große Geschichte."
+  },
+  {
+    "id": "leise-9-2",
+    "situation": "leise",
+    "text": "Wenn Understatement einen eigenen Audiokanal hätte. Du bestimmst, wann das Geheimnis geteilt wird."
+  },
+  {
+    "id": "leise-9-3",
+    "situation": "leise",
+    "text": "Wenn Understatement einen eigenen Audiokanal hätte. Keine Lautstärke ist Pflicht."
+  },
+  {
+    "id": "leise-9-4",
+    "situation": "leise",
+    "text": "Wenn Understatement einen eigenen Audiokanal hätte. Die leisesten Insider bleiben oft am längsten."
+  },
+  {
+    "id": "zugabe-0-0",
+    "situation": "zugabe",
+    "text": "Die Jury hat noch Platz für eine Zugabe. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-0-1",
+    "situation": "zugabe",
+    "text": "Die Jury hat noch Platz für eine Zugabe. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-0-2",
+    "situation": "zugabe",
+    "text": "Die Jury hat noch Platz für eine Zugabe. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-0-3",
+    "situation": "zugabe",
+    "text": "Die Jury hat noch Platz für eine Zugabe. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-0-4",
+    "situation": "zugabe",
+    "text": "Die Jury hat noch Platz für eine Zugabe. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-1-0",
+    "situation": "zugabe",
+    "text": "Willkommen zurück im sehr persönlichen Naturstudio. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-1-1",
+    "situation": "zugabe",
+    "text": "Willkommen zurück im sehr persönlichen Naturstudio. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-1-2",
+    "situation": "zugabe",
+    "text": "Willkommen zurück im sehr persönlichen Naturstudio. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-1-3",
+    "situation": "zugabe",
+    "text": "Willkommen zurück im sehr persönlichen Naturstudio. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-1-4",
+    "situation": "zugabe",
+    "text": "Willkommen zurück im sehr persönlichen Naturstudio. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-2-0",
+    "situation": "zugabe",
+    "text": "Ein Meisterwerk kommt selten allein. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-2-1",
+    "situation": "zugabe",
+    "text": "Ein Meisterwerk kommt selten allein. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-2-2",
+    "situation": "zugabe",
+    "text": "Ein Meisterwerk kommt selten allein. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-2-3",
+    "situation": "zugabe",
+    "text": "Ein Meisterwerk kommt selten allein. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-2-4",
+    "situation": "zugabe",
+    "text": "Ein Meisterwerk kommt selten allein. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-3-0",
+    "situation": "zugabe",
+    "text": "Dein Bauch hat die Wiederholungstaste gefunden. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-3-1",
+    "situation": "zugabe",
+    "text": "Dein Bauch hat die Wiederholungstaste gefunden. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-3-2",
+    "situation": "zugabe",
+    "text": "Dein Bauch hat die Wiederholungstaste gefunden. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-3-3",
+    "situation": "zugabe",
+    "text": "Dein Bauch hat die Wiederholungstaste gefunden. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-3-4",
+    "situation": "zugabe",
+    "text": "Dein Bauch hat die Wiederholungstaste gefunden. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-4-0",
+    "situation": "zugabe",
+    "text": "Die erste Aufnahme war offenbar nur der Soundcheck. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-4-1",
+    "situation": "zugabe",
+    "text": "Die erste Aufnahme war offenbar nur der Soundcheck. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-4-2",
+    "situation": "zugabe",
+    "text": "Die erste Aufnahme war offenbar nur der Soundcheck. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-4-3",
+    "situation": "zugabe",
+    "text": "Die erste Aufnahme war offenbar nur der Soundcheck. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-4-4",
+    "situation": "zugabe",
+    "text": "Die erste Aufnahme war offenbar nur der Soundcheck. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-5-0",
+    "situation": "zugabe",
+    "text": "Neue Runde, neues Lüftchen, neue Chance auf fünf Sterne. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-5-1",
+    "situation": "zugabe",
+    "text": "Neue Runde, neues Lüftchen, neue Chance auf fünf Sterne. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-5-2",
+    "situation": "zugabe",
+    "text": "Neue Runde, neues Lüftchen, neue Chance auf fünf Sterne. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-5-3",
+    "situation": "zugabe",
+    "text": "Neue Runde, neues Lüftchen, neue Chance auf fünf Sterne. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-5-4",
+    "situation": "zugabe",
+    "text": "Neue Runde, neues Lüftchen, neue Chance auf fünf Sterne. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-6-0",
+    "situation": "zugabe",
+    "text": "Die Duftpost kennt keine kreative Pause. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-6-1",
+    "situation": "zugabe",
+    "text": "Die Duftpost kennt keine kreative Pause. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-6-2",
+    "situation": "zugabe",
+    "text": "Die Duftpost kennt keine kreative Pause. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-6-3",
+    "situation": "zugabe",
+    "text": "Die Duftpost kennt keine kreative Pause. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-6-4",
+    "situation": "zugabe",
+    "text": "Die Duftpost kennt keine kreative Pause. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-7-0",
+    "situation": "zugabe",
+    "text": "Fortsetzung folgt. Und sie hat einen eigenen Klang. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-7-1",
+    "situation": "zugabe",
+    "text": "Fortsetzung folgt. Und sie hat einen eigenen Klang. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-7-2",
+    "situation": "zugabe",
+    "text": "Fortsetzung folgt. Und sie hat einen eigenen Klang. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-7-3",
+    "situation": "zugabe",
+    "text": "Fortsetzung folgt. Und sie hat einen eigenen Klang. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-7-4",
+    "situation": "zugabe",
+    "text": "Fortsetzung folgt. Und sie hat einen eigenen Klang. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-8-0",
+    "situation": "zugabe",
+    "text": "Das Archiv öffnet die Arme für den nächsten Klassiker. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-8-1",
+    "situation": "zugabe",
+    "text": "Das Archiv öffnet die Arme für den nächsten Klassiker. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-8-2",
+    "situation": "zugabe",
+    "text": "Das Archiv öffnet die Arme für den nächsten Klassiker. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-8-3",
+    "situation": "zugabe",
+    "text": "Das Archiv öffnet die Arme für den nächsten Klassiker. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-8-4",
+    "situation": "zugabe",
+    "text": "Das Archiv öffnet die Arme für den nächsten Klassiker. Vielleicht wird das ja euer neuer Favorit."
+  },
+  {
+    "id": "zugabe-9-0",
+    "situation": "zugabe",
+    "text": "Wer Zugabe sagt, muss auch Aufnahme drücken. Euer Archiv kann damit umgehen."
+  },
+  {
+    "id": "zugabe-9-1",
+    "situation": "zugabe",
+    "text": "Wer Zugabe sagt, muss auch Aufnahme drücken. Die nächste Bewertung gehört wieder euch."
+  },
+  {
+    "id": "zugabe-9-2",
+    "situation": "zugabe",
+    "text": "Wer Zugabe sagt, muss auch Aufnahme drücken. Neue Runde, neuer Insider."
+  },
+  {
+    "id": "zugabe-9-3",
+    "situation": "zugabe",
+    "text": "Wer Zugabe sagt, muss auch Aufnahme drücken. Bitte erst prüfen, dann teilen."
+  },
+  {
+    "id": "zugabe-9-4",
+    "situation": "zugabe",
+    "text": "Wer Zugabe sagt, muss auch Aufnahme drücken. Vielleicht wird das ja euer neuer Favorit."
+  }
+]

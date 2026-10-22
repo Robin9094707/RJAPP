@@ -3,7 +3,7 @@ import XCTest
 final class ResponsiveLayoutTests: XCTestCase {
     func testImportantContentFitsTheWindow() {
         let app = XCUIApplication()
-        let screens: [(String?, String)] = [(nil,"rj-home-title"),("--preview-radio","rj-radio-title"),("--preview-setup","rj-setup-title"),("--preview-delivery","rj-delivery-title")]
+        let screens: [(String?, String)] = [(nil,"rj-home-title"),("--preview-radio","rj-radio-title"),("--preview-setup","rj-setup-title"),("--preview-delivery","rj-delivery-title"),("--preview-farts","duft-archive-title")]
         for accessibility in [false, true] {
             for (argument, identifier) in screens {
                 app.launchArguments = ["--preview"] + (argument.map { [$0] } ?? []) + (accessibility ? ["--preview-accessibility"] : [])

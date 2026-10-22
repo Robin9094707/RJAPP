@@ -8,6 +8,8 @@ struct FartDraft: Codable, Identifiable {
     let ownerID: String
     let duration: Double
     let waveform: [Double]
+    var recordedAt: String? = nil
+    var location: FartLocation? = nil
     var url: URL { AudioDraftStore.directory.appendingPathComponent(id + ".m4a") }
 }
 enum AudioDraftStore {
@@ -44,6 +46,8 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     private var playerTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var recordingID = UUID().uuidString
+    private var recordedAt = Date.now.rjISO8601
+    private var recordingLocation: FartLocation?
     private var ownerID = ""
     private var allLevels: [Double] = []
     private var recordingActivity: Activity<FartRecordingAttributes>?
@@ -100,7 +104,13 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
             try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
             try audioSession.setActive(true)
             try FileManager.default.createDirectory(at: AudioDraftStore.directory, withIntermediateDirectories: true)
-            recordingID = UUID().uuidString; self.ownerID = ownerID
+            recordingID = UUID().uuidString
+            recordedAt = Date.now.rjISO8601
+            recordingLocation = nil
+            if LocationService.shared.sharingEnabled, let value = LocationService.shared.lastLocation,
+               abs(value.timestamp.timeIntervalSinceNow) < 120, value.horizontalAccuracy >= 0, value.horizontalAccuracy <= 1000 {
+                recordingLocation = FartLocation(latitude: value.coordinate.latitude, longitude: value.coordinate.longitude, accuracy: value.horizontalAccuracy, capturedAt: value.timestamp.rjISO8601)
+            }; self.ownerID = ownerID
             let url = AudioDraftStore.directory.appendingPathComponent(recordingID + ".m4a")
             let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44100, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 96000, AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue]
             let recorder = try AVAudioRecorder(url: url, settings: settings)
@@ -152,7 +162,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     }
     private func persistDraft(duration: Double) {
         guard duration >= 0.2 else { return }
-        let value = FartDraft(id: recordingID, ownerID: ownerID, duration: duration, waveform: Self.summarize(allLevels))
+        let value = FartDraft(id: recordingID, ownerID: ownerID, duration: duration, waveform: Self.summarize(allLevels), recordedAt: recordedAt, location: recordingLocation)
         draft = value
         do { try AudioDraftStore.save(value) }
         catch { errorMessage = "Lokales Sichern fehlgeschlagen: \(error.localizedDescription)" }
@@ -183,7 +193,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         defer { try? FileManager.default.removeItem(at: result.url) }
         let bytes = try Data(contentsOf: result.url)
         try bytes.write(to: draft.url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        let next = FartDraft(id: draft.id, ownerID: draft.ownerID, duration: result.duration, waveform: result.waveform)
+        let next = FartDraft(id: draft.id, ownerID: draft.ownerID, duration: result.duration, waveform: result.waveform, recordedAt: draft.recordedAt, location: draft.location)
         self.draft = next; elapsed = result.duration
         try AudioDraftStore.save(next)
     }

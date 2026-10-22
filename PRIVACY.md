@@ -1,4 +1,4 @@
-# Datenschutz — RJ Love 2.3
+# Datenschutz — RJ Love 2.4
 
 RJ Love ist für Robin und Raphaela vorgesehen. Kein Tracking-SDK, keine Werbung und keine Analyseplattform. Inhalte sind nicht Ende-zu-Ende-verschlüsselt; der Betreiber eures eigenen Servers kann sie lesen. HTTPS schützt die Übertragung.
 
@@ -39,3 +39,7 @@ Der integrierte Backup-Befehl erstellt ein Archiv aus konsistentem Datenbank-Sna
 ## Zustellungsdiagnose ab 2.3
 
 Geräteregistrierung speichert zusätzlich die Bundle-ID und, falls auslesbar, die Signing-Team-ID zur Prüfung der APNs-Zuordnung. APNs-Zustellungsdiagnosen enthalten Status, Fehlergrund und Zeitpunkt, keine Provider-Schlüssel oder Gerätetokens; sie werden nach sieben Tagen gelöscht. Weckrufbestätigungen speichern AlarmKit-Planungsstatus und Fehlergrund. Der eigenständige Hintergrundabruf lädt nur Weckaufträge und Erinnerungen. Das Profil wird ausschließlich aus dem eigenen installierten App-Bundle gelesen.
+
+## Duftstudio 2.4
+
+Aufnahmezeit, selbst gewählte Situation und optional ausdrücklich mitgesendeter Aufnahmeort werden als Metadaten gespeichert. Orte lassen sich später vom eigenen Eintrag entfernen; bereits externe Backups bleiben unverändert. Die Karte ruft Kartendaten über Apple MapKit ab. Sprüche werden lokal ausgewählt. Die Versionsprüfung übermittelt App-Version und Protokollgeneration an euren eigenen Server. Die automatische APNs-Erkennung liest ausschließlich konfigurierte Schlüsselpfade, definierte Umgebungsvariablen und die beschriebenen Schlüsseldateien im Konfigurations-/Push-Ordner. Private Schlüssel werden niemals an die App übertragen.

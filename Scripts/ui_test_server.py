@@ -20,7 +20,17 @@ app.issue_session('robin', 'ui-test')
 with app.database.connect() as db:
     db.execute('UPDATE sessions SET token_hash=? WHERE user_id=?', (hashlib.sha256(b'ui-test-token').hexdigest(), 'robin'))
 try:
-    module.build_server(app).serve_forever()
+    class CompatibilityTestHandler(module.RJLoveRequestHandler):
+        def do_GET(self):
+            if self.path == '/old/health':
+                self.send_json(200,{'status':'ok','version':'2.3.0'})
+            elif self.path == '/future/health':
+                self.send_json(200,{'status':'ok','version':'3.0.0','minimum_app_version':'3.0.0','minimum_protocol':4,'maximum_protocol':4})
+            else:
+                super().do_GET()
+    server = module.build_server(app)
+    server.RequestHandlerClass = CompatibilityTestHandler
+    server.serve_forever()
 finally:
     app.close()
     staging.cleanup()

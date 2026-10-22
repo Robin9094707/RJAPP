@@ -17,6 +17,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 24) {
                 header
                 connection
+                studioSpotlight
                 heartSpace
                 partnerCard
                 NavigationLink { DeliveryCenterView() } label: {
@@ -51,6 +52,25 @@ struct HomeView: View {
         .sheet(isPresented: $showingHealth) { NavigationStack { HealthDashboardView() } }
         .sheet(isPresented: $showingNearby) { NavigationStack { NearbyView() } }
         .refreshable { await appState.syncNow(showErrors: false) }
+    }
+
+    private var studioSpotlight: some View {
+        HStack(spacing: 12) {
+            Button {
+                appState.selectedTab = .moments; appState.experienceSection = .farts
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "wind").font(.title2).foregroundStyle(LovePalette.violet)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Euer neues Duftstudio").font(.subheadline.bold())
+                        Text("Kalender, Karte & kleine Klassiker").font(.caption).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity,alignment: .leading)
+                }
+            }.buttonStyle(.plain)
+            Button { appState.openFartRecorder() } label: {
+                Image(systemName: "mic.fill").font(.title3).foregroundStyle(.white).frame(width: 48,height: 48).background(LovePalette.violet.gradient,in: Circle())
+            }.accessibilityLabel("Duftaufnahme starten")
+        }.loveCard()
     }
 
     private var header: some View {

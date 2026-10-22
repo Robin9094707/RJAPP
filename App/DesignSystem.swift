@@ -4,9 +4,9 @@ import UIKit
 enum LovePalette {
     static let cyan = Color(red: 0.15, green: 0.61, blue: 0.64)
     static let blue = Color(red: 0.18, green: 0.42, blue: 1.0)
-    static let pink = Color(red: 0.85, green: 0.24, blue: 0.43)
+    static let pink = Color(red: 0.88, green: 0.20, blue: 0.46)
     static let coral = Color(red: 1.0, green: 0.48, blue: 0.42)
-    static let violet = Color(red: 0.49, green: 0.40, blue: 0.75)
+    static let violet = Color(red: 0.48, green: 0.34, blue: 0.78)
 }
 
 /// Decorative shapes must never participate in the intrinsic width of a screen.
@@ -17,7 +17,8 @@ struct LoveBackground: View {
         GeometryReader { geometry in
             ZStack {
                 (scheme == .dark ? Color(red: 0.065, green: 0.055, blue: 0.085) : Color(red: 0.985, green: 0.965, blue: 0.95))
-                Ellipse().fill(LovePalette.pink.opacity(scheme == .dark ? 0.19 : 0.11))
+                RadialGradient(colors: [LovePalette.cyan.opacity(scheme == .dark ? 0.11 : 0.07), .clear], center: .topLeading, startRadius: 0, endRadius: geometry.size.width * 1.1)
+                Ellipse().fill(LovePalette.pink.opacity(scheme == .dark ? 0.23 : 0.13))
                     .frame(width: geometry.size.width * 1.05, height: geometry.size.height * 0.6)
                     .blur(radius: 70).offset(x: geometry.size.width * 0.34, y: -geometry.size.height * 0.3)
                 Ellipse().fill(LovePalette.violet.opacity(0.14))
@@ -45,7 +46,8 @@ extension View {
     @ViewBuilder
     func loveGlass<S: Shape>(in shape: S) -> some View {
         if #available(iOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
+            self.glassEffect(.regular.tint(LovePalette.violet.opacity(0.035)), in: shape)
+                .overlay { shape.stroke(.white.opacity(0.22), lineWidth: 0.7).allowsHitTesting(false) }
         } else {
             self.background(.ultraThinMaterial, in: shape)
         }
@@ -55,7 +57,7 @@ extension View {
         padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
             .loveGlass(in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-            .shadow(color: LovePalette.violet.opacity(0.045), radius: 18, y: 10)
+            .shadow(color: LovePalette.violet.opacity(0.07), radius: 22, y: 12)
     }
 }
 

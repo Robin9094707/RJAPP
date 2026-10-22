@@ -10,6 +10,7 @@ enum AppTab: Hashable {
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
+    @ObservedObject private var update = UpdateCoordinator.shared
 
     var body: some View {
         ZStack {
@@ -56,6 +57,7 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("rj-root")
         .previewAccessibilityEnvironment()
+        .overlay { if update.requirement != nil { UpdateRequiredView() } }
         .task {
             await appState.activate()
         }

@@ -10,15 +10,26 @@ struct ExperienceView: View {
     var body: some View {
         @Bindable var state = appState
         VStack(spacing: 0) {
-            Picker("Euer Spielplatz", selection: $state.experienceSection) {
-                ForEach(ExperienceSection.allCases) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).padding(.horizontal, 20).padding(.vertical, 10)
+            HStack(spacing: 6) {
+                ForEach(ExperienceSection.allCases) { section in
+                    Button { state.experienceSection = section } label: {
+                        Text(section.rawValue).font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(state.experienceSection == section ? LovePalette.violet.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 16))
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel(section.rawValue)
+                        .accessibilityIdentifier("experience-" + section.id)
+                        .accessibilityAddTraits(state.experienceSection == section ? .isSelected : [])
+                }
+            }.padding(6).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22))
+                .padding(.horizontal, 16).padding(.vertical, 8).zIndex(2)
             switch state.experienceSection {
             case .farts: FartStudioView()
             case .love: LovePlayView()
             case .moments: MomentsView()
             }
-        }.background(LoveBackground()).animation(reduceMotion ? nil : .snappy(duration: 0.25), value: state.experienceSection)
+        }.background(LoveBackground()).navigationBarTitleDisplayMode(.inline)
     }
 }
 struct PuffMascot: View {

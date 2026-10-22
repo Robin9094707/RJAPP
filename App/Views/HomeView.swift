@@ -9,43 +9,81 @@ struct HomeView: View {
     @State private var heartPulse = false
     @State private var showingHealth = false
     @State private var showingNearby = false
+    @State private var editingHome = false
+    private var homeTint: Color { appState.homeLayout.theme == "ocean" ? LovePalette.cyan : appState.homeLayout.theme == "violet" ? LovePalette.violet : LovePalette.pink }
     private var partnerName: String { appState.partner?.displayName ?? "Dein Lieblingsmensch" }
     private var milestone: SharedRecord? { appState.records.first { $0.kind == .milestone } }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            LazyVStack(alignment: .leading, spacing: 20) {
                 header
                 connection
-                studioSpotlight
-                heartSpace
-                partnerCard
-                NavigationLink { DeliveryCenterView() } label: {
-                    Label("Push, Wecker & Hintergrund prüfen", systemImage: "checkmark.shield.fill").font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .leading).padding(17).loveGlass(in: RoundedRectangle(cornerRadius: 22))
-                }.buttonStyle(.plain)
-                NavigationLink { MessengerView() } label: { Label("Deine Stimme. Ganz nah.",systemImage:"waveform.bubble.fill").font(.headline).frame(maxWidth:.infinity,alignment:.leading).padding(18).loveGlass(in:RoundedRectangle(cornerRadius:24)) }.buttonStyle(.plain)
-                NavigationLink { ThoughtHistoryView() } label: { Label("Jeder kleine Herzgedanke",systemImage:"heart.text.square.fill").font(.headline).frame(maxWidth:.infinity,alignment:.leading).padding(18).loveGlass(in:RoundedRectangle(cornerRadius:24)) }.buttonStyle(.plain)
-                NavigationLink { PlannerView() } label: {Label("Unsere Termine & Jahrestage",systemImage:"calendar.badge.clock")}
-                NavigationLink { InstantGalleryView() } label: {Label("Ein Foto nur für dich",systemImage:"camera.fill")}
-                quickActions
-                HStack(spacing: 12) {
-                    action("Duftpost", "Euer privates Furzstudio", "wind", LovePalette.violet) { appState.selectedTab = .moments; appState.experienceSection = .farts }
-                    action("Zeit für uns", "Dates & kleine Versprechen", "gift.fill", LovePalette.pink) { appState.selectedTab = .moments; appState.experienceSection = .love }
+                ForEach(appState.homeLayout.cards) { card in
+                    homeCard(card).accessibilityIdentifier("home-card-" + card.id)
                 }
-                if let milestone { milestoneCard(milestone) }
-                healthCard
-                liveCard
+                if appState.homeLayout.cards.isEmpty {
+                    ContentUnavailableView("Platz für dein Wir", systemImage: "square.grid.2x2", description: Text("Füge über Anpassen deine Lieblingskarten hinzu."))
+                }
                 Text("Ein kleiner Ort. Nur für euch zwei.")
                     .font(.footnote).foregroundStyle(.tertiary).frame(maxWidth: .infinity).padding(.vertical, 16)
             }.padding(.horizontal, 22).padding(.bottom, 20)
         }
-        .background(LoveBackground())
+        .background(LoveBackground()).tint(homeTint)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $editingHome) { HomeEditorView() }
         .sheet(isPresented: $showingWakeComposer) { WakeComposerView() }
         .sheet(isPresented: $showingStatusEditor) { StatusEditorView() }
         .sheet(isPresented: $showingHealth) { NavigationStack { HealthDashboardView() } }
         .sheet(isPresented: $showingNearby) { NavigationStack { NearbyView() } }
         .refreshable { await appState.syncNow(showErrors: false) }
+    }
+
+    @ViewBuilder private func homeCard(_ card: HomeCard) -> some View {
+        switch card.kind {
+        case .heart:
+            if card.size == .compact {
+                Button { Task { await appState.sendThought() } } label: {
+                    HStack { Image(systemName: "heart.fill").foregroundStyle(homeTint).font(.title); VStack(alignment: .leading) { Text("Ein Herz für " + partnerName).font(.headline); Text("Du: \(appState.myThoughtCount) · Dein Lieblingsmensch: \(appState.partnerThoughtCount)").font(.caption).foregroundStyle(.secondary) }; Spacer() }.loveCard()
+                }.buttonStyle(.plain)
+            } else { heartSpace }
+        case .partner:
+            if card.size == .compact { HStack { PartnerAvatar(name: partnerName, size: 38); Text(partnerName).font(.headline); Spacer(); BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState) }.loveCard() }
+            else { partnerCard }
+        case .quickActions:
+            if card.size == .compact { HStack { Button("Dich finden") { showingNearby = true }; Spacer(); Button("Wecken") { showingWakeComposer = true }; Spacer(); Button("Status") { showingStatusEditor = true } }.font(.subheadline.bold()).loveCard() }
+            else { quickActions }
+        case .studio:
+            if card.size == .compact { Button { appState.selectedTab = .moments; appState.experienceSection = .farts } label: { Label("Duftstudio öffnen", systemImage: "wind").frame(maxWidth: .infinity, alignment: .leading).padding(16).loveGlass(in: RoundedRectangle(cornerRadius: 24)) }.buttonStyle(.plain) }
+            else { studioSpotlight }
+        case .messenger: homeLink(card, detail: "Fotos, Worte & deine Stimme") { MessengerView() }
+        case .history: homeLink(card, detail: "Jeder kleine Ich-denke-an-dich-Moment") { ThoughtHistoryView() }
+        case .planner: homeLink(card, detail: "Termine, Erinnerungen und Jahrestage") { PlannerView() }
+        case .instant: homeLink(card, detail: "Ein Lächeln nur für euch") { InstantGalleryView() }
+        case .milestone:
+            if let milestone, card.size == .large { milestoneCard(milestone) }
+            else { homeLink(card, detail: "Legt euren ersten besonderen Tag an") { PlannerView() } }
+        case .health:
+            if card.size == .compact {
+                HStack { Label("RJ-Schlafbalance", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "–").bold() }.loveCard()
+            } else { healthCard }
+        case .live:
+            if card.size == .compact { homeLink(card, detail: "Deine Live-Aktivitäten") { DeliveryCenterView() } }
+            else { liveCard }
+        case .delivery: homeLink(card, detail: "Push, Wecker & Hintergrund prüfen") { DeliveryCenterView() }
+        }
+    }
+    private func homeLink<Destination: View>(_ card: HomeCard, detail: String, @ViewBuilder destination: @escaping () -> Destination) -> some View {
+        NavigationLink { destination() } label: {
+            HStack(spacing: 14) {
+                Image(systemName: card.kind.symbol).font(card.size == .large ? .title : .title3).foregroundStyle(homeTint)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(card.kind.title).font(.headline)
+                    if card.size == .large { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                }
+                Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(card.size == .large ? 22 : 14).loveGlass(in: RoundedRectangle(cornerRadius: 25))
+        }.buttonStyle(.plain)
     }
 
     private var studioSpotlight: some View {
@@ -71,9 +109,12 @@ struct HomeView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 7) {
                 LoveEyebrow(text: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                Text("Euer kleines Wir.").font(.system(size: 32, weight: .medium, design: .serif)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-home-title")
+                Text(appState.homeLayout.title).font(.system(size: 32, weight: .medium, design: .serif)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-home-title")
             }
             Spacer(minLength: 4)
+            Button { editingHome = true } label: {
+                Image(systemName: "slider.horizontal.3").font(.headline).frame(width: 44, height: 44).background(homeTint.opacity(0.12), in: Circle())
+            }.accessibilityLabel("Startseite anpassen").accessibilityIdentifier("home-customize")
             Button { appState.selectedTab = .settings } label: {
                 PartnerAvatar(name: appState.me?.displayName ?? "R", size: 46)
             }.accessibilityLabel("Dein Profil und Einstellungen")
@@ -198,7 +239,8 @@ struct HomeView: View {
                 LoveMetric(title: "Schritte heute", value: appState.partner?.presence?.steps?.formatted() ?? "–", symbol: "figure.walk", tint: LovePalette.cyan)
                 LoveMetric(title: "Schlaf · 24 Std.", value: appState.partner?.presence?.sleepMinutes.map { "\($0 / 60) h \($0 % 60)" } ?? "–", symbol: "moon.zzz.fill", tint: LovePalette.violet)
             }
-        }
+            HStack { Label("RJ-Schlafbalance", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "Noch kein Wert").bold() }.font(.subheadline).padding(16).background(homeTint.opacity(0.09), in: RoundedRectangle(cornerRadius: 18))
+        }.loveCard()
     }
     private var liveCard: some View {
         VStack(alignment: .leading, spacing: 14) {

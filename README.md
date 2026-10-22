@@ -1,6 +1,8 @@
+> Aktuell: [Version 3.1 – Fotos, Startseite, Schlafbalance und UWB](RELEASE-3.1.md). Für App 3.1 zuerst den Python-Server auf 3.1 aktualisieren; Konfiguration und Daten behalten.
+
 # RJ Love 3.0 — Robin & Raphaela
 
-Ein privater, nativer iOS-Raum für zwei Menschen. Version **3.0.0 (300)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
+Ein privater, nativer iOS-Raum für zwei Menschen. Version **3.1.0 (310)**, für iOS 26.1 oder neuer. Bestehende 2.1-Aufnahmen werden beim Serverstart automatisch in das neue Medienarchiv übertragen.
 
 Die neue Wir-Seite verbindet warme Rosé-Farben, ruhige Typografie, native Liquid-Glass-Flächen und einen interaktiven Herzgedanken. Dazu kommen privater Chat mit Tagesfrage, Wunschliste, besondere Tage mit Countdown, Gefühle, Karte, Nahbereichssuche, gemeinsame Notizen, Termine, Erinnerungen und Fotomomente.
 

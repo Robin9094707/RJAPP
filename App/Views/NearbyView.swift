@@ -23,6 +23,8 @@ struct NearbyView: View {
                 if let elevation=appState.nearby.elevation,abs(elevation)>20 {Label(elevation>0 ? "Etwas höher suchen":"Etwas tiefer suchen",systemImage:elevation>0 ? "arrow.up":"arrow.down").font(.headline)}
                 if appState.nearby.running,appState.nearby.angle == nil {Text("Noch kein Richtungswert von iOS. Ein Pfeil erscheint erst bei einem echten Signal.").font(.caption).foregroundStyle(.secondary)}
                 Text(appState.nearby.message).multilineTextAlignment(.center).font(.headline).frame(minHeight: 60)
+                Toggle("Mit Live-Aktivität im Hintergrund weitersuchen", isOn: Binding(get: { appState.nearby.backgroundSearch }, set: { appState.nearby.backgroundSearch = $0 })).disabled(appState.nearby.running)
+                Text("Startet die Suche einmal auf beiden iPhones. Danach kann die bereits aktive Suche bis zu 15 Minuten mit sichtbarer Live-Aktivität beim Sperren oder App-Wechsel weiterlaufen. Bei beendeter App oder beendetem Signal bitte beide wieder öffnen.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Kamera-Unterstützung für den Richtungspfeil",isOn:Binding(get:{appState.nearby.cameraAssistance},set:{appState.nearby.cameraAssistance=$0})).disabled(appState.nearby.running)
                 Text("Optional: Die Kamera unterstützt die UWB-Messung. Es werden dabei keine Bilder gespeichert oder geteilt.").font(.caption).foregroundStyle(.secondary)
                 Button(appState.nearby.running ? "Suche beenden" : "Nahbereichssuche starten", systemImage: "dot.radiowaves.left.and.right") {
@@ -32,10 +34,10 @@ struct NearbyView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Öffnet beide diese Ansicht und startet die Suche.", systemImage: "person.2.fill")
                     Label("Die Suche nutzt Ultra-Breitband im Nahbereich. Haltet beide iPhones aufrecht und richtet ihre Rückseiten zueinander.", systemImage: "iphone.radiowaves.left.and.right")
-                    Label("Nur solange ihr sucht: Verbindungstokens verfallen nach 20 Sekunden. Die Suche endet beim Verlassen der Ansicht.", systemImage: "hand.raised.fill")
+                    Label("Ohne Hintergrundoption endet die Suche beim Verlassen der Ansicht. Mit Live-Aktivität enden Suche und Suchfreigabe spätestens nach 15 Minuten.", systemImage: "hand.raised.fill")
                 }.font(.footnote).foregroundStyle(.secondary).loveCard()
             }.padding(24)
         }.background(LoveBackground()).navigationTitle("Dich finden").navigationBarTitleDisplayMode(.inline)
-        .onDisappear { appState.nearby.stop(api: appState.api) }
+        .onDisappear { if !appState.nearby.backgroundSearch { appState.nearby.stop(api: appState.api) } }
     }
 }

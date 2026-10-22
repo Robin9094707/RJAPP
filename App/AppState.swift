@@ -33,6 +33,8 @@ final class AppState {
     private(set) var features: ServerFeatures?
     private(set) var lastSync: Date?
     private(set) var connectionMessage = "Verbindung wird geprüft …"
+    var homeLayout = HomeLayout.standard
+    var homeRevision = 0
     var selectedTab: AppTab = .home
     var experienceSection: ExperienceSection = .farts
     var showingFartRecorder = false
@@ -156,7 +158,7 @@ final class AppState {
         location.enterBackground()
         studio.finishRecording()
         studio.stopPlayback()
-        nearby.stop(api: api)
+        nearby.enterBackground(api: api)
         VoiceNoteService.shared.stop()
         Task { await liveActivity.stop() }
         pollTask?.cancel()
@@ -213,6 +215,7 @@ final class AppState {
         phase = .setup
         me = nil
         partners = []
+        homeLayout = .standard; homeRevision = 0
         records = []; archiveKinds=[];thoughtHistory=[];lastOpened=[:];openedRecords=[];storageByUser=[:]
         farts = []
         studio.discard()
@@ -243,6 +246,7 @@ final class AppState {
             if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
+            if let preferences = snapshot.preferences { applyPreferences(preferences) }
             let snapshotIDs=Set(snapshot.records.map(\.id));let deleted=Set(snapshot.deletedRecordIDs ?? [])
             let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deleted.contains($0.id)}
             records = snapshot.records + history
@@ -269,6 +273,7 @@ final class AppState {
             queuePresenceUpload(force: true)
             await PlannerService.shared.reconcile(app: self)
             if !setupJourney.presented, !showingFartRecorder, pendingSweet==nil,pendingPhotoRequest==nil,UserDefaults.standard.string(forKey:"rjlove.changelog-seen") != RJVersion.app { showingChangelog = true }
+            offerForegroundMoments()
             return true
         } catch let issue as UpdateRequirement {
             connectionMessage = issue.localizedDescription
@@ -471,6 +476,27 @@ final class AppState {
             pendingPhotoRequest = records.first { $0.kind == .photo_request && $0.payload.targetID == me?.id && $0.payload.completed != true && !defaults.bool(forKey:"rjlove.photo-skip."+$0.id) }
         }
     }
+    func applyPreferences(_ value: UserPreferences) {
+        homeLayout = value.dashboard; homeRevision = value.revision
+        if let profile, let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: "rjlove.home-layout." + profile.baseURL + "." + profile.username)
+        }
+    }
+    func requestPhoto(title: String, id: String) async -> Bool {
+        do {
+            let photoRequest = try await api.createPhotoRequest(id: id, title: title.trimmingCharacters(in: .whitespacesAndNewlines))
+            records.removeAll { $0.id == photoRequest.id }; records.insert(photoRequest, at: 0)
+            persistCache(); return true
+        } catch {
+            alert = AppAlert(title: "Fotowunsch nicht gesendet", message: error.localizedDescription)
+            return false
+        }
+    }
+    func receiveInstantPhoto(_ photo: SharedRecord, requestID: String) {
+        records.removeAll { $0.id == photo.id }; records.insert(photo, at: 0)
+        if let index = records.firstIndex(where: { $0.id == requestID }) { records[index].payload.completed = true }
+        persistCache()
+    }
     func markOpened(_ record: SharedRecord) async {
         UserDefaults.standard.set(true,forKey:"rjlove.opened."+record.id)
         try? await api.markOpened(id:record.id)
@@ -514,6 +540,10 @@ final class AppState {
             return
         }
         api.configure(baseURL: url, token: token)
+        if let data = UserDefaults.standard.data(forKey: "rjlove.home-layout." + profile.baseURL + "." + profile.username),
+           let preferences = try? JSONDecoder().decode(UserPreferences.self, from: data) {
+            homeLayout = preferences.dashboard; homeRevision = preferences.revision
+        }
         if let cached = AppCache.load(matching: profile) {
             apply(cached)
         }
@@ -610,6 +640,7 @@ final class AppState {
     func handleDeepLink(_ url: URL) {
         guard url.scheme?.lowercased() == "rjlove" else { return }
         switch url.host?.lowercased() {
+        case "stop-nearby": nearby.stop(api: api)
         case "map": selectedTab = .map
         case "together": selectedTab = .together
         case "moments": selectedTab = .moments; experienceSection = .moments
@@ -724,6 +755,7 @@ final class AppState {
 #if DEBUG
 extension AppState {
     func loadPreview() {
+        homeLayout = .standard; homeRevision = 0
         if ProcessInfo.processInfo.arguments.contains("--preview-empty-recorder") { studio.discard() }
         for kind in ["old","future"] where ProcessInfo.processInfo.arguments.contains("--preview-"+kind+"-server") {
             api.configure(baseURL: URL(string: "http://127.0.0.1:8787/"+kind)!,token:nil)
@@ -740,6 +772,12 @@ extension AppState {
         presence.updatedAt = Date.now.rjISO8601; presence.healthUpdatedAt = Date.now.rjISO8601
         presence.healthMetrics = ["distance_km": 4.6, "active_kcal": 318, "heart_rate": 72, "resting_heart_rate": 61, "hrv_ms": 48, "exercise_minutes": 24, "flights": 7, "oxygen_percent": 98, "respiratory_rate": 15]
         partners = [PartnerSnapshot(id: "raphaela", displayName: "Raphaela", accent: "pink", storageLimitMB: 0, presence: presence)]
+        if ProcessInfo.processInfo.arguments.contains("--ui-test-server") {
+            Task { if let value = try? await api.preferences() { applyPreferences(value) } }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--preview-instant-camera") {
+            pendingPhotoRequest = SharedRecord(id: "CA82F1DB-2379-4A43-8AD0-24AB34D089CE", kind: .photo_request, ownerID: "raphaela", payload: RecordPayload(title: "Bitte lächeln · UI", targetID: "robin", completed: false), createdAt: Date.now.rjISO8601, updatedAt: Date.now.rjISO8601)
+        }
         thoughts = ["robin": 4, "raphaela": 7]; lastSync = .now; connectionMessage = "Vorschau"
         let now = Date.now.rjISO8601
         records = [

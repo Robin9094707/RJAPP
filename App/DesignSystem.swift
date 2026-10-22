@@ -25,7 +25,7 @@ struct LoveBackground: View {
                     .frame(width: geometry.size.width, height: geometry.size.height * 0.65)
                     .blur(radius: 75).offset(x: -geometry.size.width * 0.35, y: geometry.size.height * 0.3)
             }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
-        }.ignoresSafeArea().accessibilityHidden(true)
+        }.ignoresSafeArea().accessibilityHidden(true).allowsHitTesting(false)
     }
 }
 

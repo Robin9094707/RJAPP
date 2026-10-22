@@ -1,3 +1,4 @@
+import ActivityKit
 import Foundation
 import ARKit
 import AVFoundation
@@ -14,6 +15,10 @@ final class NearbyService: NSObject, NISessionDelegate {
     private(set) var message = "Findet euch. Auch ganz nah."
     var supported: Bool { NISession.deviceCapabilities.supportsPreciseDistanceMeasurement }
     var cameraAssistance=false
+    var backgroundSearch = true
+    private var searchActivity: Activity<NearbySearchAttributes>?
+    private var deadline: Date?
+    private var configuration: NINearbyPeerConfiguration?
     private var arSession:ARSession?
     private var generation=UUID()
     private var session: NISession?
@@ -34,6 +39,18 @@ final class NearbyService: NSObject, NISessionDelegate {
         }
         session.delegate = self
         self.session = session
+        deadline = .now.addingTimeInterval(900)
+        if backgroundSearch {
+            do {
+                guard ActivityAuthorizationInfo().areActivitiesEnabled else { throw LiveActivityError.disabled }
+                let attributes = NearbySearchAttributes(until: deadline!)
+                searchActivity = try Activity.request(attributes: attributes, content: ActivityContent(state: NearbySearchAttributes.ContentState(active: true), staleDate: deadline))
+            } catch {
+                self.session?.invalidate(); self.session = nil; arSession?.pause(); arSession = nil; running = false
+                message = "Hintergrundsuche braucht eine erlaubte Live-Aktivität. Schalte die Option aus, um mit beiden geöffneten Apps zu suchen."
+                return
+            }
+        }
         running = true
         message = "Beide öffnen diese Ansicht. Haltet eure iPhones aufrecht."
         task = Task { [weak self] in
@@ -41,16 +58,23 @@ final class NearbyService: NSObject, NISessionDelegate {
                 guard let self, self.running, let token = self.session?.discoveryToken,
                       let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true) else { return }
                 do {
-                    try await api.publishNearbyToken(data.base64EncodedString())
+                    guard let deadline = self.deadline, deadline > .now else {
+                        self.stop(api: api); self.message = "Suche nach 15 Minuten beendet. Bei Bedarf neu starten."; return
+                    }
+                    if let activity = self.searchActivity, activity.activityState == .dismissed || activity.activityState == .ended {
+                        self.stop(api: api); return
+                    }
+                    try await api.publishNearbyToken(data.base64EncodedString(), lifetime: self.backgroundSearch ? max(20, Int(deadline.timeIntervalSinceNow)) : 20)
                     let peer = try await api.partnerNearbyToken()
                     if let peer, peer != self.peerToken,
                        let bytes = Data(base64Encoded: peer),
                        let discovery = try NSKeyedUnarchiver.unarchivedObject(ofClass: NIDiscoveryToken.self, from: bytes) {
                         self.peerToken = peer
                         let configuration=NINearbyPeerConfiguration(peerToken:discovery);configuration.isCameraAssistanceEnabled=assisted
+                        self.configuration = configuration
                         self.session?.run(configuration)
                         self.message = "Verbunden. Richtet die Rückseiten eurer iPhones zueinander."
-                    } else if peer == nil {
+                    } else if peer == nil && (self.lastMeasurement == nil || Date.now.timeIntervalSince(self.lastMeasurement!) > 8) {
                         self.peerToken = nil
                         self.distance = nil
                         self.angle = nil;self.elevation=nil
@@ -69,8 +93,19 @@ final class NearbyService: NSObject, NISessionDelegate {
         }
     }
 
+    func enterBackground(api: APIClient) {
+        guard running else { return }
+        guard backgroundSearch, let activity = searchActivity, activity.activityState == .active, let deadline, deadline > .now else {
+            stop(api: api); return
+        }
+        arSession?.pause()
+        if let configuration { configuration.isCameraAssistanceEnabled = false; session?.run(configuration) }
+        message = "Suche mit Live-Aktivität aktiv. Beide Geräte müssen die Suche bereits gestartet haben."
+    }
+
     func stop(api: APIClient) {
-        generation=UUID();lastMeasurement=nil
+        generation=UUID();lastMeasurement=nil; deadline=nil; configuration=nil
+        if let activity = searchActivity { searchActivity = nil; Task { await activity.end(nil, dismissalPolicy: .immediate) } }
         task?.cancel(); task = nil
         session?.invalidate(); session = nil
         arSession?.pause();arSession=nil
@@ -101,6 +136,7 @@ final class NearbyService: NSObject, NISessionDelegate {
             guard let self, self.session === session else { return }
             self.task?.cancel(); self.running = false;self.arSession?.pause();self.arSession=nil;self.session=nil
             self.distance = nil; self.angle = nil;self.elevation=nil
+            if let activity = self.searchActivity { self.searchActivity = nil; await activity.end(nil, dismissalPolicy: .immediate) }
             self.message = "Nahbereichssuche beendet: \(error.localizedDescription)"
         }
     }

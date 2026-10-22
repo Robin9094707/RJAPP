@@ -7,6 +7,7 @@ struct HealthDashboardView: View {
     private var metrics: [String: Double] { mine ? health.metrics : appState.partner?.presence?.healthMetrics ?? [:] }
     private var steps: Int? { mine ? health.steps : appState.partner?.presence?.steps }
     private var sleep: Int? { mine ? health.sleepMinutes : appState.partner?.presence?.sleepMinutes }
+    private var sleepScore: Int? { mine ? health.sleepScore : appState.partner?.presence?.sleepScore }
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
     var body: some View {
         ScrollView {
@@ -25,6 +26,7 @@ struct HealthDashboardView: View {
                 LazyVGrid(columns: columns, spacing: 12) {
                     LoveMetric(title: "Schritte heute", value: steps?.formatted() ?? "–", symbol: "figure.walk", tint: LovePalette.cyan)
                     LoveMetric(title: "Schlaf · letzte 24 Std.", value: sleep.map { "\($0 / 60) h \($0 % 60) min" } ?? "–", symbol: "moon.zzz.fill", tint: LovePalette.violet)
+                    LoveMetric(title: "RJ-Schlafbalance", value: sleepScore.map { "\($0) / 100" } ?? "–", symbol: "moon.stars.fill", tint: LovePalette.violet)
                     metric("distance_km", "Weg heute", "km", "figure.walk.motion", LovePalette.cyan)
                     metric("active_kcal", "Aktivenergie heute", "kcal", "flame.fill", LovePalette.coral)
                     metric("exercise_minutes", "Training heute", "min", "figure.run", LovePalette.pink)
@@ -38,7 +40,7 @@ struct HealthDashboardView: View {
                 if mine { sharingControls }
                 Text("Ein Strich bedeutet: kein freigegebener oder verfügbarer Messwert. Apple verrät Apps nicht, ob einzelne Leserechte abgelehnt wurden. Vitalwerte sind die jeweils letzten vorhandenen Messungen aus 24 Stunden, keine Live-Messung. Für viele Werte brauchst du eine Apple Watch oder andere Health-Datenquellen.")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("Die RJ-Schlafbalance in der Statusübersicht vergleicht die erfasste Schlafdauer mit acht Stunden. Sie ist kein offizieller Apple-Schlafscore und keine medizinische Bewertung.").font(.caption).foregroundStyle(.secondary)
+                Text("Die RJ-Schlafbalance vergleicht die erfasste Schlafdauer mit acht Stunden. Sie ist kein offizieller Apple-Schlafscore und keine medizinische Bewertung.").font(.caption).foregroundStyle(.secondary)
             }.padding(22)
         }.background(LoveBackground()).navigationTitle("Health").navigationBarTitleDisplayMode(.inline)
         .task { await health.refresh() }
@@ -52,7 +54,7 @@ struct HealthDashboardView: View {
     }
     private var sharingControls: some View {
         VStack(alignment: .leading, spacing: 17) {
-            LoveSectionTitle("Du entscheidest.", subtitle: "Freigaben sind zunächst ausgeschaltet.")
+            LoveSectionTitle("Du entscheidest.", subtitle: "Nur mit deiner Apple-Health-Freigabe werden Werte geteilt.")
             Button(health.requested ? "Apple-Health-Auswahl öffnen" : "Apple Health verbinden", systemImage: "heart.text.square") { Task { await health.requestAuthorization() } }.buttonStyle(.bordered)
             Toggle("Zusammenfassungen teilen", isOn: $health.sharingEnabled)
             Toggle("Aktivität & Schritte", isOn: $health.shareActivity).disabled(!health.sharingEnabled)

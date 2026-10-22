@@ -19,6 +19,10 @@ app = module.RJLoveApplication(config, path)
 app.issue_session('robin', 'ui-test')
 with app.database.connect() as db:
     db.execute('UPDATE sessions SET token_hash=? WHERE user_id=?', (hashlib.sha256(b'ui-test-token').hexdigest(), 'robin'))
+with app.database.connect() as db:
+    payload = json.dumps({"title": "Bitte lächeln · UI", "target_id": "robin", "completed": False})
+    now = module.iso_now()
+    db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)", ("CA82F1DB-2379-4A43-8AD0-24AB34D089CE", "photo_request", "raphaela", payload, len(payload.encode()), now, now))
 try:
     class CompatibilityTestHandler(module.RJLoveRequestHandler):
         def do_GET(self):

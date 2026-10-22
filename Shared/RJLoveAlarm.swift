@@ -82,3 +82,8 @@ struct ConnectionActivityAttributes: ActivityAttributes {
 
     var partnerName: String
 }
+
+struct NearbySearchAttributes: ActivityAttributes {
+    struct ContentState: Codable, Hashable { var active: Bool }
+    var until: Date
+}

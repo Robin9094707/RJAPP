@@ -1,3 +1,5 @@
+> Aktuell: [Version 3.1 – Fotos, Startseite, Schlafbalance und UWB](RELEASE-3.1.md). Für App 3.1 zuerst den Python-Server auf 3.1 aktualisieren; Konfiguration und Daten behalten.
+
 > Aktuelles Update 3.0: Erst [RELEASE-3.0.md](RELEASE-3.0.md) lesen. Serverdatei ersetzen, Konfiguration und Datenordner behalten; danach beide Apps inklusive Widget aktualisieren.
 
 # RJ Love 3.0 einrichten

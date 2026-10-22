@@ -63,6 +63,7 @@
 		<string>location</string>
 		<string>fetch</string>
 		<string>remote-notification</string>
+		<string>nearby-interaction</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
@@ -91,10 +92,12 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>RJ Love nimmt deine Duftpost und Sprachnachrichten nur im sichtbaren Recorder auf. Du kannst sie vor dem Teilen anhören.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Für Fotowünsche öffnet RJ Love sichtbar die Kamera mit abbrechbarem Countdown. Du kannst Fotos später zurückrufen.</string>
+	<string>Für Fotowünsche öffnet RJ Love sichtbar die Kamera und nimmt ohne Countdown ein Foto auf. Du kannst Fotos später zurückrufen.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>RJ Love synchronisiert ausschließlich eure ausgewählten gemeinsamen Aufgaben mit Apple Erinnerungen.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Speichere ausgewählte gemeinsame Fotos und Videos zurück in deiner Mediathek.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>RJ Love verwendet nur von dir ausgewählte Fotos, Videos und Live Photos zum Teilen und liest verfügbare Aufnahmedaten.</string>
 </dict>
 </plist>

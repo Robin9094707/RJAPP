@@ -72,13 +72,13 @@ final class HealthService: ObservableObject {
         defer { refreshing = false }
         do {
             let stepMetric = Metric(id: .stepCount, key: "steps", unit: .count(), cumulative: true)
-            steps = try await quantity(stepMetric).map { Int($0.rounded()) }
+            steps = (try? await quantity(stepMetric)).map { Int($0.rounded()) }
             let sleep = try await querySleep()
             sleepMinutes = sleep
             sleepScore = sleep.map { min(100, Int(Double($0) / 480 * 100)) }
             var next: [String: Double] = [:]
             for metric in types {
-                if let value = try await quantity(metric) {
+                if let value = try? await quantity(metric) {
                     next[metric.key] = metric.key == "oxygen_percent" ? value * 100 : value
                 }
             }

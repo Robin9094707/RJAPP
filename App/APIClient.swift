@@ -107,7 +107,12 @@ final class APIClient: @unchecked Sendable {
                 )
             }
             let decodableData = data.isEmpty ? Data("{}".utf8) : data
-            return try decoder.decode(T.self, from: decodableData)
+            do { return try JSONDecoder().decode(T.self, from: decodableData) }
+            catch {
+                let detail = String(describing: error)
+                await MainActor.run { DebugLogger.shared.log("Antwortformat \(request.url?.path ?? ""): \(detail)", category: "Server") }
+                throw APIClientError.invalidResponse
+            }
         } catch let error as UpdateRequirement {
             throw error
         } catch let error as APIClientError {
@@ -288,8 +293,8 @@ final class APIClient: @unchecked Sendable {
         _ = try await execute(try request(path: "/v1/auth/credentials", method: "POST", body: encoder.encode(body)), as: EmptyResponse.self)
     }
 
-    func publishNearbyToken(_ token: String) async throws {
-        _ = try await execute(try request(path: "/v1/nearby", method: "POST", body: encoder.encode(["token": token])), as: EmptyResponse.self)
+    func publishNearbyToken(_ token: String, lifetime: Int = 20) async throws {
+        _ = try await execute(try request(path: "/v1/nearby", method: "POST", body: JSONSerialization.data(withJSONObject: ["token": token, "lifetime": min(900, max(20, lifetime))])), as: EmptyResponse.self)
     }
 
     func partnerNearbyToken() async throws -> String? {

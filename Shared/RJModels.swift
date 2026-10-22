@@ -292,10 +292,11 @@ struct BootstrapResponse: Codable, Sendable {
     var thoughtHistory: [ThoughtEvent]? = nil
     var lastOpened: [String:String]? = nil
     var openedRecords: [OpenedRecord]? = nil
+    var preferences: UserPreferences? = nil
     let features: ServerFeatures
 
     enum CodingKeys: String, CodingKey {
-        case me, partners, thoughts, records, commands, events, features, farts
+        case me, partners, thoughts, records, commands, events, features, farts, preferences
         case serverTime = "server_time"
         case localDay = "local_day"
         case myPresence = "my_presence"

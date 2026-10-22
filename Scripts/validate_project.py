@@ -75,7 +75,8 @@ for item in json.loads((icons / "Contents.json").read_text())["images"]:
 if "buildPhase: resources" not in project:
     fail("App resources must be an explicit source with resource build phase")
 with (ROOT / "App/Info.plist").open("rb") as handle:
-    if not plistlib.load(handle).get("NSMicrophoneUsageDescription"):
-        fail("microphone purpose missing")
+    info = plistlib.load(handle)
+    for key in ("NSMicrophoneUsageDescription", "NSPhotoLibraryUsageDescription", "NSCameraUsageDescription"):
+        if not info.get(key): fail(key + " purpose missing")
 
 print("RJ Love project validation passed.")

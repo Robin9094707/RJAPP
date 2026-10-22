@@ -1,3 +1,5 @@
+> Aktuell: [Version 3.1 – Fotos, Startseite, Schlafbalance und UWB](RELEASE-3.1.md). Für App 3.1 zuerst den Python-Server auf 3.1 aktualisieren; Konfiguration und Daten behalten.
+
 > Aktueller Funktionsstand 3.0 und Systemgrenzen: [RELEASE-3.0.md](RELEASE-3.0.md). Walkie-Talkie und die eigene Face-ID-Sperre sind entfernt.
 
 # RJ Love 3.0 — Funktionsstand

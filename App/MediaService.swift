@@ -30,7 +30,8 @@ final class MediaUploadProgress: NSObject, URLSessionTaskDelegate, @unchecked Se
     var busy = false
     var stage = ""
     func upload(_ media: SelectedMedia, api: APIClient) async throws -> [String] {
-        guard !busy else { throw APIClientError.transport("Ein Upload läuft bereits.") }
+        guard !busy else { throw APIClientError.server(status: 409, message: "Ein Upload läuft bereits.") }
+        guard !media.files.isEmpty, media.files.count == media.mimeTypes.count else { throw MediaError.unreadable }
         busy = true; progress = 0; defer { busy = false }
         var result: [String] = []
         for (index,file) in media.files.enumerated() {
@@ -85,9 +86,11 @@ extension APIClient {
             let uploadSession=URLSession(configuration:config);defer{uploadSession.finishTasksAndInvalidate()}
             let delegate=MediaUploadProgress(progress)
             let (data,response)=try await uploadSession.upload(for:req,fromFile:file,delegate:delegate)
-            guard let http=response as? HTTPURLResponse,(200..<300).contains(http.statusCode) else {
+            guard let http = response as? HTTPURLResponse else { throw APIClientError.invalidResponse }
+            guard (200..<300).contains(http.statusCode) else {
                 let issue=try? JSONDecoder().decode(APIErrorEnvelope.self,from:data)
-                throw APIClientError.transport(issue?.message ?? "Upload fehlgeschlagen.")
+                let message = http.statusCode == 413 ? "Die Datei überschreitet das Upload-Limit des Servers oder HTTPS-Proxys. Kleinere Datei wählen oder client_max_body_size im Proxy erhöhen." : issue?.message ?? "Upload fehlgeschlagen (HTTP \(http.statusCode))."
+                throw APIClientError.server(status: http.statusCode, message: message)
             }
             progress(1);return asset.id
         } catch {
@@ -127,6 +130,9 @@ extension APIClient {
         struct Response:Decodable {let token:String}
         return try await execute(try request(path:"/v1/update-feed",method:"POST",body:encoder.encode(["base_url":baseURL])),as:Response.self).token
     }
+    func createPhotoRequest(id: String, title: String) async throws -> SharedRecord {
+        try await execute(try request(path: "/v1/photo-requests", method: "POST", body: encoder.encode(["id": id, "title": title])), as: SharedRecord.self)
+    }
     func replyToPhotoRequest(id:String,assetID:String,caption:String,poster:Data?,capturedAt:Date = .now) async throws -> SharedRecord {
         try await execute(try request(path:"/v1/photo-requests/\(id)/reply",method:"POST",body:encoder.encode(["asset_id":assetID,"caption":caption,"captured_at":capturedAt.rjISO8601,"poster_base64":poster?.base64EncodedString() ?? ""])),as:SharedRecord.self)
     }
@@ -164,8 +170,8 @@ struct MediaPicker: UIViewControllerRepresentable {
                                     PHAssetResourceManager.default().writeData(for:resource,toFile:file,options:options){error in if let error{continuation.resume(throwing:error)}else{continuation.resume()}}
                                 };files.append(file)
                             }
-                            let bytes=try Data(contentsOf:files[0]);let poster=Self.poster(bytes)
-                            self.finish(.success(SelectedMedia(files:files,mimeTypes:[photo.uniformTypeIdentifier.contains("heic") ? "image/heic":"image/jpeg","video/quicktime"],kind:"live",capturedAt:Self.captureDate(result,imageData:bytes),poster:poster)))
+                            let poster=Self.poster(file: files[0])
+                            self.finish(.success(SelectedMedia(files:files,mimeTypes:[photo.uniformTypeIdentifier.contains("heic") ? "image/heic":"image/jpeg","video/quicktime"],kind:"live",capturedAt:Self.captureDate(result,fileURL:files[0]),poster:poster)))
                         } catch {self.finish(.failure(error))}
                     }
                 }
@@ -178,17 +184,18 @@ struct MediaPicker: UIViewControllerRepresentable {
                         let ext=file.pathExtension.lowercased();let destination=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+"."+ext)
                         try FileManager.default.copyItem(at:file,to:destination)
                         let mime=video ? (ext=="mp4" ? "video/mp4":"video/quicktime") : ["png":"image/png","heic":"image/heic","heif":"image/heif"].first{$0.key==ext}?.value ?? "image/jpeg"
-                        var bytes:Data? = nil
-                        if !video{bytes=try Data(contentsOf:destination)}
-                        let poster=bytes.flatMap{Self.poster($0)}
-                        self.finish(.success(SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result,imageData:bytes),poster:poster)))
+                        let poster = video ? nil : Self.poster(file: destination)
+                        self.finish(.success(SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result,fileURL: video ? nil : destination),poster:poster)))
                     } catch{self.finish(.failure(error))}
                 }
             }
         }
-        static func captureDate(_ result:PHPickerResult,imageData:Data?=nil)->Date {
-            if let identifier=result.assetIdentifier,let date=PHAsset.fetchAssets(withLocalIdentifiers:[identifier],options:nil).firstObject?.creationDate{return date}
-            if let imageData,let source=CGImageSourceCreateWithData(imageData as CFData,nil),let properties=CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [String:Any],let exif=properties[kCGImagePropertyExifDictionary as String] as? [String:Any],let stamp=exif[kCGImagePropertyExifDateTimeOriginal as String] as? String {
+        static func captureDate(_ result:PHPickerResult,fileURL:URL?=nil,imageData:Data?=nil)->Date {
+            let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            if authorization == .authorized || authorization == .limited,
+               let identifier=result.assetIdentifier,let date=PHAsset.fetchAssets(withLocalIdentifiers:[identifier],options:nil).firstObject?.creationDate{return date}
+            let imageSource = fileURL.flatMap { CGImageSourceCreateWithURL($0 as CFURL, nil) } ?? imageData.flatMap { CGImageSourceCreateWithData($0 as CFData, nil) }
+            if let source=imageSource,let properties=CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [String:Any],let exif=properties[kCGImagePropertyExifDictionary as String] as? [String:Any],let stamp=exif[kCGImagePropertyExifDateTimeOriginal as String] as? String {
                 let formatter=DateFormatter();formatter.locale=Locale(identifier:"en_US_POSIX")
                 if let offset=exif["OffsetTimeOriginal"] as? String {formatter.dateFormat="yyyy:MM:dd HH:mm:ssXXXXX";if let date=formatter.date(from:stamp+offset){return date}}
                 formatter.dateFormat="yyyy:MM:dd HH:mm:ss";if let date=formatter.date(from:stamp){return date}
@@ -196,8 +203,31 @@ struct MediaPicker: UIViewControllerRepresentable {
             return .now
         }
         static func poster(_ data:Data)->Data? {
-            guard let image=UIImage(data:data) else{return nil};let scale=min(1,600/max(image.size.width,image.size.height))
-            return UIGraphicsImageRenderer(size:CGSize(width:max(1,image.size.width*scale),height:max(1,image.size.height*scale))).image{_ in image.draw(in:CGRect(origin:.zero,size:CGSize(width:image.size.width*scale,height:image.size.height*scale)))}.jpegData(compressionQuality:0.55)
+            guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+            return poster(source: source)
+        }
+        static func poster(file: URL) -> Data? {
+            guard let source = CGImageSourceCreateWithURL(file as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+            return poster(source: source)
+        }
+        private static func poster(source: CGImageSource) -> Data? {
+            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 600,
+                    kCGImageSourceShouldCacheImmediately: true
+                  ] as CFDictionary) else { return nil }
+            return UIImage(cgImage: thumbnail).jpegData(compressionQuality: 0.55)
+        }
+        static func cameraJPEG(_ data: Data) -> Data? {
+            guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+            for pixels in [2048, 1600, 1200] {
+                guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: pixels] as CFDictionary) else { continue }
+                for quality in [0.85, 0.7, 0.5] {
+                    if let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: quality), jpeg.count < 850_000 { return jpeg }
+                }
+            }
+            return nil
         }
         func finish(_ result:Result<SelectedMedia,Error>){DispatchQueue.main.async{self.selected(result)}}
     }

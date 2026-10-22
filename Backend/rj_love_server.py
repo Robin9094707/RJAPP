@@ -50,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.0.0"
+APP_VERSION = "3.1.0"
 MINIMUM_APP_VERSION = "3.0.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
@@ -345,6 +345,8 @@ class Database:
                     last_seen_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+
+                CREATE TABLE IF NOT EXISTS user_preferences (user_id TEXT PRIMARY KEY, dashboard TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL);
 
                 CREATE TABLE IF NOT EXISTS presence (
                     user_id TEXT PRIMARY KEY,
@@ -1299,6 +1301,14 @@ class RJLoveApplication:
     def opened_records(self):
         with self.database.connect() as db:return [dict(r) for r in db.execute("SELECT * FROM opened_records ORDER BY opened_at DESC LIMIT 2000")]
 
+    def preferences(self, user_id: str) -> dict[str, Any]:
+        with self.database.connect() as db:
+            row = db.execute("SELECT dashboard,revision FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
+        if row:
+            return {"dashboard": json.loads(row["dashboard"]), "revision": row["revision"]}
+        cards = ["heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
+        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir."}, "revision": 0}
+
     def bootstrap(self, user_id: str) -> dict[str, Any]:
         day = self.local_day()
         with self.database.connect() as db:
@@ -1354,6 +1364,7 @@ class RJLoveApplication:
             "partners": [self.public_user(item) | {"presence": presences.get(item["id"])}
                          for item in self.config["users"] if item["id"] != user_id],
             "my_presence": presences.get(user_id),
+            "preferences": self.preferences(user_id),
             "thoughts": thoughts,
             "records": records,
             "commands": commands,
@@ -1504,6 +1515,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/health":
                 self.send_json(HTTPStatus.OK, {"status": "ok", "time": iso_now(), **compatibility_info()})
                 return
+            if path == "/v1/preferences":
+                self.send_json(200, self.app.preferences(self.current_user()))
+                return
             if path == "/v1/background":
                 user_id = self.current_user()
                 self.send_json(200, self.app.background_snapshot(user_id))
@@ -1567,6 +1581,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
+            if path == "/v1/photo-requests":
+                self._request_photo(user_id)
+                return
+            if path == "/v1/preferences":
+                self._save_preferences(user_id)
+                return
             if self._media_post(path,parts,user_id): return
             if path == "/v1/push/setup":
                 self.read_json()
@@ -1618,10 +1638,13 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                         base64.b64decode(token, validate=True)
                     except (ValueError, binascii.Error) as exc:
                         raise APIError(400, "invalid_token", "Ungültiger Nahbereichstoken.") from exc
+                lifetime = body.get("lifetime", 20)
+                if isinstance(lifetime, bool) or not isinstance(lifetime, int) or not 20 <= lifetime <= 900:
+                    raise APIError(400, "invalid_lifetime", "Ungültige Suchdauer.")
                 with self.app.database.connect() as db:
                     db.execute("DELETE FROM nearby WHERE user_id=?", (user_id,))
                     if token:
-                        expires = (utc_now() + dt.timedelta(seconds=20)).isoformat().replace("+00:00", "Z")
+                        expires = (utc_now() + dt.timedelta(seconds=lifetime)).isoformat().replace("+00:00", "Z")
                         db.execute("INSERT INTO nearby VALUES(?,?,?)", (user_id, token, expires))
                 self.send_empty()
             elif path == "/v1/presence":
@@ -1839,7 +1862,14 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 db.execute("BEGIN IMMEDIATE");request=db.execute("SELECT * FROM records WHERE id=? AND kind='photo_request' AND deleted_at IS NULL",(parts[2],)).fetchone()
                 if not request:raise APIError(404,"request_missing","Fotowunsch wurde zurückgerufen.")
                 prior=json.loads(request["payload"])
-                if prior.get("target_id")!=user_id or prior.get("completed"):raise APIError(409,"request_completed","Fotowunsch bereits beantwortet.")
+                if prior.get("target_id") != user_id:
+                    raise APIError(403, "not_recipient", "Dieser Fotowunsch ist nicht für dich bestimmt.")
+                if prior.get("completed"):
+                    existing = db.execute("SELECT * FROM records WHERE kind='instant' AND owner_id=? AND deleted_at IS NULL AND json_extract(payload,'$.request_id')=? ORDER BY created_at LIMIT 1", (user_id, parts[2])).fetchone()
+                    if existing and json.loads(existing["payload"]).get("asset_ids") == [asset["id"]]:
+                        self.send_json(200, self._record_dict(existing))
+                        return True
+                    raise APIError(409,"request_completed","Fotowunsch bereits beantwortet.")
                 self.app.enforce_quota(user_id,len(raw.encode()),db=db)
                 db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)",(record_id,"instant",user_id,raw,len(raw.encode()),now,now))
                 prior["completed"]=True;db.execute("UPDATE records SET payload=?,updated_at=? WHERE id=?",(json.dumps(prior),now,parts[2]))
@@ -1876,6 +1906,59 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.close_connection=True;self.app.logger.exception("Media upload failed");self.send_json(500,{"error":"upload_failed","message":"Upload fehlgeschlagen. Erneut versuchen."})
         finally:
             if temporary:temporary.unlink(missing_ok=True)
+
+    def _request_photo(self, user_id):
+        body = self.read_json()
+        request_id = safe_text(body.get("id", ""), 64, allow_empty=False)
+        try:
+            uuid.UUID(request_id)
+        except ValueError:
+            raise APIError(400, "invalid_id", "Ungültige Fotowunsch-ID.")
+        title = safe_text(body.get("title", "Bitte lächeln 🥰"), 120) or "Bitte lächeln 🥰"
+        target_id = self.app.partner_ids(user_id)[0]
+        now = iso_now()
+        payload = {"title": title, "target_id": target_id, "completed": False}
+        raw = json.dumps(payload, ensure_ascii=False)
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            old = db.execute("SELECT * FROM records WHERE id=?", (request_id,)).fetchone()
+            if old:
+                if old["owner_id"] != user_id or old["kind"] != "photo_request" or old["deleted_at"] is not None:
+                    raise APIError(409, "request_conflict", "Dieser Fotowunsch kann nicht erneut gesendet werden.")
+                self.send_json(200, self._record_dict(old))
+                return
+            self.app.enforce_quota(user_id, len(raw.encode()), db=db)
+            db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)", (request_id, "photo_request", user_id, raw, len(raw.encode()), now, now))
+        self.app.create_event(target_id, "record_photo_request", "Bitte lächeln 📷", "Ein Fotowunsch wartet in RJ Love.", {"record_id": request_id})
+        self.send_json(200, {"id": request_id, "kind": "photo_request", "owner_id": user_id, "payload": payload, "created_at": now, "updated_at": now})
+
+    def _save_preferences(self, user_id):
+        body = self.read_json()
+        dashboard = body.get("dashboard")
+        revision = body.get("revision")
+        if set(body) != {"dashboard", "revision"} or isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+            raise APIError(400, "invalid_preferences", "Startseiten-Einstellungen sind ungültig.")
+        if not isinstance(dashboard, dict) or set(dashboard) != {"cards", "theme", "title"}:
+            raise APIError(400, "invalid_dashboard", "Die Startseite ist ungültig.")
+        cards = dashboard["cards"]
+        allowed = {"heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"}
+        if not isinstance(cards, list) or len(cards) > len(allowed):
+            raise APIError(400, "invalid_cards", "Die Kartenliste ist ungültig.")
+        seen = set()
+        for card in cards:
+            if not isinstance(card, dict) or set(card) != {"kind", "size"} or not isinstance(card["kind"], str) or card["kind"] not in allowed or card["kind"] in seen or card["size"] not in ("compact", "large"):
+                raise APIError(400, "invalid_card", "Eine Karte ist ungültig oder doppelt vorhanden.")
+            seen.add(card["kind"])
+        if dashboard["theme"] not in ("rose", "violet", "ocean"):
+            raise APIError(400, "invalid_theme", "Diese Farbwelt ist unbekannt.")
+        dashboard["title"] = safe_text(dashboard["title"], 80, allow_empty=False)
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT revision FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
+            if (row["revision"] if row else 0) != revision:
+                raise APIError(409, "preferences_changed", "Deine Startseite wurde inzwischen geändert. Bitte neu laden und erneut anpassen.")
+            db.execute("INSERT INTO user_preferences VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET dashboard=excluded.dashboard,revision=excluded.revision,updated_at=excluded.updated_at", (user_id, json.dumps(dashboard, ensure_ascii=False), revision + 1, iso_now()))
+        self.send_json(200, {"dashboard": dashboard, "revision": revision + 1})
 
     def _login(self) -> None:
         key = self.client_key()
@@ -2105,6 +2188,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "checkin": ("Ein Gefühl für dich", "hat ein Gefühl geteilt."),
             "coupon": ("Ein kleiner Liebesgutschein 💌", "hat einen Gutschein aktualisiert."),
             "gratitude": ("Das mag ich an dir 💗", "hat dir liebe Worte dagelassen."),
+            "photo_request": ("Ein Foto nur für dich 📷", "wünscht sich ein Foto von dir."),
         }
         title, phrase = labels.get(kind,("Ein Moment für uns","hat etwas Neues für dich geteilt."))
         self.app.broadcast_event(user_id, f"record_{kind}", title, f"{sender['display_name']} {phrase}", {"record_id": record_id})

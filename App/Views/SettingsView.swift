@@ -136,7 +136,7 @@ struct SettingsView: View {
             Section("Privatsphäre") {
                 Toggle("Süße Nachrichten beim Öffnen abspielen",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.sweet-autoplay") == nil || UserDefaults.standard.bool(forKey:"rjlove.sweet-autoplay")},set:{UserDefaults.standard.set($0,forKey:"rjlove.sweet-autoplay")}))
                 Toggle("Aufnahmeorte für neue Furze",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.fart-locations") == nil || UserDefaults.standard.bool(forKey:"rjlove.fart-locations")},set:{UserDefaults.standard.set($0,forKey:"rjlove.fart-locations")}))
-                Toggle("Fotowünsche mit Kamera-Countdown",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.instant-enabled") == nil || UserDefaults.standard.bool(forKey:"rjlove.instant-enabled")},set:{UserDefaults.standard.set($0,forKey:"rjlove.instant-enabled")}))
+                Toggle("Fotowünsche mit direkter Kamera",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.instant-enabled") == nil || UserDefaults.standard.bool(forKey:"rjlove.instant-enabled")},set:{UserDefaults.standard.set($0,forKey:"rjlove.instant-enabled")}))
                 Text("Die Kamera ist sichtbar und vor der Aufnahme abbrechbar. Die Medienlautstärke wird nicht automatisch verändert.").font(.footnote).foregroundStyle(.secondary)
                 Label("Passwort und Sitzungstoken liegen im iOS-Schlüsselbund. Bilder und gemeinsame Daten bleiben auf deinem eigenen Server.", systemImage: "lock.shield.fill")
                     .font(.footnote)

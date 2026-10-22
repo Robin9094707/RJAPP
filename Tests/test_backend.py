@@ -672,7 +672,7 @@ class RJLoveBackendTests(unittest.TestCase):
         self.assertEqual(self.request_error(endpoint,"POST",body,token)[0],403)
         photo=self.request(endpoint,"POST",body,partner)[1]
         self.assertEqual(photo["owner_id"],"raphaela")
-        self.assertEqual(self.request_error(endpoint,"POST",body,partner)[0],409)
+        self.assertEqual(self.request(endpoint,"POST",body,partner)[1]["id"], photo["id"])
         self.assertEqual(self.request_error("/v1/records/"+photo["id"],"DELETE",token=token)[0],403)
         self.request("/v1/records/"+photo["id"],"DELETE",token=partner)
         self.assertEqual(self.request_error("/v1/assets/"+asset,token=token)[0],404)
@@ -703,6 +703,50 @@ class RJLoveBackendTests(unittest.TestCase):
         self.assertEqual(self.app.bootstrap("robin")["records"][0]["payload"]["title"],"Unser Tag")
         plan["payload"]["recurrence"]="nonsense"
         self.assertEqual(self.request_error("/v1/records","POST",plan,token)[0],400)
+
+    def test_home_layout_is_private_validated_and_persisted(self):
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        initial = self.request("/v1/preferences", token=token)[1]
+        changed = {"dashboard": {"cards": [{"kind": "health", "size": "compact"}, {"kind": "instant", "size": "large"}], "theme": "ocean", "title": "Robins Startseite"}, "revision": initial["revision"]}
+        saved = self.request("/v1/preferences", "POST", changed, token)[1]
+        self.assertEqual(saved["revision"], 1)
+        self.assertEqual(self.request("/v1/preferences", token=partner)[1]["revision"], 0)
+        self.assertEqual(self.request_error("/v1/preferences", "POST", changed, token)[0], 409)
+        SERVER.Database(self.app.database.path).initialize()
+        self.assertEqual(self.app.bootstrap("robin")["preferences"], saved)
+        self.assertNotIn("Robins Startseite", json.dumps(self.app.bootstrap("raphaela")))
+        for invalid in [dict(saved, user_id="raphaela"), {"revision": 1, "dashboard": {**saved["dashboard"], "cards": [{"kind": "health", "size": "compact"}] * 2}}, {"revision": 1, "dashboard": {**saved["dashboard"], "theme": "unknown"}}]:
+            self.assertEqual(self.request_error("/v1/preferences", "POST", invalid, token)[0], 400)
+        self.assertEqual(self.request_error("/v1/preferences")[0], 401)
+
+    def test_photo_request_endpoint_delivers_once_and_can_be_recalled(self):
+        import uuid
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        body = {"id": str(uuid.uuid4()), "title": "Bitte lächeln"}
+        first = self.request("/v1/photo-requests", "POST", body, token)[1]
+        self.assertEqual(self.request("/v1/photo-requests", "POST", body, token)[1]["id"], first["id"])
+        incoming = [r for r in self.app.bootstrap("raphaela")["records"] if r["id"] == first["id"]]
+        self.assertEqual(len(incoming), 1); self.assertEqual(incoming[0]["payload"]["target_id"], "raphaela")
+        self.assertEqual(len([e for e in self.app.bootstrap("raphaela")["events"] if e["kind"] == "record_photo_request"]), 1)
+        asset = self.upload_asset(partner, b"photo")
+        endpoint = "/v1/photo-requests/" + first["id"] + "/reply"
+        photo = self.request(endpoint, "POST", {"asset_id": asset, "caption": body["title"]}, partner)[1]
+        self.assertEqual(photo["owner_id"], "raphaela")
+        self.assertEqual(self.request(endpoint, "POST", {"asset_id": asset}, partner)[1]["id"], photo["id"])
+        other_asset = self.upload_asset(partner, b"other-photo")
+        self.assertEqual(self.request_error(endpoint, "POST", {"asset_id": other_asset}, partner)[0], 409)
+        self.request("/v1/records/" + photo["id"], "DELETE", token=partner)
+        self.assertEqual(self.request_error("/v1/assets/" + asset, token=token)[0], 404)
+
+    def test_nearby_background_grant_is_bounded_and_logout_revokes_it(self):
+        import base64
+        token = self.login(); partner = self.login("raphaela", "raphaela-test-password")
+        value = base64.b64encode(b"test-discovery-token").decode()
+        self.request("/v1/nearby", "POST", {"token": value, "lifetime": 900}, token)
+        self.assertEqual(self.request("/v1/nearby", token=partner)[1]["token"], value)
+        self.assertEqual(self.request_error("/v1/nearby", "POST", {"token": value, "lifetime": 901}, token)[0], 400)
+        self.request("/v1/auth/logout", "POST", {}, token)
+        self.assertIsNone(self.request("/v1/nearby", token=partner)[1]["token"])
 
     def test_feather_feed_only_serves_validated_rj_ipa_and_token_rotates(self):
         import io,zipfile,plistlib

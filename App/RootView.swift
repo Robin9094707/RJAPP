@@ -12,7 +12,8 @@ struct RootView:View {
             case .restoring:ProgressView(appState.connectionMessage).padding(30)
             case .authenticated:
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {FartRecorderView(autoStart:false)}
+                if ProcessInfo.processInfo.arguments.contains("--preview-instant-gallery") {NavigationStack{InstantGalleryView()}.fullScreenCover(item:Binding(get:{appState.pendingPhotoRequest},set:{appState.pendingPhotoRequest=$0})){InstantCameraView(request:$0)}}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {FartRecorderView(autoStart:false)}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-delivery") {NavigationStack{DeliveryCenterView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-planner") {NavigationStack{PlannerView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-media-composer") {MediaComposer(media:PreviewFixtures.media(),kind:.moment)}
@@ -62,7 +63,7 @@ struct ChangelogView:View {
                 Label("Duftpost importieren, lokal sichern und als Playlist hören",systemImage:"wind")
                 Label("Gemeinsame Termine, Jahrestage und optionale Wecker",systemImage:"calendar.badge.clock")
                 Label("Jeder Herzgedanke mit Datum und Sekunden",systemImage:"heart.fill")
-                Text("Neu zunächst eingeschaltet: Aufnahmeorte bei neuer Duftpost, Fotowünsche mit sichtbarem 3-Sekunden-Countdown und abbrechbarer Kamera sowie süße Nachrichten beim Öffnen. iOS-Zugriffsrechte gelten weiterhin. Unter Mehr kannst du diese Optionen jederzeit ändern.").font(.subheadline).foregroundStyle(.secondary)
+                Text("Neu zunächst eingeschaltet: Aufnahmeorte bei neuer Duftpost, Fotowünsche mit direkter sichtbarer Kameraaufnahme sowie süße Nachrichten beim Öffnen. iOS-Zugriffsrechte gelten weiterhin. Unter Mehr kannst du diese Optionen jederzeit ändern.").font(.subheadline).foregroundStyle(.secondary)
                 Text("Walkie-Talkie und die eigene Face-ID-Sperre sind entfernt. Eure Konten, Aufnahmen und bisherigen Momente bleiben erhalten.").font(.footnote)
                 Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
             }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")

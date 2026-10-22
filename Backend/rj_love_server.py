@@ -1390,6 +1390,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
     def send_json(self, status: int | HTTPStatus, body: Any) -> None:
         encoded = json_bytes(body)
         self.send_response(int(status))
+        if int(status) == 426:
+            self.close_connection = True
+            self.send_header("Connection", "close")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")

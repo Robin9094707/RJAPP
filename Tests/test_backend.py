@@ -623,7 +623,7 @@ class RJLoveBackendTests(unittest.TestCase):
             self.app.configure_push_automatically(force=True)
         saved=json.loads(self.config_path.read_text())["apns"]
         self.assertTrue(saved["enabled"]);self.assertEqual(saved["key_id"],"ABCDEFGHIJ")
-        self.assertEqual(saved["team_id"],"0123456789");self.assertEqual(Path(saved["private_key_file"]),key)
+        self.assertEqual(saved["team_id"],"0123456789");self.assertEqual(Path(saved["private_key_file"]).resolve(),key.resolve())
         self.assertNotIn("test-only",self.config_path.read_text())
         self.config["apns"]["enabled"]=False
 

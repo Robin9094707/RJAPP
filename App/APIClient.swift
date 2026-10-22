@@ -25,6 +25,11 @@ enum APIClientError: LocalizedError {
     }
 }
 
+private struct CompatibilityErrorEnvelope: Decodable {
+    let message: String
+    let compatibility: ServerCompatibility?
+}
+
 final class APIClient: @unchecked Sendable {
     private let session: URLSession
     private let encoder = JSONEncoder()
@@ -90,8 +95,7 @@ final class APIClient: @unchecked Sendable {
             guard let http = response as? HTTPURLResponse else { throw APIClientError.invalidResponse }
             guard (200..<300).contains(http.statusCode) else {
                 if http.statusCode == 426 {
-                    struct Envelope: Decodable { let message: String; let compatibility: ServerCompatibility? }
-                    let value = try? decoder.decode(Envelope.self, from: data)
+                    let value = try? decoder.decode(CompatibilityErrorEnvelope.self, from: data)
                     let issue = value?.compatibility.flatMap { RJVersion.requirement($0) } ?? UpdateRequirement(target: "app", message: value?.message ?? "App und Python-Server gemeinsam aktualisieren.")
                     await MainActor.run { UpdateCoordinator.shared.requirement = issue }
                     throw issue

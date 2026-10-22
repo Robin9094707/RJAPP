@@ -57,7 +57,7 @@ struct PlannerEditor:View {
             Section("Wiedersehen"){Toggle("Jedes Jahr",isOn:$yearly);Toggle("Mit AlarmKit-Wecker",isOn:$alarm);Text("Der Wecker wird auf dem anderen iPhone beim nächsten Öffnen der App synchronisiert. Plant wichtige Termine im Voraus.").font(.caption)}
             Section("Apple-Apps"){Toggle("In Apple Kalender synchronisieren",isOn:$calendar);Toggle("In Apple Erinnerungen synchronisieren",isOn:$reminder)}
         }.navigationTitle(initial == nil ? "Zeit für uns":"Unseren Plan bearbeiten").toolbar{
-            ToolbarItem(placement:.cancellationAction){Button("Abbrechen"){dismiss()}}
+            ToolbarItem(placement:.cancellationAction){Button("Abbrechen"){dismiss()}.disabled(saving)}
             ToolbarItem(placement:.confirmationAction){Button(saving ? "Speichere …":"Speichern"){
                 saving=true;Task{
                     if calendar{_ = await app.calendar.requestAccess()};if reminder{_ = await app.calendar.requestReminderAccess()}
@@ -68,7 +68,7 @@ struct PlannerEditor:View {
                     if let saved=await app.saveRecord(id:initial?.id,kind:kind,payload:payload){onSaved?(saved);dismiss()};saving=false
                 }
             }.disabled(saving || title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)}
-        }.onAppear{title=initial?.payload.title ?? "";notes=initial?.payload.notes ?? initial?.payload.text ?? initial?.payload.message ?? "";start=(initial?.payload.startAt ?? initial?.payload.dueAt)?.rjDate ?? initialDate;end=max(initial?.payload.endAt?.rjDate ?? start.addingTimeInterval(3600),start);yearly=initial?.payload.recurrence=="yearly";alarm=initial?.payload.alarmEnabled ?? false;reminder=initial?.payload.reminderSync ?? true;calendar=initial?.payload.calendarSync ?? true}
+        }.interactiveDismissDisabled(saving).onAppear{title=initial?.payload.title ?? "";notes=initial?.payload.notes ?? initial?.payload.text ?? initial?.payload.message ?? "";start=(initial?.payload.startAt ?? initial?.payload.dueAt)?.rjDate ?? initialDate;end=max(initial?.payload.endAt?.rjDate ?? start.addingTimeInterval(3600),start);yearly=initial?.payload.recurrence=="yearly";alarm=initial?.payload.alarmEnabled ?? false;reminder=initial?.payload.reminderSync ?? true;calendar=initial?.payload.calendarSync ?? true}
             .onChange(of:start){_,value in if end<value{end=value.addingTimeInterval(3600)}}
         }
     }

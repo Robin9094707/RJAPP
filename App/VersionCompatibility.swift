@@ -46,6 +46,7 @@ enum RJVersion {
 struct UpdateRequiredView: View {
     @Environment(AppState.self) private var app
     @ObservedObject private var update = UpdateCoordinator.shared
+    @State private var showingUpdater=false
     @State private var checking = false
     @State private var error: String?
     var body: some View {
@@ -59,6 +60,9 @@ struct UpdateRequiredView: View {
                     Text(update.requirement?.message ?? "App und Server bitte gemeinsam aktualisieren.").font(.body)
                     Text("Eure Aufnahmen und Anmeldungen bleiben erhalten. Währenddessen werden keine inkompatiblen Änderungen gesendet.").font(.footnote).foregroundStyle(.secondary)
                     Link("Aktuelles Komplettpaket auf GitHub", destination: URL(string: "https://github.com/Robin9094707/RJAPP/actions")!).buttonStyle(.borderedProminent)
+                    if update.requirement?.target == "app" {
+                        Button("IPA abrufen & mit Feather aktualisieren",systemImage:"arrow.down.app.fill"){showingUpdater=true}.buttonStyle(.borderedProminent)
+                    }
                     Button(checking ? "Prüfe …" : "Nach dem Update erneut prüfen") {
                         checking = true
                         Task {
@@ -70,6 +74,6 @@ struct UpdateRequiredView: View {
                     if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
                 }.loveCard().padding(20)
             }
-        }.accessibilityIdentifier("rj-update-required")
+        }.accessibilityIdentifier("rj-update-required").sheet(isPresented:$showingUpdater){NavigationStack{AppUpdateView().toolbar{ToolbarItem(placement:.cancellationAction){Button("Zurück"){showingUpdater=false}}}}}
     }
 }

@@ -1479,7 +1479,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
     def route(self) -> tuple[str, list[str], dict[str, list[str]]]:
         parsed = urlparse(self.path)
         parts = [part for part in parsed.path.split("/") if part]
-        if parsed.path.startswith("/v1/"):
+        update_route=(self.command=="GET" and parsed.path in {"/v1/app-release","/v1/app-release/ipa"}) or (self.command=="POST" and parsed.path=="/v1/update-feed")
+        if parsed.path.startswith("/v1/") and not update_route:
             version = self.headers.get("X-RJ-App-Version", "")
             protocol = self.headers.get("X-RJ-Protocol", "")
             if version_tuple(version) < version_tuple(MINIMUM_APP_VERSION):

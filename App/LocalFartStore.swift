@@ -3,7 +3,7 @@ import CryptoKit
 import Foundation
 import Observation
 
-struct SavedFart:Codable,Identifiable {var id:String{clip.id};let clip:FartClip;let filename:String;let savedAt:String}
+struct SavedFart:Codable,Identifiable {var id:String{clip.id};let clip:FartClip;let filename:String;let savedAt:String;var localOnly:Bool? = nil}
 @MainActor @Observable final class LocalFartStore {
     static let shared=LocalFartStore()
     var clips:[SavedFart]=[]
@@ -23,9 +23,9 @@ struct SavedFart:Codable,Identifiable {var id:String{clip.id};let clip:FartClip;
         try JSONEncoder().encode(clip).write(to:target.appendingPathExtension("json"),options:[.atomic,.completeFileProtection])
         clips.removeAll{$0.id==clip.id};clips.append(SavedFart(clip:clip,filename:filename,savedAt:Date.now.rjISO8601));try persist();return target
     }
-    func saveImported(_ clip:FartClip,data:Data)throws {
-        guard let folder else{throw MediaError.unreadable};let filename=clip.id+".m4a"
-        try data.write(to:folder.appendingPathComponent(filename),options:[.atomic,.completeFileProtection]);try JSONEncoder().encode(clip).write(to:folder.appendingPathComponent(filename+".json"),options:[.atomic,.completeFileProtection]);clips.removeAll{$0.id==clip.id};clips.append(SavedFart(clip:clip,filename:filename,savedAt:Date.now.rjISO8601));try persist()
+    func saveImported(_ clip:FartClip,data:Data,localOnly:Bool=false)throws {
+        guard let folder else{throw MediaError.unreadable};let stamp=(clip.recordedAt ?? clip.createdAt).replacingOccurrences(of:":",with:"");let name=String(clip.title.map{("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789äöüÄÖÜß-_ ").contains($0) ? $0:"_"}.prefix(50));let filename=stamp+"-"+name+"-"+String(clip.id.prefix(8))+".m4a"
+        try data.write(to:folder.appendingPathComponent(filename),options:[.atomic,.completeFileProtection]);try JSONEncoder().encode(clip).write(to:folder.appendingPathComponent(filename+".json"),options:[.atomic,.completeFileProtection]);clips.removeAll{$0.id==clip.id};clips.append(SavedFart(clip:clip,filename:filename,savedAt:Date.now.rjISO8601,localOnly:localOnly));try persist()
     }
     func remove(_ clip:SavedFart) throws {guard let folder else{return};try? FileManager.default.removeItem(at:folder.appendingPathComponent(clip.filename));try? FileManager.default.removeItem(at:folder.appendingPathComponent(clip.filename).appendingPathExtension("json"));clips.removeAll{$0.id==clip.id};try persist()}
     private func persist()throws{guard let folder else{return};try JSONEncoder().encode(clips).write(to:folder.appendingPathComponent("index.json"),options:[.atomic,.completeFileProtection])}

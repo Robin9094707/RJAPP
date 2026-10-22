@@ -61,8 +61,10 @@ struct MediaComposer:View {
     @State private var saving=false
     @State private var assets:[String]?
     @State private var saved=false
+    @State private var uploadError:String?
     var body:some View {NavigationStack{Form{
         if let data=media.poster,let image=UIImage(data:data){Image(uiImage:image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius:20))}
+        if let uploadError{Text(uploadError).font(.footnote).foregroundStyle(.orange)}
         if saved{Text("Moment geteilt").accessibilityIdentifier("media-upload-complete")}
         Label(media.kind=="live" ? "Live Photo · Bild und Bewegung":media.kind=="video" ? "Video":"Foto",systemImage:media.kind=="video" ? "video.fill":"photo.fill")
         TextField("Ein paar Worte dazu",text:$caption,axis:.vertical)
@@ -74,13 +76,13 @@ struct MediaComposer:View {
         ToolbarItem(placement:.confirmationAction){Button("Teilen"){Task{await save()}}.disabled(saving)}
     }.onAppear{capturedAt=media.capturedAt}.interactiveDismissDisabled(saving)}}
     private func save() async {
-        saving=true;defer{saving=false}
+        saving=true;uploadError=nil;defer{saving=false}
         do {
             if assets==nil{assets=try await MediaTransfer.shared.upload(media,api:app.api)}
             var payload=RecordPayload();payload.assetIDs=assets;payload.mediaKind=media.kind;payload.posterBase64=media.poster?.base64EncodedString()
             if kind == .moment{payload.caption=caption;payload.capturedAt=capturedAt.rjISO8601;payload.albumID=albumID.isEmpty ? nil:albumID;payload.comments=[];payload.reactions=[]}else{payload.text=caption}
-            if await app.saveRecord(kind:kind,payload:payload) != nil{saved=true;dismiss()}
-        }catch{app.alert=AppAlert(title:"Upload fehlgeschlagen",message:error.localizedDescription)}
+            if await app.saveRecord(kind:kind,payload:payload) != nil{saved=true;dismiss()}else{uploadError=app.alert?.message ?? "Der Moment konnte nicht gespeichert werden."}
+        }catch{uploadError=error.localizedDescription}
     }
 }
 struct MediaAttachmentView:View {

@@ -63,10 +63,13 @@ struct FartStudioView: View {
                     Picker("Kalenderansicht", selection: $yearMode) { Text("Monat").tag(false); Text("Jahr").tag(true) }
                         .pickerStyle(.segmented).accessibilityIdentifier("duft-calendar-scale")
                 }
+                if !query.isEmpty {
+                    HStack {Text("\(clips.count) Treffer").font(.caption.bold()).accessibilityIdentifier("duft-results");Spacer();Button("Suche leeren"){query=""}.font(.caption)}
+                }
             }.padding(.horizontal, 20).padding(.vertical, 10).background(.ultraThinMaterial)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
-                    if room == .sammlung { hero }
+                    if room == .sammlung && query.isEmpty { hero }
                     HStack {
                         NavigationLink {FartLibraryView()} label:{Label("Duftschatzkiste & Import",systemImage:"square.and.arrow.down")}
                         Spacer()
@@ -147,7 +150,7 @@ struct FartStudioView: View {
                 }.font(.caption.bold()).buttonStyle(.bordered)
             }
             HStack {
-                Text("\(clips.count) Treffer").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("duft-results")
+                Text("\(clips.count) Treffer").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier(query.isEmpty ? "duft-results":"duft-filter-results")
                 Spacer()
                 Menu { Picker("Sortieren", selection: $order) { ForEach(DuftOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) } } } label: { Label(order.rawValue, systemImage: "arrow.up.arrow.down").font(.caption) }
             }

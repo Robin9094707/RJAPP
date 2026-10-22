@@ -1,6 +1,7 @@
 import AVFoundation
 import CryptoKit
 import Foundation
+import ImageIO
 import Observation
 import PhotosUI
 import Photos
@@ -164,7 +165,7 @@ struct MediaPicker: UIViewControllerRepresentable {
                                 };files.append(file)
                             }
                             let bytes=try Data(contentsOf:files[0]);let poster=Self.poster(bytes)
-                            self.finish(.success(SelectedMedia(files:files,mimeTypes:[photo.uniformTypeIdentifier.contains("heic") ? "image/heic":"image/jpeg","video/quicktime"],kind:"live",capturedAt:Self.captureDate(result),poster:poster)))
+                            self.finish(.success(SelectedMedia(files:files,mimeTypes:[photo.uniformTypeIdentifier.contains("heic") ? "image/heic":"image/jpeg","video/quicktime"],kind:"live",capturedAt:Self.captureDate(result,imageData:bytes),poster:poster)))
                         } catch {self.finish(.failure(error))}
                     }
                 }
@@ -177,15 +178,22 @@ struct MediaPicker: UIViewControllerRepresentable {
                         let ext=file.pathExtension.lowercased();let destination=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+"."+ext)
                         try FileManager.default.copyItem(at:file,to:destination)
                         let mime=video ? (ext=="mp4" ? "video/mp4":"video/quicktime") : ["png":"image/png","heic":"image/heic","heif":"image/heif"].first{$0.key==ext}?.value ?? "image/jpeg"
-                        let poster=video ? nil:Self.poster(try Data(contentsOf:destination))
-                        self.finish(.success(SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result),poster:poster)))
+                        var bytes:Data? = nil
+                        if !video{bytes=try Data(contentsOf:destination)}
+                        let poster=bytes.flatMap{Self.poster($0)}
+                        self.finish(.success(SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result,imageData:bytes),poster:poster)))
                     } catch{self.finish(.failure(error))}
                 }
             }
         }
-        static func captureDate(_ result:PHPickerResult)->Date {
-            guard let identifier=result.assetIdentifier else{return .now}
-            return PHAsset.fetchAssets(withLocalIdentifiers:[identifier],options:nil).firstObject?.creationDate ?? .now
+        static func captureDate(_ result:PHPickerResult,imageData:Data?=nil)->Date {
+            if let identifier=result.assetIdentifier,let date=PHAsset.fetchAssets(withLocalIdentifiers:[identifier],options:nil).firstObject?.creationDate{return date}
+            if let imageData,let source=CGImageSourceCreateWithData(imageData as CFData,nil),let properties=CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [String:Any],let exif=properties[kCGImagePropertyExifDictionary as String] as? [String:Any],let stamp=exif[kCGImagePropertyExifDateTimeOriginal as String] as? String {
+                let formatter=DateFormatter();formatter.locale=Locale(identifier:"en_US_POSIX")
+                if let offset=exif["OffsetTimeOriginal"] as? String {formatter.dateFormat="yyyy:MM:dd HH:mm:ssXXXXX";if let date=formatter.date(from:stamp+offset){return date}}
+                formatter.dateFormat="yyyy:MM:dd HH:mm:ss";if let date=formatter.date(from:stamp){return date}
+            }
+            return .now
         }
         static func poster(_ data:Data)->Data? {
             guard let image=UIImage(data:data) else{return nil};let scale=min(1,600/max(image.size.width,image.size.height))

@@ -15,6 +15,7 @@ final class NearbyService: NSObject, NISessionDelegate {
     var supported: Bool { NISession.deviceCapabilities.supportsPreciseDistanceMeasurement }
     var cameraAssistance=false
     private var arSession:ARSession?
+    private var generation=UUID()
     private var session: NISession?
     private var task: Task<Void, Never>?
     private var peerToken: String?
@@ -23,8 +24,10 @@ final class NearbyService: NSObject, NISessionDelegate {
     func start(api: APIClient) async {
         guard supported else { message = "Präzise Nahbereichssuche ist auf diesem Gerät nicht verfügbar."; return }
         guard !running else { return }
+        let attempt=UUID();generation=attempt;running=true
         var assisted=false
         if cameraAssistance,NISession.deviceCapabilities.supportsCameraAssistance {assisted=await AVCaptureDevice.requestAccess(for:.video)}
+        guard running,generation==attempt,!Task.isCancelled else{return}
         let session = NISession()
         if assisted {
             let ar=ARSession();session.setARSession(ar);ar.run(ARWorldTrackingConfiguration());arSession=ar
@@ -50,15 +53,15 @@ final class NearbyService: NSObject, NISessionDelegate {
                     } else if peer == nil {
                         self.peerToken = nil
                         self.distance = nil
-                        self.angle = nil
+                        self.angle = nil;self.elevation=nil
                         self.message = "Warte auf dein Gegenüber …"
                     }
                     if let last = self.lastMeasurement, Date.now.timeIntervalSince(last) > 8 {
-                        self.distance = nil; self.angle = nil
+                        self.distance = nil; self.angle = nil;self.elevation=nil
                         self.message = "Kein aktuelles Signal. Geht näher zusammen und richtet die iPhones neu aus."
                     }
                 } catch {
-                    self.distance = nil; self.angle = nil
+                    self.distance = nil; self.angle = nil;self.elevation=nil
                     self.message = "Verbindung unterbrochen: \(error.localizedDescription)"
                 }
                 try? await Task.sleep(for: .seconds(3))
@@ -67,10 +70,11 @@ final class NearbyService: NSObject, NISessionDelegate {
     }
 
     func stop(api: APIClient) {
+        generation=UUID();lastMeasurement=nil
         task?.cancel(); task = nil
         session?.invalidate(); session = nil
         arSession?.pause();arSession=nil
-        running = false; distance = nil; angle = nil; peerToken = nil
+        running = false; distance = nil; angle = nil;elevation=nil; peerToken = nil
         Task { try? await api.publishNearbyToken("") }
     }
 
@@ -95,18 +99,18 @@ final class NearbyService: NSObject, NISessionDelegate {
     nonisolated func session(_ session: NISession, didInvalidateWith error: Error) {
         Task { @MainActor [weak self] in
             guard let self, self.session === session else { return }
-            self.task?.cancel(); self.running = false
-            self.distance = nil; self.angle = nil
+            self.task?.cancel(); self.running = false;self.arSession?.pause();self.arSession=nil;self.session=nil
+            self.distance = nil; self.angle = nil;self.elevation=nil
             self.message = "Nahbereichssuche beendet: \(error.localizedDescription)"
         }
     }
     nonisolated func sessionWasSuspended(_ session: NISession) {
-        Task { @MainActor [weak self] in self?.distance = nil; self?.angle = nil; self?.message = "Suche pausiert. Lasst beide die App geöffnet." }
+        Task { @MainActor [weak self] in guard let self,self.session === session else{return};self.distance=nil;self.angle=nil;self.elevation=nil;self.arSession?.pause();self.message="Suche pausiert. Lasst beide die App geöffnet." }
     }
     nonisolated func sessionSuspensionEnded(_ session: NISession) {
-        Task { @MainActor [weak self] in self?.peerToken = nil }
+        Task { @MainActor [weak self] in guard let self,self.session === session,self.running else{return};self.peerToken=nil;self.arSession?.run(ARWorldTrackingConfiguration()) }
     }
     nonisolated func session(_ session: NISession, didRemove nearbyObjects: [NINearbyObject], reason: NINearbyObject.RemovalReason) {
-        Task { @MainActor [weak self] in self?.distance = nil; self?.angle = nil; self?.peerToken = nil; self?.message = "Signal verloren. Geht näher zusammen." }
+        Task { @MainActor [weak self] in guard let self,self.session === session else{return};self.distance=nil;self.angle=nil;self.elevation=nil;self.peerToken=nil;self.message="Signal verloren. Geht näher zusammen." }
     }
 }

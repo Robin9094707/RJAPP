@@ -718,6 +718,12 @@ class RJLoveBackendTests(unittest.TestCase):
         source=self.request("/updates/"+feed+"/source.json",version=None,protocol=None)[1]
         version=source["apps"][0]["versions"][0]
         self.assertEqual(version["version"],"3.1.0")
+        older=self.request("/v1/app-release",token=token,version="2.4.0",protocol=4)[1]
+        self.assertEqual(older["release"]["version"],"3.1.0")
+        with self.assertRaises(urllib.error.HTTPError) as unauthorized:
+            self.request("/v1/app-release",version="2.4.0",protocol=4)
+        self.assertEqual(unauthorized.exception.code,401);unauthorized.exception.close()
+
         self.assertTrue(version["downloadURL"].startswith("https://liebe.example/rj/updates/"))
         self.assertEqual(self.raw_asset_request("/updates/"+feed+"/latest.ipa","GET",None)[1],memory.getvalue())
         self.request("/v1/update-feed","POST",body,token)

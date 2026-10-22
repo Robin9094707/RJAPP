@@ -313,12 +313,12 @@ struct FartRecorderView: View {
             if title.count > 100 || caption.count > 500 { Text("Name: maximal 100 Zeichen. Duftnote: maximal 500 Zeichen.").font(.caption).foregroundStyle(.orange) }
                 Button("Nur auf diesem iPhone sichern",systemImage:"square.and.arrow.down") {
                     guard let draft=appState.studio.draft,let server=appState.profile?.baseURL,let user=appState.me?.id else{return}
-                    do {LocalFartStore.shared.configure(server:server,userID:user);let data=try Data(contentsOf:draft.url);let clip=FartClip(id:draft.id,ownerID:user,title:title.isEmpty ? "Ein kleines Meisterwerk":title,caption:caption,category:category.rawValue,duration:draft.duration,waveform:draft.waveform,sizeBytes:data.count,createdAt:Date.now.rjISO8601,ratings:[],reactions:[],recordedAt:draft.recordedAt,location:includeLocation ? draft.location:nil,situation:situation.rawValue);try LocalFartStore.shared.saveImported(clip,data:data);appState.studio.discard();dismiss()}catch{appState.alert=AppAlert(title:"Lokales Sichern",message:error.localizedDescription)}
-                }
+                    do {LocalFartStore.shared.configure(server:server,userID:user);let data=try Data(contentsOf:draft.url);let clip=FartClip(id:draft.id,ownerID:user,title:title.isEmpty ? "Ein kleines Meisterwerk":title,caption:caption,category:category.rawValue,duration:draft.duration,waveform:draft.waveform,sizeBytes:data.count,createdAt:Date.now.rjISO8601,ratings:[],reactions:[],recordedAt:draft.recordedAt,location:includeLocation ? draft.location:nil,situation:situation.rawValue);try LocalFartStore.shared.saveImported(clip,data:data,localOnly:true);appState.studio.discard();dismiss()}catch{appState.alert=AppAlert(title:"Lokales Sichern",message:error.localizedDescription)}
+                }.disabled(saving || title.count>100 || caption.count>500)
             if let point = studio.draft?.location {
                 Toggle("Aufnahmeort auf eurer Furzkarte teilen", isOn: $includeLocation).tint(LovePalette.violet)
                 Text("Neue Aufnahmen teilen einen verfügbaren Ort standardmäßig. Ohne iOS-Standortfreigabe bleibt der Ort unbekannt.").font(.caption2).foregroundStyle(.secondary)
-                Text("Der Ort stammt vom Aufnahmebeginn. Genauigkeit etwa \(Int(point.accuracy)) m. Ohne diesen Schalter wird kein Ort hochgeladen.").font(.caption).foregroundStyle(.secondary)
+                Text("Der Ort stammt aus dem Aufnahmezeitraum. Genauigkeit etwa \(Int(point.accuracy)) m. Ohne diesen Schalter wird kein Ort hochgeladen.").font(.caption).foregroundStyle(.secondary)
             } else {
                 Label("Ohne Aufnahmeort · kein aktueller freigegebener Standort vorhanden", systemImage: "mappin.slash").font(.caption).foregroundStyle(.secondary)
             }

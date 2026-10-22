@@ -44,6 +44,7 @@ struct InstantCameraView:View {
     let request:SharedRecord
     @StateObject private var camera=InstantCamera()
     @State private var countdown=3
+    @State private var cancelled=false
     @State private var caption=""
     @State private var sending=false
     @State private var capturedAt=Date.now
@@ -60,12 +61,12 @@ struct InstantCameraView:View {
     }.padding(20).background(LoveBackground()).navigationTitle("Ein Foto für dich")}.interactiveDismissDisabled()
         .task{caption=request.payload.title ?? "";await camera.start();startCountdown()}
         .onChange(of:camera.photo){_,value in if value != nil{capturedAt = .now;camera.stop();beginUpload()}}
-        .onChange(of:phase){_,value in if value != .active{captureTask?.cancel();camera.stop()}else if camera.photo==nil{Task{await camera.start();startCountdown()}}}
-        .onDisappear{captureTask?.cancel();uploadTask?.cancel();camera.stop()}
+        .onChange(of:phase){_,value in if value != .active{captureTask?.cancel();camera.stop()}else if camera.photo==nil{Task{await camera.start();startCountdown()}}else if !sending{beginUpload()}}
+        .onDisappear{cancelled=true;captureTask?.cancel();uploadTask?.cancel();camera.stop()}
     }
     private func startCountdown(){captureTask?.cancel();captureTask=Task{for _ in 0..<150 where !camera.running{try? await Task.sleep(for:.milliseconds(100));if Task.isCancelled{return}};guard camera.running else{return};for value in stride(from:3,through:1,by:-1){countdown=value;try? await Task.sleep(for:.seconds(1));guard !Task.isCancelled,phase == .active else{return}};guard phase == .active else{return};camera.capture()}}
-    private func skip(){UserDefaults.standard.set(true,forKey:"rjlove.photo-skip."+request.id);captureTask?.cancel();uploadTask?.cancel();camera.stop();dismiss()}
-    private func beginUpload(){uploadTask?.cancel();uploadTask=Task{guard let data=camera.photo else{return};sending=true;defer{sending=false};do{let file=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".jpg");try data.write(to:file,options:.completeFileProtection);defer{try? FileManager.default.removeItem(at:file)};let poster=MediaPicker.Coordinator.poster(data);let media=SelectedMedia(files:[file],mimeTypes:["image/jpeg"],kind:"image",capturedAt:capturedAt,poster:poster);let ids=try await MediaTransfer.shared.upload(media,api:app.api);guard let id=ids.first,!Task.isCancelled else{return};_ = try await app.api.replyToPhotoRequest(id:request.id,assetID:id,caption:caption,poster:poster,capturedAt:capturedAt);_ = await app.syncNow(showErrors:false);dismiss()}catch{if !Task.isCancelled{self.error=error.localizedDescription}}}}
+    private func skip(){cancelled=true;UserDefaults.standard.set(true,forKey:"rjlove.photo-skip."+request.id);captureTask?.cancel();uploadTask?.cancel();camera.stop();dismiss()}
+    private func beginUpload(){guard !cancelled,phase == .active else{return};uploadTask?.cancel();uploadTask=Task{guard let data=camera.photo else{return};sending=true;defer{sending=false};do{let file=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".jpg");try data.write(to:file,options:.completeFileProtection);defer{try? FileManager.default.removeItem(at:file)};let poster=MediaPicker.Coordinator.poster(data);let media=SelectedMedia(files:[file],mimeTypes:["image/jpeg"],kind:"image",capturedAt:capturedAt,poster:poster);let ids=try await MediaTransfer.shared.upload(media,api:app.api);guard let id=ids.first,!Task.isCancelled else{return};_ = try await app.api.replyToPhotoRequest(id:request.id,assetID:id,caption:caption,poster:poster,capturedAt:capturedAt);_ = await app.syncNow(showErrors:false);dismiss()}catch{if !Task.isCancelled{self.error=error.localizedDescription}}}}
 }
 struct InstantGalleryView:View {
     @Environment(AppState.self) private var app

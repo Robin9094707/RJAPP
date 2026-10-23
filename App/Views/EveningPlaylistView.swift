@@ -17,7 +17,7 @@ struct EveningPlaylistView:View {
     var body:some View {
         ScrollViewReader{proxy in ScrollView{LazyVStack(alignment:.leading,spacing:22){
             VStack(alignment:.leading,spacing:14){LoveEyebrow(text:"Ein Abend. Unser Soundtrack.");HStack{Text("Bleib noch\nein bisschen.").font(.system(size:34,weight:.medium,design:.serif));Spacer();LoveIcon(symbol:"moon.stars.fill",tint:LovePalette.violet,size:64)};Text("Eure Aufnahmen und Filme vom Server, einer nach dem anderen. Macht es euch gemütlich.").font(.subheadline).foregroundStyle(.secondary)}.loveCard()
-            if playback.active{playerCard.id("evening-player")}
+            if playback.active{EveningNowPlayingView().id("evening-player")}
             VStack(alignment:.leading,spacing:16){
                 Picker("Abendprogramm",selection:$video){Text("Duftkonzert").tag(false);Text("Unsere Filme").tag(true)}.pickerStyle(.segmented).accessibilityIdentifier("evening-content")
                 Picker("Von wem?",selection:$owner){Text("Wir beide gemixt").tag(EveningOwner.both);Text("Nur meine").tag(EveningOwner.mine);Text("Nur von "+(app.partner?.displayName ?? "Schatzi")).tag(EveningOwner.partner)}
@@ -33,7 +33,18 @@ struct EveningPlaylistView:View {
         .onChange(of:scrollRequest){_,_ in Task{try? await Task.sleep(for:.milliseconds(120));withAnimation(.smooth){proxy.scrollTo("evening-player",anchor:.top)}}}
         }
     }
-    private var playerCard:some View {
+    private func load() async {
+        loading=true;error=nil;defer{loading=false}
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview"),!ProcessInfo.processInfo.arguments.contains("--ui-test-server"){available=app.farts.map(EveningTrack.init)+app.records.compactMap(EveningTrack.init);return}
+        #endif
+        do {let clips=try await app.api.loadFartArchive();let moments=try await app.api.recordArchive(kind:.moment);try Task.checkCancellation();available=clips.map(EveningTrack.init)+moments.compactMap(EveningTrack.init)}catch{if !Task.isCancelled{self.error=error.localizedDescription}}
+    }
+}
+private struct EveningNowPlayingView:View {
+    @Environment(AppState.self) private var app
+    @State private var playback=EveningPlaylistService.shared
+    var body:some View {
         VStack(alignment:.leading,spacing:16){
             HStack{Label("Jetzt für euch",systemImage:"headphones").font(.caption.bold()).foregroundStyle(LovePalette.pink);Spacer();Text("\(playback.index+1) / \(playback.tracks.count)").font(.caption.monospacedDigit())}
             if let current=playback.current {
@@ -48,16 +59,9 @@ struct EveningPlaylistView:View {
             if let error=playback.error {Text(error).font(.caption).foregroundStyle(.orange);HStack{Button("Erneut laden"){playback.retry()};Button("Überspringen"){playback.next()}}.buttonStyle(.bordered)}
             HStack{Menu{Button("Aus"){playback.setSleep(minutes:0)};ForEach([15,30,45,60],id:\.self){minutes in Button("\(minutes) Minuten"){playback.setSleep(minutes:minutes)}}}label:{Label(playback.sleepUntil.map{"Pause um "+$0.formatted(date:.omitted,time:.shortened)} ?? "Einschlaftimer",systemImage:"moon.zzz")};Spacer();Button("Beenden",role:.destructive){playback.stop()}}.font(.caption)
             Text("Originalton · Mit Steuerung auf dem Sperrbildschirm. Bei Anrufen oder getrennten Kopfhörern pausiert der Player.").font(.caption2).foregroundStyle(.secondary)
-        }.loveCard().accessibilityIdentifier("evening-now-playing")
+        }.loveCard()
     }
     private func clock(_ seconds:Double)->String {let value=Int(max(0,seconds));return String(format:"%d:%02d",value/60,value%60)}
-    private func load() async {
-        loading=true;error=nil;defer{loading=false}
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--preview"),!ProcessInfo.processInfo.arguments.contains("--ui-test-server"){available=app.farts.map(EveningTrack.init)+app.records.compactMap(EveningTrack.init);return}
-        #endif
-        do {let clips=try await app.api.loadFartArchive();let moments=try await app.api.recordArchive(kind:.moment);try Task.checkCancellation();available=clips.map(EveningTrack.init)+moments.compactMap(EveningTrack.init)}catch{if !Task.isCancelled{self.error=error.localizedDescription}}
-    }
 }
 struct EveningPlayerHomeCard:View {
     private var playback:EveningPlaylistService{.shared}

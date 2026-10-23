@@ -17,7 +17,7 @@ final class ProfileNavigationTests:XCTestCase {
         app.navigationBars["Euer Abend"].buttons.element(boundBy:0).tap()
         XCTAssertTrue(app.staticTexts["Euer Abend läuft"].waitForExistence(timeout:10))
         app.buttons["shortcut-playlist"].tap()
-        XCTAssertTrue(app.descendants(matching:.any)["evening-now-playing"].waitForExistence(timeout:10))
+        XCTAssertTrue(app.descendants(matching:.any)["evening-current-title"].waitForExistence(timeout:10))
         app.buttons["Beenden"].tap()
     }
     func testProfileStatusCanOpenAndReturnTwice() {

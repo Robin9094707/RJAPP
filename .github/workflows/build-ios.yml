@@ -106,9 +106,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-3.5-Komplettpaket
+          name: RJ-Love-3.5.1-Komplettpaket
           path: |
-            RJ-Love-3.5-Komplettpaket.zip
+            RJ-Love-3.5.1-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30

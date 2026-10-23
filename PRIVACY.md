@@ -1,3 +1,7 @@
+## Ergänzung 3.5.1
+
+Bei aktiver Kamera-Unterstützung der Nahsuche verwaltet Nearby Interaction die AR-Kamera intern. Es gibt keine zusätzliche Kameraaufzeichnung oder SceneKit-Vorschau. Nur der Mess- und Kalibrierzustand erscheint in der Suchansicht; keine Kamerabilder werden gespeichert oder auf den Server geladen. Beim Verlassen der Suchansicht wird die kameraaktive Sitzung beendet; eine ausdrücklich erlaubte Suche im Hintergrund wird ohne Kamera neu aufgebaut.
+
 ## Ergänzung 3.5
 
 Tagesrückblick und Feed verwenden ausschließlich eure bereits gespeicherten Inhalte. Der Tagesabruf sendet die UTC-Grenzen des auf dem iPhone gewählten Kalendertags an den privaten Server. Neue Bewegungs-, Aufenthalts- oder Health-Verläufe werden dafür nicht aufgezeichnet. Der Abendrückblick erscheint optional beim Öffnen ab 19 Uhr; kein dauerhafter Hintergrundprozess und keine zusätzliche tägliche Push-Mitteilung.

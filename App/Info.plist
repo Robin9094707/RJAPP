@@ -92,7 +92,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>RJ Love nimmt deine Duftpost und Sprachnachrichten nur im sichtbaren Recorder auf. Du kannst sie vor dem Teilen anhören.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Für Fotowünsche öffnet RJ Love sichtbar die Kamera und nimmt ohne Countdown ein Foto auf. Du kannst Fotos später zurückrufen.</string>
+	<string>Für Fotowünsche öffnet RJ Love sichtbar die Kamera und nimmt ohne Countdown ein Foto auf. Bei aktiver Nahsuche verwendet iOS die Kamera optional zur Kalibrierung des Richtungspfeils; dabei werden keine Bilder gespeichert oder geteilt.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>RJ Love synchronisiert ausschließlich eure ausgewählten gemeinsamen Aufgaben mit Apple Erinnerungen.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

@@ -50,8 +50,8 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.5.0"
-MINIMUM_APP_VERSION = "3.5.0"
+APP_VERSION = "3.5.1"
+MINIMUM_APP_VERSION = "3.5.1"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual"}

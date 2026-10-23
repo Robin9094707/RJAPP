@@ -1,8 +1,8 @@
 import SwiftUI
-import ARKit
 
 struct NearbyView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ScrollView {
             VStack(spacing: 26) {
@@ -15,30 +15,34 @@ struct NearbyView: View {
                     Image(systemName: appState.nearby.angle == nil ? "heart.fill" : "location.north.fill")
                         .font(.system(size: 68)).foregroundStyle(LovePalette.cyan.gradient)
                         .rotationEffect(.degrees(appState.nearby.angle ?? 0))
-                        .animation(.easeOut(duration: 0.25), value: appState.nearby.angle)
+                        .animation(reduceMotion ? nil:.easeOut(duration: 0.25), value: appState.nearby.angle)
                 }.frame(height: 270)
-                if appState.nearby.cameraActive,let session=appState.nearby.arSession {NearbyCameraPreview(session:session).frame(height:190).clipShape(RoundedRectangle(cornerRadius:22)).accessibilityLabel("Sichtbare Kamera zur Raumkalibrierung")}
+                if appState.nearby.cameraRequested {
+                    HStack(spacing:14){Image(systemName:"viewfinder").font(.largeTitle).foregroundStyle(LovePalette.cyan);VStack(alignment:.leading,spacing:6){Text(appState.nearby.cameraActive ? "iOS kalibriert euren Pfeil":"Kamera-Unterstützung wird gestartet").font(.headline);Text("Ein Gerät ruhig halten. Das suchende iPhone langsam bewegen. Die Kamera dient nur der Raumkalibrierung; es werden keine Bilder gespeichert oder geteilt.").font(.caption).foregroundStyle(.secondary)}}.loveCard()
+                }
+                if !appState.nearby.supportsDirectDirection {Label(appState.nearby.supportsCamera ? "Dieses iPhone nutzt für den Pfeil die Kamera-Unterstützung.":"Dieses Gerät kann nur die Entfernung anzeigen.",systemImage:"info.circle").font(.caption).foregroundStyle(.secondary)}
                 if !appState.nearby.coaching.isEmpty {Label(appState.nearby.coaching,systemImage:appState.nearby.cameraActive ? "viewfinder":"info.circle").font(.subheadline).foregroundStyle(.secondary)}
                 HStack{Label("Gegenüber",systemImage:appState.nearby.peerDiscovered ? "checkmark.circle.fill":"clock");Spacer();Label("Messsignal",systemImage:appState.nearby.distance != nil ? "checkmark.circle.fill":"dot.radiowaves.left.and.right")}.font(.caption).foregroundStyle(.secondary)
                 if let distance = appState.nearby.distance {
                     Text(String(format: "%.1f m", distance)).font(.system(size: 52, weight: .light, design: .rounded)).monospacedDigit()
                     Text("zu \(appState.partner?.displayName ?? "deinem Lieblingsmenschen")").foregroundStyle(.secondary)
                 }
-                if let elevation=appState.nearby.elevation,abs(elevation)>20 {Label(elevation>0 ? "Etwas höher suchen":"Etwas tiefer suchen",systemImage:elevation>0 ? "arrow.up":"arrow.down").font(.headline)}
+                if !appState.nearby.heightHint.isEmpty {Label(appState.nearby.heightHint,systemImage:"arrow.up.arrow.down").font(.headline)}
+                else if let elevation=appState.nearby.elevation,abs(elevation)>20 {Label(elevation>0 ? "Etwas höher suchen":"Etwas tiefer suchen",systemImage:elevation>0 ? "arrow.up":"arrow.down").font(.headline)}
                 if appState.nearby.running,appState.nearby.angle == nil {Text("Noch kein Richtungswert von iOS. Ein Pfeil erscheint erst bei einem echten Signal.").font(.caption).foregroundStyle(.secondary)}
                 Text(appState.nearby.stage).font(.caption.bold()).foregroundStyle(LovePalette.violet)
                 Text(appState.nearby.message).multilineTextAlignment(.center).font(.headline).frame(minHeight: 60)
                 Toggle("Mit Live-Aktivität im Hintergrund weitersuchen", isOn: Binding(get: { appState.nearby.backgroundSearch }, set: { appState.nearby.backgroundSearch = $0 })).disabled(appState.nearby.running)
                 Text("Startet die Suche einmal auf beiden iPhones. Danach kann die bereits aktive Suche bis zu 15 Minuten mit sichtbarer Live-Aktivität beim Sperren oder App-Wechsel weiterlaufen. Bei beendeter App oder beendetem Signal bitte beide wieder öffnen.").font(.caption).foregroundStyle(.secondary)
-                Toggle("Kamera-Unterstützung für den Richtungspfeil",isOn:Binding(get:{appState.nearby.cameraAssistance},set:{appState.nearby.cameraAssistance=$0})).disabled(appState.nearby.running)
-                Text("Optional: Sichtbare Kamera für die Raumkalibrierung. Ein iPhone ruhig halten und das suchende Gerät langsam bewegen. Bei Problemen wird ohne Kamera weitergesucht. Keine Bilder werden gespeichert oder geteilt.").font(.caption).foregroundStyle(.secondary)
+                Toggle("Kamera-Unterstützung für den Richtungspfeil",isOn:Binding(get:{appState.nearby.cameraAssistance},set:{appState.nearby.cameraAssistance=$0})).disabled(appState.nearby.running || !appState.nearby.supportsCamera)
+                Text("iOS übernimmt die Kamerakalibrierung direkt. Ein iPhone bleibt ruhig, das suchende Gerät langsam seitlich und auf/ab bewegen. Bei Kamerafehlern wird nur die Entfernung weitergesucht; es werden keine Bilder gespeichert oder geteilt.").font(.caption).foregroundStyle(.secondary)
                 Button(appState.nearby.running ? "Suche beenden" : "Nahbereichssuche starten", systemImage: "dot.radiowaves.left.and.right") {
                     if appState.nearby.running { appState.nearby.stop(api: appState.api) }
                     else { Task {await appState.nearby.start(api: appState.api)} }
                 }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!appState.nearby.supported)
                 DisclosureGroup("Verbindung prüfen & Diagnose") {
                     VStack(alignment:.leading,spacing:12) {
-                        Text("Die Standortkarte und UWB sind getrennte Funktionen. Ein fehlender Token beweist keine verweigerte Freigabe. Starte zuerst ohne Kamera und ohne Hintergrundoption auf beiden Geräten.").font(.subheadline)
+                        Text("Die Standortkarte und UWB sind getrennte Funktionen. Ein fehlender Token beweist keine verweigerte Freigabe. Für den Pfeil Kamera-Unterstützung aktivieren; zuerst ohne Hintergrundoption auf beiden Geräten testen.").font(.subheadline)
                         Text("Bluetooth einschalten, Flugmodus ausschalten und beide Apps sichtbar halten. UWB hängt zusätzlich von Hardware, Region und iOS-Systemzustand ab.").font(.caption).foregroundStyle(.secondary)
                         Text(appState.nearby.diagnostics).font(.caption.monospaced()).textSelection(.enabled)
                         ShareLink(item:appState.nearby.diagnostics){Label("Diagnose teilen",systemImage:"square.and.arrow.up")}
@@ -55,10 +59,4 @@ struct NearbyView: View {
         .onAppear{appState.nearby.setVisible(true)}
         .onDisappear{appState.nearby.setVisible(false)}
     }
-}
-
-private struct NearbyCameraPreview:UIViewRepresentable {
-    let session:ARSession
-    func makeUIView(context:Context)->ARSCNView {let view=ARSCNView(frame:.zero);view.session=session;view.scene=SCNScene();view.automaticallyUpdatesLighting=true;return view}
-    func updateUIView(_ view:ARSCNView,context:Context){if view.session !== session {view.session=session}}
 }

@@ -20,7 +20,7 @@ try:
     run('xcrun','simctl','bootstatus',device,'-b',timeout=720)
     run('xcrun','simctl','status_bar',device,'override','--time','9:41','--dataNetwork','wifi','--wifiMode','active','--wifiBars','3','--batteryState','charged','--batteryLevel','100')
     run('xcrun','simctl','install',device,'.sim-derived/Build/Products/Debug-iphonesimulator/RJ Love.app')
-    for title,arguments in [('Wir',[]),('Profil',['--preview-profile']),('Status',['--preview-status']),('BeReal',['--preview-instant-gallery']),('Abend',['--preview-playlist']),('KI',['--preview-ai-summary'])]:
+    for title,arguments in [('Wir',[]),('Abend',['--preview-playlist']),('KI',['--preview-ai-summary'])]:
         run('xcrun','simctl','launch',device,'eu.rjuhas.rjlove','--preview',*arguments)
         time.sleep(10)
         run('xcrun','simctl','io',device,'screenshot','Preview-Design-'+title+'.png')

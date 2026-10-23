@@ -9,6 +9,8 @@ import io
 import wave
 import uuid
 import datetime
+import shutil
+import subprocess
 
 root = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('rj_ui_backend', root / 'Backend/rj_love_server.py')
@@ -33,8 +35,15 @@ with app.database.connect() as db:
         buffer=io.BytesIO()
         with wave.open(buffer,"wb") as audio:
             audio.setnchannels(1);audio.setsampwidth(2);audio.setframerate(8000);audio.writeframes(b"\x00\x00"*8000*12)
-        data=buffer.getvalue();stamp=(module.utc_now()+datetime.timedelta(seconds=index)).isoformat()
+        data=buffer.getvalue()
+        if shutil.which("afconvert"):
+            wav=Path(staging.name)/"queue.wav";aac=Path(staging.name)/"queue.m4a"
+            wav.write_bytes(data);aac.unlink(missing_ok=True)
+            subprocess.run(["afconvert","-f","m4af","-d","aac",str(wav),str(aac)],check=True,capture_output=True)
+            data=aac.read_bytes()
+        stamp=(module.utc_now()+datetime.timedelta(seconds=index-3)).isoformat()
         db.execute("INSERT INTO fart_clips(id,owner_id,title,caption,category,duration,waveform,audio,size_bytes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",(str(uuid.uuid4()),"robin" if index!=1 else "raphaela","UI-Abend "+str(index+1),"Isolierte Testaufnahme","Klassiker",12,"[0.1]",data,len(data),stamp))
+app.migrate_media()
 try:
     class CompatibilityTestHandler(module.RJLoveRequestHandler):
         def do_GET(self):

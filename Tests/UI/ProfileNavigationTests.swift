@@ -9,10 +9,11 @@ final class ProfileNavigationTests:XCTestCase {
         XCTAssertTrue(start.waitForExistence(timeout:15))
         let ready=XCTNSPredicateExpectation(predicate:NSPredicate(format:"enabled == true"),object:start)
         XCTAssertEqual(XCTWaiter.wait(for:[ready],timeout:15),.completed);start.tap()
-        let current=app.staticTexts["evening-current-title"]
+        let current=app.descendants(matching:.any)["evening-current-title"]
         XCTAssertTrue(current.waitForExistence(timeout:10))
         let advanced=XCTNSPredicateExpectation(predicate:NSPredicate(format:"label == 'UI-Abend 2' OR label == 'UI-Abend 3'"),object:current)
         XCTAssertEqual(XCTWaiter.wait(for:[advanced],timeout:30),.completed,"The server-only audio queue must advance automatically")
+        let capture=XCTAttachment(screenshot:app.screenshot());capture.name="Server-Playlist";capture.lifetime = .keepAlways;add(capture)
         app.navigationBars["Euer Abend"].buttons.element(boundBy:0).tap()
         XCTAssertTrue(app.staticTexts["Euer Abend läuft"].waitForExistence(timeout:10))
         app.buttons["shortcut-playlist"].tap()

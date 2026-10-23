@@ -10,25 +10,28 @@ struct EveningPlaylistView:View {
     @State private var loading=false
     @State private var error:String?
     @State private var available:[EveningTrack]=[]
+    @State private var scrollRequest=UUID()
     private var playback:EveningPlaylistService{.shared}
     init(initialVideo:Bool=false){_video=State(initialValue:initialVideo)}
     private var filtered:[EveningTrack]{available.filter{track in track.isVideo==video && (owner == .both || (owner == .mine ? track.ownerID==app.me?.id:track.ownerID==app.partner?.id))}.sorted{$0.date == $1.date ? $0.id<$1.id:$0.date<$1.date}}
     var body:some View {
-        ScrollView{LazyVStack(alignment:.leading,spacing:22){
+        ScrollViewReader{proxy in ScrollView{LazyVStack(alignment:.leading,spacing:22){
             VStack(alignment:.leading,spacing:14){LoveEyebrow(text:"Ein Abend. Unser Soundtrack.");HStack{Text("Bleib noch\nein bisschen.").font(.system(size:34,weight:.medium,design:.serif));Spacer();LoveIcon(symbol:"moon.stars.fill",tint:LovePalette.violet,size:64)};Text("Eure Aufnahmen und Filme vom Server, einer nach dem anderen. Macht es euch gemütlich.").font(.subheadline).foregroundStyle(.secondary)}.loveCard()
-            if playback.active{playerCard}
+            if playback.active{playerCard.id("evening-player")}
             VStack(alignment:.leading,spacing:16){
                 Picker("Abendprogramm",selection:$video){Text("Duftkonzert").tag(false);Text("Unsere Filme").tag(true)}.pickerStyle(.segmented).accessibilityIdentifier("evening-content")
                 Picker("Von wem?",selection:$owner){Text("Wir beide gemixt").tag(EveningOwner.both);Text("Nur meine").tag(EveningOwner.mine);Text("Nur von "+(app.partner?.displayName ?? "Schatzi")).tag(EveningOwner.partner)}
                 Toggle("Zufällige Reihenfolge",isOn:$shuffle)
                 HStack{Label("\(filtered.count) Beiträge",systemImage:video ? "film.stack":"waveform").font(.caption);Spacer();if loading{ProgressView()}}
-                Button{playback.start(shuffle ? filtered.shuffled():filtered,api:app.api)}label:{Label(playback.active ? "Neue Auswahl starten":"Abend starten",systemImage:"play.fill").frame(maxWidth:.infinity)}.buttonStyle(.borderedProminent).controlSize(.large).disabled(loading || filtered.isEmpty || app.studio.hasRecording).accessibilityIdentifier("evening-start")
+                Button{playback.start(shuffle ? filtered.shuffled():filtered,api:app.api);scrollRequest=UUID()}label:{Label(playback.active ? "Neue Auswahl starten":"Abend starten",systemImage:"play.fill").frame(maxWidth:.infinity)}.buttonStyle(.borderedProminent).controlSize(.large).disabled(loading || filtered.isEmpty || app.studio.hasRecording).accessibilityIdentifier("evening-start")
                 Text("Geladen wird das vollständige Serverarchiv, auch ohne lokale Kopien. Die nächsten Beiträge werden vorab gepuffert. Internet bleibt nötig; die Wiedergabe läuft beim Verlassen der Ansicht weiter.").font(.caption).foregroundStyle(.secondary)
             }.loveCard()
             if let error{Text(error).font(.footnote).foregroundStyle(.orange);Button("Archiv erneut laden"){Task{await load()}}.buttonStyle(.bordered)}
             if !loading,filtered.isEmpty,error==nil {ContentUnavailableView("Euer Abend wartet noch",systemImage:video ? "film":"waveform",description:Text(video ? "Teilt ein Video unter Momente oder wählt eine andere Person.":"Teilt eine Duftaufnahme oder wählt eine andere Person."))}
-            ForEach(Array(filtered.enumerated()),id:\.element.id){i,track in HStack(spacing:12){Text("\(i+1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width:26);Image(systemName:track.isVideo ? "film.fill":"waveform").foregroundStyle(LovePalette.violet);VStack(alignment:.leading,spacing:4){Text(track.title).font(.subheadline.bold()).lineLimit(2);Text((track.ownerID==app.me?.id ? "Du":app.partner?.displayName ?? "Schatzi")+" · "+track.date.formatted(date:.abbreviated,time:.omitted)).font(.caption).foregroundStyle(.secondary)};Spacer();Button{playback.start(filtered,api:app.api,from:i)}label:{Image(systemName:"play.circle.fill").font(.title2)}.accessibilityLabel("Abspielen ab "+track.title)}.loveCard()}
+            ForEach(Array(filtered.enumerated()),id:\.element.id){i,track in HStack(spacing:12){Text("\(i+1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width:26);Image(systemName:track.isVideo ? "film.fill":"waveform").foregroundStyle(LovePalette.violet);VStack(alignment:.leading,spacing:4){Text(track.title).font(.subheadline.bold()).lineLimit(2);Text((track.ownerID==app.me?.id ? "Du":app.partner?.displayName ?? "Schatzi")+" · "+track.date.formatted(date:.abbreviated,time:.omitted)).font(.caption).foregroundStyle(.secondary)};Spacer();Button{playback.start(filtered,api:app.api,from:i);scrollRequest=UUID()}label:{Image(systemName:"play.circle.fill").font(.title2)}.accessibilityLabel("Abspielen ab "+track.title)}.loveCard()}
         }.padding(20)}.background(LoveBackground()).navigationTitle("Euer Abend").navigationBarTitleDisplayMode(.inline).task{await load()}.refreshable{await load()}
+        .onChange(of:scrollRequest){_,_ in Task{try? await Task.sleep(for:.milliseconds(120));withAnimation(.smooth){proxy.scrollTo("evening-player",anchor:.top)}}}
+        }
     }
     private var playerCard:some View {
         VStack(alignment:.leading,spacing:16){

@@ -178,7 +178,7 @@ struct InstantGalleryView:View {
             if let request=app.outgoingPhotoRequest {outgoingCard(request)}
             VStack(alignment:.leading,spacing:10) {
                 HStack{Label("Euer Fotokalender",systemImage:"calendar").font(.headline);Spacer();Button("Heute"){selectedDay = .now}}
-                PhotoCalendarView(selection:$selectedDay,photos:photos).frame(height:365)
+                PhotoCalendarView(selection:$selectedDay,photos:photos)
                 Text("Die rosa Zahl zeigt eure BeReal-Fotos an diesem Tag. Maßgeblich ist die gespeicherte Aufnahmezeit.").font(.caption).foregroundStyle(.secondary)
             }.loveCard()
             HStack(alignment:.firstTextBaseline) {

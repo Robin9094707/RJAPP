@@ -22,12 +22,13 @@ try:
     run('xcrun','simctl','install',device,'.sim-derived/Build/Products/Debug-iphonesimulator/RJ Love.app')
     for title,arguments in [('Wir',[]),('Profil',['--preview-profile']),('Status',['--preview-status']),('BeReal',['--preview-instant-gallery'])]:
         run('xcrun','simctl','launch',device,'eu.rjuhas.rjlove','--preview',*arguments)
-        time.sleep(3)
+        time.sleep(10)
         run('xcrun','simctl','io',device,'screenshot','Preview-Design-'+title+'.png')
         run('xcrun','simctl','terminate',device,'eu.rjuhas.rjlove')
     run('xcrun','simctl','ui',device,'appearance','dark')
     run('xcrun','simctl','launch',device,'eu.rjuhas.rjlove','--preview','--preview-profile')
-    time.sleep(2)
+    # Appearance changes and cold launches can outlast the launch command on CI.
+    time.sleep(15)
     run('xcrun','simctl','io',device,'screenshot','Preview-Design-Profil-Dark.png')
     run('xcrun','simctl','terminate',device,'eu.rjuhas.rjlove')
     run('xcrun','simctl','ui',device,'appearance','light')

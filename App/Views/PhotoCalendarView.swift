@@ -17,6 +17,14 @@ struct PhotoCalendarView:UIViewRepresentable {
         view.setContentCompressionResistancePriority(.defaultLow,for:.horizontal)
         return view
     }
+    func sizeThatFits(_ proposal:ProposedViewSize,uiView:UICalendarView,context:Context)->CGSize? {
+        guard let width=proposal.width,width>0 else{return nil}
+        // Let UIKit include its month header and all week rows at the current text size.
+        // A fixed SwiftUI height can place that header outside the calendar's bounds.
+        return uiView.systemLayoutSizeFitting(
+            CGSize(width:width,height:UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority:.required,verticalFittingPriority:.fittingSizeLevel)
+    }
     func updateUIView(_ view:UICalendarView,context:Context) {
         let old=context.coordinator.counts
         let counts=Dictionary(grouping:photos.compactMap{JournalDates.date($0)},by:{Calendar.current.startOfDay(for:$0)}).mapValues(\.count)

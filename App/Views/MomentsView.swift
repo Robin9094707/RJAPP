@@ -5,6 +5,7 @@ struct MomentsView:View {
     @Environment(AppState.self) private var app
     @State private var queuedMedia:SelectedMedia?
     @State private var picker=false
+    @State private var camera=false
     @State private var pending:SelectedMedia?
     @State private var selected:SharedRecord?
     @State private var albumID=""
@@ -17,6 +18,8 @@ struct MomentsView:View {
     var body:some View {
         ScrollView {VStack(alignment:.leading,spacing:20){
             VStack(alignment:.leading,spacing:12){LoveEyebrow(text:"Unsere kleine Ewigkeit");Text("Momente, die bleiben.").font(.system(size:32,weight:.medium,design:.serif));Text("Fotos, Videos und echte Live Photos. In unseren Alben, auf unserem Server.").foregroundStyle(.secondary);StorageSummaryView()}.loveCard()
+            Button("Moment aufnehmen",systemImage:"camera.fill"){camera=true}.buttonStyle(.borderedProminent).controlSize(.large)
+            NavigationLink { InstantGalleryView() } label: { Label("Unser BeReal-Verlauf",systemImage:"camera.on.rectangle.fill") }.buttonStyle(.bordered)
             HStack{Button("Moment hinzufügen",systemImage:"plus"){picker=true}.buttonStyle(.borderedProminent);Button("Album",systemImage:"folder.badge.plus"){albumName="";newAlbum=true}.buttonStyle(.bordered)}
             ScrollView(.horizontal,showsIndicators:false){HStack{Button("Alle Momente"){albumID=""}.buttonStyle(.bordered).tint(albumID.isEmpty ? LovePalette.pink:LovePalette.violet);ForEach(albums){album in Button(album.payload.title ?? "Album"){albumID=album.id}.buttonStyle(.bordered).tint(albumID==album.id ? LovePalette.pink:LovePalette.violet).contextMenu{Button("Umbenennen"){albumName=album.payload.title ?? "";renameAlbum=album};Button("Album entfernen",role:.destructive){deleteAlbum=album}}}}}
             if MediaTransfer.shared.busy{ProgressView(value:MediaTransfer.shared.progress);Text("Upload \(Int(MediaTransfer.shared.progress*100)) %").font(.caption)}
@@ -25,6 +28,7 @@ struct MomentsView:View {
         }.padding(18)}.background(LoveBackground()).navigationTitle("Unsere Momente")
             .toolbar{ToolbarItem(placement:.topBarTrailing){Button("Moment hinzufügen",systemImage:"plus"){picker=true}}}
             .sheet(isPresented:$picker,onDismiss:{pending=queuedMedia;queuedMedia=nil}){MediaPicker{result in picker=false;switch result{case .success(let media):queuedMedia=media;case .failure(let error):if error is CancellationError{return};app.alert=AppAlert(title:"Medium nicht geladen",message:error.localizedDescription)}}}
+            .fullScreenCover(isPresented:$camera,onDismiss:{pending=queuedMedia;queuedMedia=nil}){MomentCameraView{result in camera=false;switch result{case .success(let media):queuedMedia=media;case .failure(let error):if !(error is CancellationError){app.alert=AppAlert(title:"Fotoaufnahme",message:error.localizedDescription)}}}}
             .sheet(item:$pending){MediaComposer(media:$0,kind:.moment)}
             .sheet(item:$selected){MomentDetailView(initialMoment:$0)}
             .alert("Unser neues Album",isPresented:$newAlbum){TextField("Albumname",text:$albumName);Button("Anlegen"){Task{if let album=await app.saveRecord(kind:.album,payload:RecordPayload(title:albumName)){albumID=album.id}}}.disabled(albumName.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty);Button("Abbrechen",role:.cancel){}}
@@ -157,6 +161,7 @@ struct MomentDetailView: View {
                         .font(.title2.bold())
 
                     Button("Beschreibung, Datum & Album",systemImage:"pencil"){editingMetadata=true}
+                    PhotoPlaceView(payload:moment.payload)
                     reactionRow
                     commentsSection
                 }

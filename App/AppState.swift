@@ -44,6 +44,8 @@ final class AppState {
     private(set) var loadingFartArchive = false
     var alert: AppAlert?
     var showingChangelog = false
+    var showingProfile = false
+    var showingStatus = false
     var pendingSweet: SharedRecord?
     var pendingPhotoRequest: SharedRecord?
     var storageByUser: [String:Int] = [:]
@@ -54,6 +56,7 @@ final class AppState {
     private var activating = false
     private var archiveKinds:Set<RecordKind> = []
 
+    var myStatus: PresencePayload?
     var statusMessage: String {
         didSet { UserDefaults.standard.set(statusMessage, forKey: "rjlove.status-message") }
     }
@@ -160,7 +163,6 @@ final class AppState {
         studio.stopPlayback()
         nearby.enterBackground(api: api)
         VoiceNoteService.shared.stop()
-        Task { await liveActivity.stop() }
         pollTask?.cancel()
         pollTask = nil
         BackgroundRefreshCoordinator.shared.schedule()
@@ -246,6 +248,7 @@ final class AppState {
             if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
+            myStatus = snapshot.myPresence
             if let preferences = snapshot.preferences { applyPreferences(preferences) }
             let snapshotIDs=Set(snapshot.records.map(\.id));let deleted=Set(snapshot.deletedRecordIDs ?? [])
             let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deleted.contains($0.id)}
@@ -308,6 +311,10 @@ final class AppState {
     }
 
     func openFartRecorder(quick: Bool = false) {
+        if quick, !studio.hasRecording {
+            do { try studio.parkDraftForEmergency() }
+            catch { alert=AppAlert(title:"Dein Entwurf bleibt sicher",message:"Es wartet bereits ein Notfall-Entwurf. Sende oder verwerfe ihn zuerst im Recorder."); showingFartRecorder=true; return }
+        }
         quickFartRecording = quick
         showingFartRecorder = true
     }
@@ -414,7 +421,8 @@ final class AppState {
 
     func queuePresenceUpload(force: Bool = false) {
         queuedPresenceTask?.cancel()
-        let delay = force ? 0.0 : max(0, 8 - Date.now.timeIntervalSince(lastPresenceUpload))
+        let interval:Double = UIApplication.shared.applicationState == .active ? 8:30
+        let delay = force ? 0.0 : max(0, interval - Date.now.timeIntervalSince(lastPresenceUpload))
         queuedPresenceTask = Task { [weak self] in
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -422,6 +430,18 @@ final class AppState {
             guard !Task.isCancelled else { return }
             await self?.uploadPresence()
         }
+    }
+
+    func setStatus(text: String, hours: Int, quiet: Bool) async -> Bool {
+        do {
+            let duration=min(8,max(0,hours))
+            let deadline=duration>0 ? Date.now.addingTimeInterval(Double(duration)*3600).rjISO8601 : ""
+            let body=["status_message":String(text.prefix(120)), "status_expires_at":deadline, "dnd_until":quiet ? (deadline.isEmpty ? Date.now.addingTimeInterval(28800).rjISO8601:deadline):""]
+            _ = try await api.execute(try api.request(path:"/v1/status",method:"POST",body:JSONEncoder().encode(body)),as:EmptyResponse.self)
+            statusMessage=text
+            _ = await syncNow(showErrors:false)
+            return true
+        } catch { alert=AppAlert(title:"Status nicht geteilt",message:error.localizedDescription); return false }
     }
 
     func uploadPresence() async {
@@ -466,7 +486,7 @@ final class AppState {
         showingChangelog = false
     }
     func offerForegroundMoments() {
-        guard UIApplication.shared.applicationState == .active, !showingChangelog, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
+        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingStatus, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
         let defaults = UserDefaults.standard
         if defaults.string(forKey:"rjlove.changelog-seen") != RJVersion.app {showingChangelog=true;return}
         if defaults.object(forKey:"rjlove.sweet-autoplay") == nil || defaults.bool(forKey:"rjlove.sweet-autoplay") {
@@ -552,6 +572,14 @@ final class AppState {
     }
 
     func acceptQuickCaptureRequest(){
+        guard phase == .authenticated else {return}
+        if let route=WidgetSharedStore.defaults.string(forKey:"rjlove.route-requested"),let url=URL(string:route) {
+            WidgetSharedStore.defaults.removeObject(forKey:"rjlove.route-requested");handleDeepLink(url)
+        }
+        if let values=WidgetSharedStore.defaults.dictionary(forKey:"rjlove.status-requested"),let text=values["text"] as? String {
+            WidgetSharedStore.defaults.removeObject(forKey:"rjlove.status-requested")
+            Task { _ = await setStatus(text:text,hours:values["hours"] as? Int ?? 2,quiet:values["quiet"] as? Bool ?? false) }
+        }
         if phase == .authenticated,WidgetSharedStore.defaults.bool(forKey:"rjlove.quick-fart-requested") {
             WidgetSharedStore.defaults.set(false,forKey:"rjlove.quick-fart-requested")
             handleDeepLink(URL(string:"rjlove://record-fart")!)
@@ -585,7 +613,7 @@ final class AppState {
         for event in events {
             // A push test must only arrive through APNs. A poll-generated local
             // notification would falsely suggest that signing/server push works.
-            if event.kind != "push_test" { await notifications.scheduleLocal(event: event) }
+            if event.kind != "push_test", myStatus?.isQuiet != true { await notifications.scheduleLocal(event: event) }
             try? await api.acknowledgeEvent(id: event.id)
         }
         await CommandDeliveryProcessor.shared.process(commands, api: api, senderName: partner?.displayName ?? "Schatzi")
@@ -648,25 +676,32 @@ final class AppState {
         case "dates": selectedTab = .moments; experienceSection = .love
         case "record-fart":
             selectedTab = .moments; experienceSection = .farts
-            quickFartRecording = true; showingFartRecorder = true
+            openFartRecorder(quick:true)
         case "stop-recording":
             studio.finishRecording()
             selectedTab = .moments; experienceSection = .farts
             quickFartRecording = false; showingFartRecorder = true
         case "radio", "messenger": selectedTab = .together
-        case "settings", "health": selectedTab = .settings
+        case "settings", "health": selectedTab = .home; showingProfile=true
+        case "status": selectedTab = .home; showingStatus=true
+        case "bereal": selectedTab = .moments; experienceSection = .moments
         default: selectedTab = .home
         }
     }
 
     private func updateLiveActivity() async {
+        if liveActivity.enabled, !liveActivity.isRunning, UIApplication.shared.applicationState == .active {
+            try? await liveActivity.start(partnerName:partner?.displayName ?? "Schatzi",battery:partner?.presence?.batteryLevel,motion:partner?.presence?.motion ?? "Noch kein Status",mine:myThoughtCount,partner:partnerThoughtCount,updatedAt:partner?.presence?.updatedAt?.rjDate)
+        }
         guard liveActivity.isRunning else { return }
         await liveActivity.update(
             battery: partner?.presence?.batteryLevel,
             motion: partner?.presence?.motion ?? "Unbekannt",
             mine: myThoughtCount,
             partner: partnerThoughtCount,
-            updatedAt: partner?.presence?.updatedAt?.rjDate
+            updatedAt: partner?.presence?.updatedAt?.rjDate,
+            status: partner?.presence?.visibleStatus,
+            quietUntil: partner?.presence?.dndUntil?.rjDate
         )
     }
 

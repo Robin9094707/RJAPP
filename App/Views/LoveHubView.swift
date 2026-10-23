@@ -7,6 +7,7 @@ private enum HubSection: String, CaseIterable, Identifiable {
 
 struct LoveHubView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var section: HubSection = .chat
     @AppStorage("rjlove.chat-draft") private var draft = ""
     @State private var sending = false
@@ -16,18 +17,9 @@ struct LoveHubView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(HubSection.allCases) { value in
-                        Button { section = value } label: {
-                            Text(value.rawValue).font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 18).padding(.vertical, 12)
-                                .foregroundStyle(section == value ? Color.white : Color.primary)
-                                .background(section == value ? LovePalette.pink : Color.primary.opacity(0.04), in: Capsule())
-                        }.buttonStyle(.plain)
-                    }
-                }.padding(.horizontal, 20).padding(.vertical, 12)
-            }
+            Picker("Für uns", selection: $section) {
+                ForEach(HubSection.allCases) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).padding(.horizontal, 18).padding(.vertical, 10)
             if section == .chat { chatContent }
             else {
                 ScrollView {
@@ -43,6 +35,7 @@ struct LoveHubView: View {
                 }
             }
         }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: section)
         .background(LoveBackground()).navigationTitle("Nur wir zwei").navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

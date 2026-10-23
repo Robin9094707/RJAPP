@@ -20,6 +20,7 @@ enum AudioDraftStore {
     static func save(_ draft: FartDraft) throws {
         try JSONEncoder().encode(draft).write(to: metadataURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
+    static var parkedURL: URL { directory.appendingPathComponent("parked-draft.json") }
     static func load() -> FartDraft? {
         guard let bytes = try? Data(contentsOf: metadataURL), let draft = try? JSONDecoder().decode(FartDraft.self, from: bytes), UUID(uuidString: draft.id) != nil, FileManager.default.fileExists(atPath: draft.url.path) else { return nil }
         return draft
@@ -62,6 +63,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     private override init() {
         super.init()
         draft = AudioDraftStore.load()
+        if draft == nil { restoreParkedDraft() }
         if draft != nil { mode = .review; elapsed = draft?.duration ?? 0 }
         Task { [weak self] in
             for await _ in NotificationCenter.default.notifications(named: AVAudioSession.interruptionNotification) {
@@ -93,7 +95,10 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     var hasRecording: Bool { mode == .recording || mode == .paused }
 
     func prepare(ownerID: String) {
-        if let draft, draft.ownerID != ownerID { discard() }
+        if let draft, draft.ownerID != ownerID {
+            discard()
+            if let restored=self.draft,restored.ownerID != ownerID {discard()}
+        }
         self.ownerID = ownerID
     }
     func start(ownerID: String) async {
@@ -163,7 +168,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
             persistDraft(duration: elapsed); mode = .review
         } else {
             try? FileManager.default.removeItem(at: AudioDraftStore.directory.appendingPathComponent(recordingID + ".m4a"))
-            mode = .idle; draft = nil
+            mode = .idle; draft = nil; restoreParkedDraft()
         }
         endRecordingActivity(); deactivateSession(); Haptics.impact(.light)
     }
@@ -185,6 +190,23 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
             return levels[start..<min(end, levels.count)].max() ?? 0
         }
     }
+    func parkDraftForEmergency() throws {
+        guard !hasRecording, let draft else { return }
+        guard !FileManager.default.fileExists(atPath: AudioDraftStore.parkedURL.path) else {
+            throw StudioError.recordingFailed
+        }
+        try JSONEncoder().encode(draft).write(to: AudioDraftStore.parkedURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try? FileManager.default.removeItem(at: AudioDraftStore.metadataURL)
+        self.draft = nil; mode = .idle; elapsed = 0; liveLevels = []
+    }
+    private func restoreParkedDraft() {
+        guard let data = try? Data(contentsOf: AudioDraftStore.parkedURL),
+              let value = try? JSONDecoder().decode(FartDraft.self, from: data),
+              UUID(uuidString:value.id) != nil, FileManager.default.fileExists(atPath:value.url.path) else { return }
+        do { try AudioDraftStore.save(value) } catch { errorMessage=error.localizedDescription; return }
+        draft=value; mode = .review; elapsed=value.duration
+        try? FileManager.default.removeItem(at:AudioDraftStore.parkedURL)
+    }
     func discard() {
         operationID = UUID()
         let currentURL = recorder?.url
@@ -195,6 +217,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         try? FileManager.default.removeItem(at: AudioDraftStore.metadataURL)
         draft = nil; mode = .idle; elapsed = 0; liveLevels = []; allLevels = []
         deactivateSession()
+        restoreParkedDraft()
     }
     func trimDraft(start: Double, end: Double) async throws {
         guard let draft, mode == .review else { return }

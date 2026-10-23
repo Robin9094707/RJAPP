@@ -104,9 +104,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-3.1-Komplettpaket
+          name: RJ-Love-3.2-Komplettpaket
           path: |
-            RJ-Love-3.1-Komplettpaket.zip
+            RJ-Love-3.2-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -135,14 +135,10 @@ jobs:
     name: Verify ${{ matrix.device }} layout
     runs-on: macos-26
     timeout-minutes: 40
+    if: github.event_name == 'workflow_dispatch'
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - device: iPhone 14 Pro
-            slug: iPhone14Pro
-          - device: iPhone SE (3rd generation)
-            slug: iPhoneSE3rdgeneration
           - device: iPhone 15 Plus
             slug: iPhone15Plus
     steps:

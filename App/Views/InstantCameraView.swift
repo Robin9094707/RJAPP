@@ -56,6 +56,8 @@ struct InstantCameraView: View {
     @State private var captured = false
     @State private var sending = false
     @State private var capturedAt = Date.now
+    @State private var latitude:Double?
+    @State private var longitude:Double?
     @State private var uploadTask: Task<Void, Never>?
     @State private var uploadedAsset: String?
     @State private var error: String?
@@ -88,6 +90,7 @@ struct InstantCameraView: View {
                     captured = true; camera.photo = PreviewFixtures.media().poster; return
                 }
                 #endif
+                app.location.requestPhotoLocation()
                 await camera.start()
             }
             .onAppear { cancelled = false }
@@ -105,7 +108,11 @@ struct InstantCameraView: View {
     private func advanceCamera() {
         guard !cancelled, UIApplication.shared.applicationState == .active else { return }
         if camera.photo != nil { beginUpload() }
-        else if camera.running, !captured { captured = true; capturedAt = .now; camera.capture() }
+        else if camera.running, !captured {
+            captured = true; capturedAt = .now
+            if let coordinate=app.location.freshPhotoCoordinate { latitude=coordinate.latitude;longitude=coordinate.longitude }
+            camera.capture()
+        }
     }
     private func resumeVisibleCamera() {
         guard !cancelled else { return }
@@ -134,7 +141,7 @@ struct InstantCameraView: View {
                 }
                 try Task.checkCancellation()
                 guard !cancelled, let id = uploadedAsset else { return }
-                let photo = try await app.api.replyToPhotoRequest(id: request.id, assetID: id, caption: prompt, poster: poster, capturedAt: capturedAt)
+                let photo = try await app.api.replyToPhotoRequest(id: request.id, assetID: id, caption: prompt, poster: poster, capturedAt: capturedAt,latitude:latitude,longitude:longitude)
                 app.receiveInstantPhoto(photo, requestID: request.id)
                 dismiss()
             } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
@@ -152,11 +159,11 @@ struct InstantGalleryView:View {
     @State private var editing:SharedRecord?
     private var photos:[SharedRecord]{app.records.filter{$0.kind == .instant}.sorted{$0.createdAt>$1.createdAt}}
     var body:some View {ScrollView{VStack(alignment:.leading,spacing:20){
-        Text("Zeig mir dein Jetzt.").font(.system(size:32,weight:.medium,design:.serif))
+        Text("Unser BeReal-Verlauf.").font(.system(size:32,weight:.medium,design:.serif))
         Text("Schick einen Fotowunsch. In der geöffneten App erscheint beim Gegenüber die sichtbare Kamera und nimmt direkt ein Foto auf. Beide können das unter Mehr ausschalten.").font(.subheadline).foregroundStyle(.secondary)
         Button(sendingRequest ? "Wird gewünscht …" : "Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest).buttonStyle(.borderedProminent)
         if sent { Label("Fotowunsch gesendet", systemImage: "checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent") }
         ForEach(app.records.filter{$0.kind == .photo_request && $0.payload.completed != true}){request in HStack{Text(request.payload.title ?? "Ein Fotowunsch");Spacer();if request.payload.targetID==app.me?.id{Button("Beantworten"){UserDefaults.standard.removeObject(forKey:"rjlove.photo-skip."+request.id);app.pendingPhotoRequest=request}}else{Text("Wartet auf deinen Lieblingsmenschen").font(.caption)}}.loveCard()}
-        ForEach(photos){photo in VStack(alignment:.leading,spacing:12){MediaAttachmentView(record:photo);Text(photo.payload.caption ?? "Unser Jetzt").font(.headline).accessibilityIdentifier("instant-photo-caption");if let date=(photo.payload.capturedAt ?? photo.createdAt).rjDate{Text(date.formatted(.dateTime.day().month(.wide).year().hour().minute().second())).font(.caption.monospacedDigit())};if photo.ownerID==app.me?.id{Button("Beschreiben",systemImage:"pencil"){editing=photo};Button("Foto zurückrufen",role:.destructive){deleting=photo}}}.loveCard()}
-    }.padding(22)}.background(LoveBackground()).navigationTitle("Unser Jetzt").sheet(item:$editing){MomentMetadataEditor(record:$0)}.alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true;requestID=UUID().uuidString};sendingRequest=false}};Button("Abbrechen",role:.cancel){}}.alert("Foto für beide zurückrufen?",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}})){Button("Zurückrufen",role:.destructive){if let photo=deleting{Task{_ = await app.deleteRecord(photo)}};deleting=nil};Button("Abbrechen",role:.cancel){deleting=nil}}.task{await app.loadRecordArchive(kind:.instant);await app.loadRecordArchive(kind:.photo_request)}}
+        ForEach(photos){photo in VStack(alignment:.leading,spacing:12){MediaAttachmentView(record:photo);PhotoPlaceView(payload:photo.payload);Text(photo.payload.caption ?? "Unser Jetzt").font(.headline).accessibilityIdentifier("instant-photo-caption");if let date=(photo.payload.capturedAt ?? photo.createdAt).rjDate{Text(date.formatted(.dateTime.day().month(.wide).year().hour().minute().second())).font(.caption.monospacedDigit())};if photo.ownerID==app.me?.id{Button("Beschreiben",systemImage:"pencil"){editing=photo};Button("Foto zurückrufen",role:.destructive){deleting=photo}}}.loveCard()}
+    }.padding(22)}.background(LoveBackground()).navigationTitle("BeReal").sheet(item:$editing){MomentMetadataEditor(record:$0)}.alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true;requestID=UUID().uuidString};sendingRequest=false}};Button("Abbrechen",role:.cancel){}}.alert("Foto für beide zurückrufen?",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}})){Button("Zurückrufen",role:.destructive){if let photo=deleting{Task{_ = await app.deleteRecord(photo)}};deleting=nil};Button("Abbrechen",role:.cancel){deleting=nil}}.task{await app.loadRecordArchive(kind:.instant);await app.loadRecordArchive(kind:.photo_request)}}
 }

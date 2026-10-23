@@ -191,7 +191,8 @@ struct ConnectionLiveActivityWidget: Widget {
                     .foregroundStyle(.pink)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(context.attributes.partnerName).font(.headline)
-                    Text(context.isStale ? "Stand veraltet · App öffnen" : context.state.motion)
+                    Text(context.isStale ? "Stand veraltet · App öffnen" : context.state.status ?? context.state.motion)
+                    Text(context.state.lastUpdate,style:.relative).font(.caption2).foregroundStyle(.secondary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -202,6 +203,9 @@ struct ConnectionLiveActivityWidget: Widget {
                 }
             }
             .padding(16)
+            .overlay(alignment:.bottomTrailing) {
+                Link(destination:URL(string:"rjlove://record-fart")!) { Image(systemName:"cloud.fill").padding(10) }.accessibilityLabel("Notfallfurz aufnehmen").padding(.trailing,8)
+            }
             .activityBackgroundTint(.black.opacity(0.75))
             .activitySystemActionForegroundColor(.white)
             .widgetURL(URL(string: "rjlove://home"))
@@ -217,7 +221,8 @@ struct ConnectionLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack {
-                        Label(context.state.motion, systemImage: "location.fill")
+                        Label(context.state.status ?? context.state.motion, systemImage: "heart.text.square")
+                        Link(destination:URL(string:"rjlove://record-fart")!) { Image(systemName:"cloud.fill") }.accessibilityLabel("Notfallfurz aufnehmen")
                         Spacer()
                         Text("Du \(context.state.myThoughts)× · Schatzi \(context.state.partnerThoughts)×")
                     }
@@ -259,6 +264,9 @@ struct RJLoveAlarmLiveActivityWidget: Widget {
                 .tint(.pink)
             }
             .padding(16)
+            .overlay(alignment:.bottomTrailing) {
+                Link(destination:URL(string:"rjlove://record-fart")!) { Image(systemName:"cloud.fill").padding(10) }.accessibilityLabel("Notfallfurz aufnehmen").padding(.trailing,8)
+            }
             .activityBackgroundTint(.black.opacity(0.78))
             .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in

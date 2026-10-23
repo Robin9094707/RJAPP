@@ -40,9 +40,12 @@ struct MainTabView:View {
             NavigationStack{HomeView()}.tabItem{Label("Wir",systemImage:"heart.fill")}.tag(AppTab.home)
             NavigationStack{PartnerMapView()}.tabItem{Label("Karte",systemImage:"location.fill")}.tag(AppTab.map)
             NavigationStack{LoveHubView()}.tabItem{Label("Für uns",systemImage:"person.2.fill")}.tag(AppTab.together)
-            NavigationStack{ExperienceView()}.tabItem{Label("Spielplatz",systemImage:"sparkles")}.tag(AppTab.moments)
-            NavigationStack{SettingsView()}.tabItem{Label("Mehr",systemImage:"slider.horizontal.3")}.tag(AppTab.settings)
+            NavigationStack{ExperienceView()}.tabItem{Label("Erleben",systemImage:"sparkles")}.tag(AppTab.moments)
+
         }
+
+        .sheet(isPresented:$state.showingStatus){StatusEditorView()}
+        .onChange(of:state.selectedTab){_,tab in if tab == .settings{state.selectedTab = .home;state.showingProfile=true}}
         .sheet(isPresented:$state.showingFartRecorder,onDismiss:{appState.offerForegroundMoments()}){FartRecorderView(autoStart:appState.quickFartRecording)}
         .sheet(isPresented:$state.showingChangelog,onDismiss:{appState.offerForegroundMoments()}){ChangelogView()}
         .sheet(item:$state.pendingSweet,onDismiss:{appState.offerForegroundMoments()}){SweetPlaybackView(record:$0)}
@@ -57,15 +60,13 @@ struct ChangelogView:View {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 Image(systemName:"heart.text.clipboard.fill").font(.system(size:50)).foregroundStyle(LovePalette.pink)
                 Text("Noch mehr wir.").font(.system(size:36,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.1").font(.title3.bold())
-                Label("Fotos stabil teilen und Fotowünsche direkt beantworten",systemImage:"camera.fill")
-                Label("Deine Startseite: Karten anpassen und auf dem Server speichern",systemImage:"square.grid.2x2.fill")
-                Label("Schlafbalance teilen und aktive UWB-Suche mit Live-Aktivität fortsetzen",systemImage:"moon.stars.fill")
-                Label("Duftpost importieren, lokal sichern und als Playlist hören",systemImage:"wind")
-                Label("Gemeinsame Termine, Jahrestage und optionale Wecker",systemImage:"calendar.badge.clock")
-                Label("Jeder Herzgedanke mit Datum und Sekunden",systemImage:"heart.fill")
-                Text("Neu zunächst eingeschaltet: Aufnahmeorte bei neuer Duftpost, Fotowünsche mit direkter sichtbarer Kameraaufnahme sowie süße Nachrichten beim Öffnen. iOS-Zugriffsrechte gelten weiterhin. Unter Mehr kannst du diese Optionen jederzeit ändern.").font(.subheadline).foregroundStyle(.secondary)
-                Text("Walkie-Talkie und die eigene Face-ID-Sperre sind entfernt. Eure Konten, Aufnahmen und bisherigen Momente bleiben erhalten.").font(.footnote)
+                Text("Willkommen in RJ Love 3.2").font(.title3.bold())
+                Label("Vier klare Bereiche und dein Profil mit nativer Zoom-Animation",systemImage:"rectangle.3.group.fill")
+                Label("Momente direkt aufnehmen und BeReal-Verlauf mit Aufnahmeorten",systemImage:"camera.fill")
+                Label("Status, Schlafen und Bitte nicht stören für bis zu acht Stunden",systemImage:"moon.stars.fill")
+                Label("Notfallfurz mit Wolke, sicheren Entwürfen und Kurzbefehlen",systemImage:"cloud.fill")
+                Label("Live-Aktivität bleibt im Hintergrund sichtbar",systemImage:"livephoto")
+                Text("Hintergrund-Ortung schaltest du freiwillig im Profil ein. Eine Live-Aktivität kann bis zu acht Stunden laufen und wird bei aktivierter Option beim nächsten Öffnen erneuert. Eure bisherigen Daten bleiben erhalten.").font(.footnote).foregroundStyle(.secondary)
                 Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
             }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")
         }.interactiveDismissDisabled()

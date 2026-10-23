@@ -19,6 +19,10 @@ struct SendThoughtIntent: AppIntent {
 
 struct RJLoveShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        AppShortcut(intent:EmergencyFartIntent(),phrases:["Notfallfurz mit \(.applicationName)"],shortTitle:"Notfallfurz",systemImageName:"cloud.fill")
+        AppShortcut(intent:OpenMomentsIntent(),phrases:["Momente in \(.applicationName) öffnen"],shortTitle:"Unsere Momente",systemImageName:"photo.stack.fill")
+        AppShortcut(intent:OpenPartnerMapIntent(),phrases:["Schatzi in \(.applicationName) finden"],shortTitle:"Partnerkarte",systemImageName:"location.fill")
+        AppShortcut(intent:SetLoveStatusIntent(),phrases:["Status in \(.applicationName) setzen"],shortTitle:"Status setzen",systemImageName:"face.smiling")
         AppShortcut(
             intent: SendThoughtIntent(),
             phrases: ["Mit \(.applicationName) an Schatzi denken"],
@@ -33,6 +37,34 @@ struct EmergencyFartIntent: AppIntent {
     static var openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult {
         WidgetSharedStore.defaults.set(true,forKey:"rjlove.quick-fart-requested")
+        NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
+        return .result()
+    }
+}
+
+private func requestLoveRoute(_ route:String) {
+    WidgetSharedStore.defaults.set(route,forKey:"rjlove.route-requested")
+    NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
+}
+struct OpenMomentsIntent:AppIntent {
+    static var title:LocalizedStringResource="Unsere Momente öffnen"
+    static var openAppWhenRun=true
+    @MainActor func perform() async throws -> some IntentResult {requestLoveRoute("rjlove://moments");return .result()}
+}
+struct OpenPartnerMapIntent:AppIntent {
+    static var title:LocalizedStringResource="Partnerkarte öffnen"
+    static var openAppWhenRun=true
+    @MainActor func perform() async throws -> some IntentResult {requestLoveRoute("rjlove://map");return .result()}
+}
+struct SetLoveStatusIntent:AppIntent {
+    static var title:LocalizedStringResource="Meinen Status setzen"
+    static var description=IntentDescription("Öffnet RJ Love und teilt deinen Status mit Schatzi. Anmeldung und Serververbindung erforderlich.")
+    static var openAppWhenRun=true
+    @Parameter(title:"Status") var text:String
+    @Parameter(title:"Stunden (0 = bis zur Änderung)",default:2) var hours:Int
+    @Parameter(title:"Bitte nicht stören",default:false) var quiet:Bool
+    @MainActor func perform() async throws -> some IntentResult {
+        WidgetSharedStore.defaults.set(["text":String(text.prefix(120)),"hours":min(8,max(0,hours)),"quiet":quiet],forKey:"rjlove.status-requested")
         NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
         return .result()
     }

@@ -1,3 +1,7 @@
+## Ergänzung 3.2
+
+Neue Momente und BeReals können freiwillig Aufnahmeorte speichern. Bei importierten Medien wird ein verfügbarer Original-Aufnahmeort verwendet; eine Geräteposition wird nicht als historischer Aufnahmeort ausgegeben. Status und Ruhezeiten werden auf dem privaten Server gespeichert. Optional aktivierte Hintergrund-Ortung arbeitet unabhängig von Live-Aktivitäten und zeigt die iOS-Standortanzeige. Keine stille Kameraaufnahme im Hintergrund.
+
 > Version 3.1: Persönliche Startseiten werden je Konto gespeichert. Fotowünsche verwenden eine sichtbare sofortige Kameraaufnahme. Eine aktiv gestartete UWB-Suche kann mit Live-Aktivität höchstens 15 Minuten im Hintergrund fortgesetzt werden; keine Suche auf einem geschlossenen Partnergerät starten.
 
 # Aktuelle Änderungen 3.0

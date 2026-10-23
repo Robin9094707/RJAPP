@@ -43,6 +43,8 @@ struct PresencePayload: Codable, Hashable, Sendable {
     var healthUpdatedAt: String?
     var locationSharing: Bool?
     var statusMessage: String?
+    var statusExpiresAt: String?
+    var dndUntil: String?
     var deviceName: String?
     var appVersion: String?
     var reportedAt: String?
@@ -63,6 +65,7 @@ struct PresencePayload: Codable, Hashable, Sendable {
         case healthUpdatedAt = "health_updated_at"
         case locationSharing = "location_sharing"
         case statusMessage = "status_message"
+        case statusExpiresAt = "status_expires_at", dndUntil = "dnd_until"
         case deviceName = "device_name"
         case appVersion = "app_version"
         case reportedAt = "reported_at"
@@ -362,4 +365,13 @@ extension Date {
     var rjISO8601: String {
         ISO8601DateFormatter.rjLove.string(from: self)
     }
+}
+
+// The deadline is authoritative even if the other phone has not synced again.
+extension PresencePayload {
+    var visibleStatus: String? {
+        if let end=statusExpiresAt?.rjDate, end <= .now { return nil }
+        return statusMessage?.isEmpty == false ? statusMessage : nil
+    }
+    var isQuiet: Bool { (dndUntil?.rjDate ?? .distantPast) > .now }
 }

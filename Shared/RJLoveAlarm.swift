@@ -78,6 +78,8 @@ struct ConnectionActivityAttributes: ActivityAttributes {
         var lastUpdate: Date
         var myThoughts: Int
         var partnerThoughts: Int
+        var status: String? = nil
+        var quietUntil: Date? = nil
     }
 
     var partnerName: String

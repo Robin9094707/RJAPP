@@ -1,5 +1,6 @@
 import AVFoundation
 import CryptoKit
+import CoreLocation
 import Foundation
 import ImageIO
 import Observation
@@ -16,6 +17,8 @@ struct SelectedMedia: Identifiable {
     var kind: String
     var capturedAt: Date
     var poster: Data?
+    var latitude: Double? = nil
+    var longitude: Double? = nil
 }
 final class MediaUploadProgress: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let update: @Sendable (Double) -> Void
@@ -133,8 +136,10 @@ extension APIClient {
     func createPhotoRequest(id: String, title: String) async throws -> SharedRecord {
         try await execute(try request(path: "/v1/photo-requests", method: "POST", body: encoder.encode(["id": id, "title": title])), as: SharedRecord.self)
     }
-    func replyToPhotoRequest(id:String,assetID:String,caption:String,poster:Data?,capturedAt:Date = .now) async throws -> SharedRecord {
-        try await execute(try request(path:"/v1/photo-requests/\(id)/reply",method:"POST",body:encoder.encode(["asset_id":assetID,"caption":caption,"captured_at":capturedAt.rjISO8601,"poster_base64":poster?.base64EncodedString() ?? ""])),as:SharedRecord.self)
+    func replyToPhotoRequest(id:String,assetID:String,caption:String,poster:Data?,capturedAt:Date = .now,latitude:Double?=nil,longitude:Double?=nil) async throws -> SharedRecord {
+        var body:[String:Any]=["asset_id":assetID,"caption":caption,"captured_at":capturedAt.rjISO8601,"poster_base64":poster?.base64EncodedString() ?? ""]
+        if let latitude,let longitude {body["latitude"]=latitude;body["longitude"]=longitude}
+        return try await execute(try request(path:"/v1/photo-requests/\(id)/reply",method:"POST",body:JSONSerialization.data(withJSONObject:body)),as:SharedRecord.self)
     }
 }
 
@@ -171,7 +176,7 @@ struct MediaPicker: UIViewControllerRepresentable {
                                 };files.append(file)
                             }
                             let poster=Self.poster(file: files[0])
-                            self.finish(.success(SelectedMedia(files:files,mimeTypes:[photo.uniformTypeIdentifier.contains("heic") ? "image/heic":"image/jpeg","video/quicktime"],kind:"live",capturedAt:Self.captureDate(result,fileURL:files[0]),poster:poster)))
+                            self.finish(.success(SelectedMedia(files:files,mimeTypes:[photo.uniformTypeIdentifier.contains("heic") ? "image/heic":"image/jpeg","video/quicktime"],kind:"live",capturedAt:Self.captureDate(result,fileURL:files[0]),poster:poster,latitude:Self.photoLocation(result,file:files[0])?.latitude,longitude:Self.photoLocation(result,file:files[0])?.longitude)))
                         } catch {self.finish(.failure(error))}
                     }
                 }
@@ -185,10 +190,24 @@ struct MediaPicker: UIViewControllerRepresentable {
                         try FileManager.default.copyItem(at:file,to:destination)
                         let mime=video ? (ext=="mp4" ? "video/mp4":"video/quicktime") : ["png":"image/png","heic":"image/heic","heif":"image/heif"].first{$0.key==ext}?.value ?? "image/jpeg"
                         let poster = video ? nil : Self.poster(file: destination)
-                        self.finish(.success(SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result,fileURL: video ? nil : destination),poster:poster)))
+                        self.finish(.success(SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result,fileURL: video ? nil : destination),poster:poster,latitude:Self.photoLocation(result,file:destination)?.latitude,longitude:Self.photoLocation(result,file:destination)?.longitude)))
                     } catch{self.finish(.failure(error))}
                 }
             }
+        }
+        static func photoLocation(_ result:PHPickerResult, file:URL)->CLLocationCoordinate2D? {
+            let auth=PHPhotoLibrary.authorizationStatus(for:.readWrite)
+            if auth == .authorized || auth == .limited,
+               let id=result.assetIdentifier, let location=PHAsset.fetchAssets(withLocalIdentifiers:[id],options:nil).firstObject?.location {
+                return location.coordinate
+            }
+            guard let source=CGImageSourceCreateWithURL(file as CFURL,nil),
+                  let props=CGImageSourceCopyPropertiesAtIndex(source,0,nil) as? [String:Any],
+                  let gps=props[kCGImagePropertyGPSDictionary as String] as? [String:Any],
+                  let lat=gps[kCGImagePropertyGPSLatitude as String] as? Double,
+                  let lon=gps[kCGImagePropertyGPSLongitude as String] as? Double else { return nil }
+            let coordinate=CLLocationCoordinate2D(latitude:(gps[kCGImagePropertyGPSLatitudeRef as String] as? String)=="S" ? -lat:lat,longitude:(gps[kCGImagePropertyGPSLongitudeRef as String] as? String)=="W" ? -lon:lon)
+            return CLLocationCoordinate2DIsValid(coordinate) ? coordinate:nil
         }
         static func captureDate(_ result:PHPickerResult,fileURL:URL?=nil,imageData:Data?=nil)->Date {
             let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)

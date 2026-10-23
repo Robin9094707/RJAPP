@@ -27,6 +27,21 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         }
     }
 
+    @Published var backgroundSharingEnabled: Bool = UserDefaults.standard.bool(forKey:"rjlove.background-location") {
+        didSet {UserDefaults.standard.set(backgroundSharingEnabled,forKey:"rjlove.background-location"); if sharingEnabled {start()}}
+    }
+    @Published var photoLocationEnabled: Bool = UserDefaults.standard.object(forKey:"rjlove.photo-location") as? Bool ?? true {
+        didSet {UserDefaults.standard.set(photoLocationEnabled,forKey:"rjlove.photo-location")}
+    }
+    var freshPhotoCoordinate: CLLocationCoordinate2D? {
+        guard photoLocationEnabled,authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse,let value=lastLocation,abs(value.timestamp.timeIntervalSinceNow)<60,value.horizontalAccuracy>=0,value.horizontalAccuracy<=500 else {return nil}
+        return value.coordinate
+    }
+    func requestPhotoLocation() {
+        guard photoLocationEnabled else {return}
+        if manager.authorizationStatus == .notDetermined {manager.requestWhenInUseAuthorization()}
+        else if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {manager.requestLocation()}
+    }
     var onLocation: ((CLLocation) -> Void)?
     var onGeofenceEvent: ((String, String, String) -> Void)?
 
@@ -81,8 +96,15 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     }
 
     func enterBackground() {
-        manager.stopUpdatingLocation()
-        manager.allowsBackgroundLocationUpdates = false
+        if sharingEnabled,backgroundSharingEnabled,
+           manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
+            manager.allowsBackgroundLocationUpdates=true
+            manager.showsBackgroundLocationIndicator=true
+            manager.startUpdatingLocation()
+        } else {
+            manager.stopUpdatingLocation()
+            manager.allowsBackgroundLocationUpdates=false
+        }
         if sharingEnabled,manager.authorizationStatus == .authorizedAlways {manager.startMonitoringSignificantLocationChanges()}
     }
     func start() {
@@ -90,7 +112,8 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         guard UIApplication.shared.applicationState == .active else {enterBackground();return}
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
-            manager.allowsBackgroundLocationUpdates = false
+            manager.allowsBackgroundLocationUpdates = backgroundSharingEnabled
+            manager.showsBackgroundLocationIndicator = backgroundSharingEnabled
             manager.startUpdatingLocation()
             manager.startMonitoringSignificantLocationChanges()
         case .notDetermined:

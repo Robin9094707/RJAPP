@@ -20,7 +20,21 @@ struct SettingsView: View {
         @Bindable var state = appState
 
         Form {
-            Section("Euer privater Raum · 3.0") {
+            Section {
+                HStack(spacing:14) {
+                    PartnerAvatar(name:appState.me?.displayName ?? "Du",size:60)
+                    VStack(alignment:.leading,spacing:4) {
+                        Text(appState.me?.displayName ?? "Dein Profil").font(.title2.bold())
+                        Text(appState.myStatus?.visibleStatus ?? "Wie geht es dir gerade?").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }.padding(.vertical,10)
+                NavigationLink("Meinen Status setzen") { StatusEditorView() }
+                if let partner=appState.partner {
+                    LabeledContent(partner.displayName,value:partner.presence?.visibleStatus ?? "Kein Status")
+                    if partner.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").foregroundStyle(.secondary)}
+                }
+            }
+            Section("Euer privater Raum · 3.2") {
                 NavigationLink { DeliveryCenterView() } label: { Label("Push, Wecker & Hintergrund", systemImage: "checkmark.shield.fill") }
                 Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
                 NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }
@@ -48,11 +62,15 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Live-Standort", isOn: $location.sharingEnabled)
+                if location.sharingEnabled {
+                    Toggle("Auch im Hintergrund teilen",isOn:$location.backgroundSharingEnabled)
+                        .onChange(of:location.backgroundSharingEnabled) {_,value in if value {location.requestAlways()} }
+                    Text("iOS zeigt die Standortnutzung an. Bewegung liefert Standort und Akku, solange iOS die App ausführt. Nach erzwungenem Beenden oder ohne Netz sind Updates nicht garantiert.").font(.caption).foregroundStyle(.secondary)
+                }
+                Toggle("Aufnahmeort bei neuen Fotos",isOn:$location.photoLocationEnabled)
                 Toggle("Health-Zusammenfassung", isOn: $health.sharingEnabled)
                 Toggle("WLAN-Name, wenn verfügbar", isOn: $state.shareWiFiName)
-                TextField("Mein Status", text: $state.statusMessage, axis: .vertical)
-                    .lineLimit(2...4)
-                Button("Status jetzt übertragen") { appState.queuePresenceUpload(force: true) }
+                NavigationLink("Status & Bitte nicht stören") { StatusEditorView() }
             } header: {
                 Text("Was ich teile")
             } footer: {

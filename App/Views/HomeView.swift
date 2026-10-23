@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var showingHealth = false
     @State private var showingNearby = false
     @State private var editingHome = false
+    @Namespace private var profileTransition
     private var homeTint: Color { appState.homeLayout.theme == "ocean" ? LovePalette.cyan : appState.homeLayout.theme == "violet" ? LovePalette.violet : LovePalette.pink }
     private var partnerName: String { appState.partner?.displayName ?? "Dein Lieblingsmensch" }
     private var milestone: SharedRecord? { appState.records.first { $0.kind == .milestone } }
@@ -34,6 +35,7 @@ struct HomeView: View {
         .sheet(isPresented: $editingHome) { HomeEditorView() }
         .sheet(isPresented: $showingWakeComposer) { WakeComposerView() }
         .sheet(isPresented: $showingStatusEditor) { StatusEditorView() }
+        .sheet(isPresented: Binding(get:{appState.showingProfile},set:{appState.showingProfile=$0})) { NavigationStack { SettingsView().toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { appState.showingProfile=false } } } }.navigationTransition(.zoom(sourceID:"profile",in:profileTransition)) }
         .sheet(isPresented: $showingHealth) { NavigationStack { HealthDashboardView() } }
         .sheet(isPresented: $showingNearby) { NavigationStack { NearbyView() } }
         .refreshable { await appState.syncNow(showErrors: false) }
@@ -115,9 +117,9 @@ struct HomeView: View {
             Button { editingHome = true } label: {
                 Image(systemName: "slider.horizontal.3").font(.headline).frame(width: 44, height: 44).background(homeTint.opacity(0.12), in: Circle())
             }.accessibilityLabel("Startseite anpassen").accessibilityIdentifier("home-customize")
-            Button { appState.selectedTab = .settings } label: {
+            Button { appState.showingProfile = true } label: {
                 PartnerAvatar(name: appState.me?.displayName ?? "R", size: 46)
-            }.accessibilityLabel("Dein Profil und Einstellungen")
+            }.matchedTransitionSource(id:"profile",in:profileTransition).accessibilityLabel("Dein Profil und Einstellungen")
         }.padding(.top, 20)
     }
 
@@ -178,11 +180,12 @@ struct HomeView: View {
                 PartnerAvatar(name: partnerName, size: 58)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(partnerName).font(.title3.bold())
-                    Text(appState.partner?.presence?.statusMessage ?? "Euer nächster kleiner Moment wartet.")
+                    Text(appState.partner?.presence?.visibleStatus ?? "Euer nächster kleiner Moment wartet.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
+            if appState.partner?.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").font(.caption).foregroundStyle(.secondary)}
             Divider().opacity(0.5)
             HStack {
                 Label(appState.partner?.presence?.motion ?? "Noch kein Bewegungsstatus", systemImage: "figure.walk")
@@ -248,12 +251,12 @@ struct HomeView: View {
                 Image(systemName: "waveform.path.ecg").foregroundStyle(LovePalette.pink)
                 Text("Euer Wir. Immer im Blick.").font(.headline)
             }
-            Text("Ein kleiner Platz auf eurem Sperrbildschirm und in der Dynamic Island.")
+            Text("Status, Akku und Herzgedanken auf Sperrbildschirm und Dynamic Island. Bis zu acht Stunden; bei eingeschalteter Option startet sie beim nächsten Öffnen erneut. Hintergrund-Ortung aktivierst du getrennt im Profil.")
                 .font(.subheadline).foregroundStyle(.secondary)
-            Button(appState.liveActivity.isRunning ? "Live-Aktivität beenden" : "Live-Aktivität starten", systemImage: "livephoto") {
+            Button(appState.liveActivity.enabled ? "Live-Aktivität beenden" : "Live-Aktivität starten", systemImage: "livephoto") {
                 Task {
                     do {
-                        if appState.liveActivity.isRunning { await appState.liveActivity.stop() }
+                        if appState.liveActivity.enabled { await appState.liveActivity.stop() }
                         else { try await appState.liveActivity.start(partnerName: partnerName, battery: appState.partner?.presence?.batteryLevel, motion: appState.partner?.presence?.motion ?? "Noch kein Status", mine: appState.myThoughtCount, partner: appState.partnerThoughtCount, updatedAt: appState.partner?.presence?.updatedAt?.rjDate) }
                     } catch { appState.alert = AppAlert(title: "Live-Aktivität", message: error.localizedDescription) }
                 }
@@ -313,37 +316,6 @@ private struct WakeComposerView: View {
                 Text("Auf dem iPhone von \(appState.partner?.displayName ?? "Schatzi") wird nach dem Empfang ein AlarmKit-Weckruf geplant.")
             }
         }
-        .presentationDetents([.medium])
-    }
-}
-
-private struct StatusEditorView: View {
-    @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
-    @State private var value = ""
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Was möchtest du mitteilen?", text: $value, axis: .vertical)
-                    .lineLimit(3...6)
-                Text("Maximal 120 Zeichen · wird nur mit deinem Partner geteilt.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .navigationTitle("Mein Status")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Speichern") {
-                        appState.statusMessage = String(value.prefix(120))
-                        appState.queuePresenceUpload(force: true)
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .onAppear { value = appState.statusMessage }
         .presentationDetents([.medium])
     }
 }

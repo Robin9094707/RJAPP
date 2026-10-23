@@ -54,6 +54,44 @@ class RJLoveBackendTests(unittest.TestCase):
             raw = response.read()
             return response.status, json.loads(raw) if raw else None
 
+    def test_status_expiry_quiet_and_telemetry_independence(self):
+        import datetime
+        token=self.login()
+        partner=self.login("raphaela","raphaela-test-password")
+        deadline=(SERVER.utc_now()+datetime.timedelta(hours=2)).isoformat()
+        body={"status_message":"😴 Schlafe gerade","status_expires_at":deadline,"dnd_until":deadline}
+        self.assertEqual(self.request("/v1/status","POST",body,token)[0],204)
+        self.request("/v1/presence","POST",{"battery_level":65,"status_message":"old telemetry"},token)
+        status=self.request("/v1/bootstrap",token=partner)[1]["partners"][0]["presence"]
+        self.assertEqual(status["status_message"],body["status_message"])
+        self.assertEqual(status["battery_level"],65)
+        self.app.apns.send_to_user=lambda *args: self.fail("Quiet status must suppress normal push")
+        self.app.send_ntfy=lambda *args: self.fail("Quiet status must suppress ntfy")
+        self.app.create_event("robin","thought","Hello","Quiet")
+        body["status_expires_at"]="2000-01-01T00:00:00Z"
+        body["dnd_until"]=body["status_expires_at"]
+        self.request("/v1/status","POST",body,token)
+        status=self.request("/v1/bootstrap",token=partner)[1]["partners"][0]["presence"]
+        self.assertEqual(status["status_message"],"")
+        self.assertEqual(status["dnd_until"],"")
+        with self.assertRaises(urllib.error.HTTPError) as failure:
+            self.request("/v1/status","POST",{"status_message":"x","dnd_until":(SERVER.utc_now()+datetime.timedelta(hours=9)).isoformat()},token)
+        self.assertEqual(failure.exception.code,400)
+
+    def test_photo_coordinates_and_old_app_update_gate(self):
+        import uuid
+        payload={"asset_ids":[str(uuid.uuid4())],"media_kind":"image","latitude":51.43,"longitude":6.76}
+        for kind in ("moment","instant"):
+            self.assertEqual(self.app.validate_record_payload(kind,payload)["latitude"],51.43)
+            legacy={k:v for k,v in payload.items() if k not in {"latitude","longitude"}}
+            self.assertNotIn("latitude",self.app.validate_record_payload(kind,legacy))
+            for bad in (True,91,float("nan"),None):
+                with self.assertRaises(SERVER.APIError):self.app.validate_record_payload(kind,payload|{"latitude":bad})
+        with self.assertRaises(urllib.error.HTTPError) as failure:
+            self.request("/v1/bootstrap",version="3.1.0")
+        self.assertEqual(failure.exception.code,426)
+        self.assertEqual(json.loads(failure.exception.read())["compatibility"]["minimum_app_version"],"3.2.0")
+
     def login(self, username="robin", password="robin-test-password"):
         status, body = self.request(
             "/v1/auth/login",

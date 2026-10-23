@@ -50,8 +50,8 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.1.0"
-MINIMUM_APP_VERSION = "3.0.0"
+APP_VERSION = "3.2.0"
+MINIMUM_APP_VERSION = "3.2.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request"}
@@ -328,6 +328,7 @@ class Database:
                     clip_id TEXT NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL,
                     PRIMARY KEY(clip_id,user_id,emoji)
                 );
+                CREATE TABLE IF NOT EXISTS user_status (user_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS command_receipts (command_id TEXT PRIMARY KEY, target_id TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS push_deliveries (id TEXT PRIMARY KEY, target_id TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS radio_members (user_id TEXT PRIMARY KEY, token TEXT NOT NULL, environment TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -832,7 +833,7 @@ class RJLoveApplication:
         allowed_fields = {
             "note": {"title", "text"},
             "reminder": {"title", "message", "due_at", "target_id", "alarm_enabled", "completed", "recurrence", "reminder_sync"},
-            "moment": {"caption", "image_base64", "mime_type", "comments", "reactions", "asset_ids", "media_kind", "album_id", "captured_at", "poster_base64"},
+            "moment": {"latitude", "longitude", "caption", "image_base64", "mime_type", "comments", "reactions", "asset_ids", "media_kind", "album_id", "captured_at", "poster_base64"},
             "geofence": {
                 "name", "latitude", "longitude", "radius", "target_id",
                 "notify_on_enter", "notify_on_exit",
@@ -841,7 +842,7 @@ class RJLoveApplication:
             "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id"}, "wish": {"title", "text", "completed"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
             "milestone": {"title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
-            "album": {"title", "text"}, "instant": {"caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
+            "album": {"title", "text"}, "instant": {"latitude", "longitude", "caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
         }[kind]
         unknown = set(payload) - allowed_fields
         if unknown:
@@ -1000,6 +1001,12 @@ class RJLoveApplication:
             if start is None or end is None or end < start:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_calendar_range", "Der Terminzeitraum ist ungültig.")
 
+        if kind in {"moment","instant"} and ("latitude" in clean or "longitude" in clean):
+            for key,limit in (("latitude",90),("longitude",180)):
+                value=clean.get(key)
+                if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not -limit<=value<=limit:
+                    raise APIError(400,"invalid_photo_location","Aufnahmeort ist ungültig.")
+                clean[key]=float(value)
         if "asset_ids" in clean:
             ids=clean["asset_ids"]
             if not isinstance(ids,list) or not 1<=len(ids)<=8 or any(not isinstance(v,str) or not re.fullmatch(r"[a-fA-F0-9-]{36}",v) for v in ids):
@@ -1117,7 +1124,9 @@ class RJLoveApplication:
                     state = {"battery": presence.get("battery_level"), "motion": presence.get("motion") or "Noch kein Status",
                              "lastUpdate": (updated.timestamp() if updated else 0) - 978307200,
                              "myThoughts": snapshot["thoughts"].get(activity["user_id"], 0),
-                             "partnerThoughts": snapshot["thoughts"].get(partner["id"], 0)}
+                             "partnerThoughts": snapshot["thoughts"].get(partner["id"], 0),
+                             "status":presence.get("status_message"),
+                             "quietUntil":(parse_iso(presence.get("dnd_until")).timestamp()-978307200) if parse_iso(presence.get("dnd_until")) else None}
                     payload = {"aps": {"timestamp": int(time.time()), "event": "update", "content-state": state,
                                        "stale-date": int(updated.timestamp() if updated else 0) + 120}}
                     host = "api.push.apple.com" if activity["environment"] == "production" else "api.sandbox.push.apple.com"
@@ -1238,8 +1247,12 @@ class RJLoveApplication:
         finally:
             if owns_connection:
                 connection.close()
-        self.apns.send_to_user(target_id, event)
-        self.send_ntfy(target_id, event)
+        with self.database.connect() as status_db:
+            row=status_db.execute("SELECT payload FROM user_status WHERE user_id=?",(target_id,)).fetchone()
+        quiet_until=parse_iso(json.loads(row["payload"]).get("dnd_until")) if row else None
+        if not quiet_until or quiet_until <= utc_now() or kind in {"wake","love_alarm","wake_request","push_test"}:
+            self.apns.send_to_user(target_id, event)
+            self.send_ntfy(target_id, event)
         return event
 
     def broadcast_event(
@@ -1314,6 +1327,12 @@ class RJLoveApplication:
         with self.database.connect() as db:
             presences = {row["user_id"]: json.loads(row["payload"]) | {"updated_at": row["updated_at"]}
                          for row in db.execute("SELECT * FROM presence")}
+            for row in db.execute("SELECT user_id,payload FROM user_status"):
+                status=json.loads(row["payload"])
+                if parse_iso(status.get("status_expires_at")) and parse_iso(status["status_expires_at"]) <= utc_now():
+                    status["status_message"]=""
+                if not parse_iso(status.get("dnd_until")) or parse_iso(status["dnd_until"]) <= utc_now(): status["dnd_until"]=""
+                presences.setdefault(row["user_id"],{}).update(status)
             thought_rows = db.execute("SELECT user_id,count FROM thoughts WHERE local_day=?", (day,)).fetchall()
             thoughts = {row["user_id"]: int(row["count"]) for row in thought_rows}
             record_rows = db.execute(
@@ -1581,6 +1600,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
+            if path == "/v1/status":
+                self._save_status(user_id)
+                return
             if path == "/v1/photo-requests":
                 self._request_photo(user_id)
                 return
@@ -1856,7 +1878,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             captured=body.get("captured_at") or now
             if parse_iso(captured) is None or parse_iso(captured)>utc_now()+dt.timedelta(minutes=5):raise APIError(400,"invalid_date","Aufnahmezeit ungültig.")
             caption=safe_text(body.get("caption",""),1000);poster=safe_text(body.get("poster_base64",""),400000)
-            payload=self.app.validate_record_payload("instant",{"caption":caption,"asset_ids":[asset["id"]],"media_kind":"image","request_id":parts[2],"captured_at":captured,"poster_base64":poster})
+            payload=self.app.validate_record_payload("instant",{"caption":caption,"asset_ids":[asset["id"]],"media_kind":"image","request_id":parts[2],"captured_at":captured,"poster_base64":poster,**{k:body[k] for k in ("latitude","longitude") if k in body}})
             raw=json.dumps(payload,ensure_ascii=False);record_id=str(uuid.uuid4())
             with self.app.database.connect() as db:
                 db.execute("BEGIN IMMEDIATE");request=db.execute("SELECT * FROM records WHERE id=? AND kind='photo_request' AND deleted_at IS NULL",(parts[2],)).fetchone()
@@ -2006,6 +2028,22 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
             for table in ("devices", "nearby", "live_activities", "radio_members", "radio_floor"):
                 db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
+        self.send_empty()
+
+    def _save_status(self, user_id: str) -> None:
+        body=self.read_json()
+        payload={"status_message":safe_text(body.get("status_message",""),120)}
+        for key in ("status_expires_at","dnd_until"):
+            raw=body.get(key, "")
+            if raw:
+                deadline=parse_iso(raw)
+                if deadline is None or deadline > utc_now()+dt.timedelta(hours=8,seconds=30):
+                    raise APIError(400,"invalid_status_deadline","Statusdauer darf höchstens acht Stunden betragen.")
+                payload[key]=deadline.isoformat().replace("+00:00","Z")
+            else: payload[key]=""
+        with self.app.database.connect() as db:
+            db.execute("INSERT INTO user_status VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload",(user_id,json.dumps(payload)))
+        self.app.push_live_updates()
         self.send_empty()
 
     def _presence(self, user_id: str) -> None:

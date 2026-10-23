@@ -61,6 +61,7 @@ struct MediaComposer:View {
     @State private var saving=false
     @State private var assets:[String]?
     @State private var saved=false
+    @State private var sharePlace=true
     @State private var uploadError:String?
     var body:some View {NavigationStack{Form{
         if let data=media.poster,let image=UIImage(data:data){Image(uiImage:image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius:20))}
@@ -69,6 +70,10 @@ struct MediaComposer:View {
         Label(media.kind=="live" ? "Live Photo · Bild und Bewegung":media.kind=="video" ? "Video":"Foto",systemImage:media.kind=="video" ? "video.fill":"photo.fill")
         TextField("Ein paar Worte dazu",text:$caption,axis:.vertical)
         if kind == .moment {DatePicker("Aufgenommen am",selection:$capturedAt);Picker("Album",selection:$albumID){Text("Alle Momente").tag("");ForEach(app.records.filter{$0.kind == .album}){Text($0.payload.title ?? "Album").tag($0.id)}}}
+        if kind == .moment {
+            if media.latitude != nil { Toggle("Aufnahmeort mit Schatzi teilen",isOn:$sharePlace) }
+            else { Label("Kein Aufnahmeort in diesem Medium verfügbar",systemImage:"location.slash").font(.caption).foregroundStyle(.secondary) }
+        }
         if saving{ProgressView(value:MediaTransfer.shared.progress);Text("\(Int(MediaTransfer.shared.progress*100)) % · \(MediaTransfer.shared.stage)")}
         Text("Originaldateien bleiben auf eurem Server. Standardlimit: 256 MB pro Datei. Ein Live Photo wird mit beiden Originalbestandteilen gespeichert.").font(.footnote).foregroundStyle(.secondary)
     }.navigationTitle(kind == .chat ? "In unserem Gespräch":"Unser Moment").toolbar{
@@ -80,7 +85,7 @@ struct MediaComposer:View {
         do {
             if assets==nil{assets=try await MediaTransfer.shared.upload(media,api:app.api)}
             var payload=RecordPayload();payload.assetIDs=assets;payload.mediaKind=media.kind;payload.posterBase64=media.poster?.base64EncodedString()
-            if kind == .moment{payload.caption=caption;payload.capturedAt=capturedAt.rjISO8601;payload.albumID=albumID.isEmpty ? nil:albumID;payload.comments=[];payload.reactions=[]}else{payload.text=caption}
+            if kind == .moment{if sharePlace{payload.latitude=media.latitude;payload.longitude=media.longitude};payload.caption=caption;payload.capturedAt=capturedAt.rjISO8601;payload.albumID=albumID.isEmpty ? nil:albumID;payload.comments=[];payload.reactions=[]}else{payload.text=caption}
             if await app.saveRecord(kind:kind,payload:payload) != nil{saved=true;dismiss()}else{uploadError=app.alert?.message ?? "Der Moment konnte nicht gespeichert werden."}
         }catch{uploadError=error.localizedDescription}
     }

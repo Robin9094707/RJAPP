@@ -1,3 +1,7 @@
+# RJ Love 3.2
+
+Aktuelles Update: [Änderungen und Installation 3.2](RELEASE-3.2.md). App und Server gemeinsam aktualisieren.
+
 > Aktuell: [Version 3.1 – Fotos, Startseite, Schlafbalance und UWB](RELEASE-3.1.md). Für App 3.1 zuerst den Python-Server auf 3.1 aktualisieren; Konfiguration und Daten behalten.
 
 # RJ Love 3.0 — Robin & Raphaela

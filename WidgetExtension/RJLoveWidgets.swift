@@ -32,8 +32,10 @@ struct LoveTimelineProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<LoveTimelineEntry>) -> Void) {
-        let entry = LoveTimelineEntry(date: .now, snapshot: WidgetSharedStore.loadSnapshot())
-        completion(Timeline(entries: [entry], policy: .after(.now.addingTimeInterval(15 * 60))))
+        let now=Date.now;let snapshot=WidgetSharedStore.loadSnapshot()
+        var dates=(0...24).map{now.addingTimeInterval(Double($0)*3600)}
+        dates += (1...7).compactMap{Calendar.current.date(byAdding:.day,value:$0,to:Calendar.current.startOfDay(for:now))}
+        completion(Timeline(entries:dates.sorted().map{LoveTimelineEntry(date:$0,snapshot:snapshot)},policy:.after(now.addingTimeInterval(15*60))))
     }
 }
 
@@ -185,59 +187,43 @@ private struct PartnerStatusWidgetView: View {
 struct ConnectionLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ConnectionActivityAttributes.self) { context in
-            HStack(spacing: 13) {
-                Image(systemName: "heart.fill")
-                    .font(.title2)
-                    .foregroundStyle(.pink)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(context.attributes.partnerName).font(.headline)
-                    Text(context.isStale ? "Stand veraltet · App öffnen" : context.state.status ?? context.state.motion)
-                    Text(context.state.lastUpdate,style:.relative).font(.caption2).foregroundStyle(.secondary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            VStack(alignment:.leading,spacing:12) {
+                HStack(spacing:12) {
+                    Image(systemName:"heart.fill").font(.title2).foregroundStyle(.pink)
+                    VStack(alignment:.leading,spacing:4) {
+                        Text(context.attributes.partnerName).font(.headline)
+                        Text(context.isStale ? "Stand veraltet · App öffnen":context.attributes.showStatus != false ? context.state.status ?? context.state.motion:context.state.motion).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer()
+                    if context.attributes.showBattery != false,let battery=context.state.battery {Label("\(battery) %",systemImage:"battery.75percent").font(.subheadline.bold())}
                 }
-                Spacer()
-                if let battery = context.state.battery {
-                    Label("\(battery) %", systemImage: "battery.75percent")
-                        .font(.subheadline.bold())
+                HStack {
+                    if context.state.lastUpdate > Date(timeIntervalSince1970:1) {Text("Stand \(context.state.lastUpdate,style:.relative)").font(.caption2).foregroundStyle(.secondary)}else{Text("Noch keine Gerätedaten").font(.caption2)}
+                    Spacer()
+                    if context.attributes.showThoughts != false {Label("\(context.state.myThoughts) · \(context.state.partnerThoughts)",systemImage:"heart.fill").font(.caption)}
+                    if context.attributes.showQuickAction != false {Link(destination:URL(string:"rjlove://record-fart")!){Image(systemName:"cloud.fill").padding(6)}.accessibilityLabel("Notfallfurz aufnehmen")}
                 }
-            }
-            .padding(16)
-            .overlay(alignment:.bottomTrailing) {
-                Link(destination:URL(string:"rjlove://record-fart")!) { Image(systemName:"cloud.fill").padding(10) }.accessibilityLabel("Notfallfurz aufnehmen").padding(.trailing,8)
-            }
-            .activityBackgroundTint(.black.opacity(0.75))
-            .activitySystemActionForegroundColor(.white)
-            .widgetURL(URL(string: "rjlove://home"))
+            }.padding(16).activityBackgroundTint(.black.opacity(0.78)).activitySystemActionForegroundColor(.white).widgetURL(URL(string:"rjlove://partner"))
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    Label(context.attributes.partnerName, systemImage: "heart.fill")
-                        .foregroundStyle(.pink)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.battery.map { "\($0) %" } ?? "– %")
-                        .font(.headline.monospacedDigit())
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    HStack {
-                        Label(context.state.status ?? context.state.motion, systemImage: "heart.text.square")
-                        Link(destination:URL(string:"rjlove://record-fart")!) { Image(systemName:"cloud.fill") }.accessibilityLabel("Notfallfurz aufnehmen")
-                        Spacer()
-                        Text("Du \(context.state.myThoughts)× · Schatzi \(context.state.partnerThoughts)×")
+                DynamicIslandExpandedRegion(.leading){Label(context.attributes.partnerName,systemImage:"heart.fill").foregroundStyle(.pink).lineLimit(1)}
+                DynamicIslandExpandedRegion(.trailing){if context.attributes.showBattery != false{Text(context.state.battery.map{"\($0) %"} ?? "– %").font(.headline.monospacedDigit())}}
+                DynamicIslandExpandedRegion(.bottom){
+                    VStack(alignment:.leading,spacing:8){
+                        if context.attributes.showStatus != false {Text(context.isStale ? "Stand veraltet · App öffnen":context.state.status ?? context.state.motion).font(.subheadline).lineLimit(2)}
+                        HStack {
+                            if context.attributes.showThoughts != false {Text("Du \(context.state.myThoughts)× · Schatzi \(context.state.partnerThoughts)×").font(.caption)}
+                            Spacer()
+                            if context.attributes.showQuickAction != false {Link(destination:URL(string:"rjlove://record-fart")!){Label("Notfallfurz",systemImage:"cloud.fill")}.font(.caption.bold())}
+                        }
                     }
-                    .font(.caption)
                 }
-            } compactLeading: {
-                Image(systemName: "heart.fill").foregroundStyle(.pink)
-            } compactTrailing: {
-                Text(context.state.battery.map { "\($0)%" } ?? "–")
-                    .font(.caption.bold().monospacedDigit())
-            } minimal: {
-                Image(systemName: "heart.fill").foregroundStyle(.pink)
-            }
-            .widgetURL(URL(string: "rjlove://home"))
-            .keylineTint(.pink)
+            } compactLeading: {Image(systemName:"heart.fill").foregroundStyle(.pink)}
+                compactTrailing: {
+                    if context.attributes.showBattery != false {Text(context.state.battery.map{"\($0)%"} ?? "–").font(.caption.bold().monospacedDigit())}
+                    else {Image(systemName:"heart.fill").foregroundStyle(.pink)}
+                } minimal: {Image(systemName:"heart.fill").foregroundStyle(.pink)}
+                .widgetURL(URL(string:"rjlove://partner")).keylineTint(.pink)
         }
     }
 }
@@ -321,6 +307,7 @@ struct RJLoveWidgetBundle: WidgetBundle {
         RJLoveStatusWidget()
         RJLoveHealthWidget()
         RJLoveCountdownWidget()
+        RJLovePersonalCountdownWidget()
         RJLoveLockWidget()
         RJLoveFartQuickWidget()
         EmergencyFartControl()

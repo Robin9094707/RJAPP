@@ -44,6 +44,7 @@ struct FartClip: Codable, Hashable, Identifiable, Sendable {
     let createdAt: String
     let ratings: [FartRating]
     let reactions: [FartReaction]
+    var commentCount: Int? = nil
     var revision: Int? = nil
     var updatedAt: String? = nil
     var recordedAt: String? = nil
@@ -53,6 +54,7 @@ struct FartClip: Codable, Hashable, Identifiable, Sendable {
     var stars: Int? { ratings.first?.overall }
     enum CodingKeys: String, CodingKey {
         case id, title, caption, category, duration, waveform, ratings, reactions, revision, location, situation
+        case commentCount = "comment_count"
         case recordedAt = "recorded_at"
         case updatedAt = "updated_at"
         case ownerID = "owner_id"; case sizeBytes = "size_bytes"; case createdAt = "created_at"
@@ -83,4 +85,13 @@ enum FartCategory: String, CaseIterable, Identifiable {
 struct FartRecordingAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable { var startedAt: Date; var elapsed: Int; var paused: Bool }
     var title: String
+}
+
+struct FartComment:Codable,Identifiable,Hashable,Sendable {
+    let id:String
+    let clipID:String
+    let userID:String
+    let text:String
+    let createdAt:String
+    enum CodingKeys:String,CodingKey {case id,text;case clipID="clip_id",userID="user_id",createdAt="created_at"}
 }

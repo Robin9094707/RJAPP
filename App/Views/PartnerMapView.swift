@@ -79,7 +79,7 @@ struct PartnerMapView: View {
                 .frame(width: 46, height: 5)
                 .frame(maxWidth: .infinity)
             HStack(spacing: 13) {
-                PartnerAvatar(name: appState.partner?.displayName ?? "Schatzi", size: 54)
+                PartnerAvatar(name: appState.partner?.displayName ?? "Schatzi", size: 54).onTapGesture{appState.showingPartnerProfile=true}
                 VStack(alignment: .leading, spacing: 3) {
                     Text(appState.partner?.displayName ?? "Schatzi")
                         .font(.title2.bold())

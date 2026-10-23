@@ -72,6 +72,7 @@ struct FartClipCard: View {
     let clip: FartClip
     @Environment(AppState.self) private var appState
     @State private var rating = false
+    @State private var comments = false
     @State private var deleting = false
     @State private var editing = false
     @State private var exporting=false
@@ -120,6 +121,9 @@ struct FartClipCard: View {
                 }
                 Spacer(minLength: 0)
             }
+            Button { comments=true } label: {
+                Label("Kommentare · \(clip.commentCount ?? 0)",systemImage:"bubble.left.and.bubble.right.fill").font(.subheadline.weight(.semibold))
+            }.buttonStyle(.bordered)
             Divider().opacity(0.4)
             HStack {
                 Label(clip.stars.map { "\($0)/5 Sterne" } ?? "Jury noch sprachlos", systemImage: "star.fill").font(.caption.bold()).foregroundStyle(LovePalette.coral)
@@ -137,6 +141,7 @@ struct FartClipCard: View {
             }.font(.caption2).foregroundStyle(LovePalette.violet).fixedSize(horizontal: false, vertical: true)
         }.loveCard()
         .sheet(isPresented:$exporting){if let exportURL{FileShareView(urls:[exportURL])}}
+        .sheet(isPresented:$comments){FartCommentsView(clip:clip)}
         .sheet(isPresented: $rating) { FartRatingView(clip: clip) }
         .sheet(isPresented: $editing) { FartEditorView(clip: clip) }
         .alert("Dieses Meisterwerk löschen?", isPresented: $deleting) {

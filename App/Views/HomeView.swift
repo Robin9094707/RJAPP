@@ -50,7 +50,7 @@ struct HomeView: View {
                 }.buttonStyle(.plain)
             } else { heartSpace }
         case .partner:
-            if card.size == .compact { HStack { PartnerAvatar(name: partnerName, size: 38); Text(partnerName).font(.headline); Spacer(); BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState) }.loveCard() }
+            if card.size == .compact { HStack { PartnerAvatar(name: partnerName, size: 38); Text(partnerName).font(.headline); Spacer(); BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState) }.loveCard().onTapGesture{appState.showingPartnerProfile=true} }
             else { partnerCard }
         case .quickActions:
             if card.size == .compact { HStack { Button("Dich finden") { showingNearby = true }; Spacer(); Button("Wecken") { showingWakeComposer = true }; Spacer(); Button("Status") { showingStatusEditor = true } }.font(.subheadline.bold()).loveCard() }
@@ -62,9 +62,7 @@ struct HomeView: View {
         case .history: homeLink(card, detail: "Jeder kleine Ich-denke-an-dich-Moment") { ThoughtHistoryView() }
         case .planner: homeLink(card, detail: "Termine, Erinnerungen und Jahrestage") { PlannerView() }
         case .instant: homeLink(card, detail: "Ein Lächeln nur für euch") { InstantGalleryView() }
-        case .milestone:
-            if let milestone, card.size == .large { milestoneCard(milestone) }
-            else { homeLink(card, detail: milestone?.payload.title ?? "Legt euren ersten besonderen Tag an") { PlannerView() } }
+        case .milestone: homeLink(card,detail:"Jahrestag, gemeinsame Tage und eure Countdowns") {CountdownHubView()}
         case .health:
             if card.size == .compact {
                 HStack { Label("RJ-Schlafbalance", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "–").bold() }.loveCard()
@@ -196,6 +194,7 @@ struct HomeView: View {
             if let date = appState.partner?.presence?.updatedAt?.rjDate {
                 Text("Zuletzt geteilt \(date.formatted(.relative(presentation: .named)))").font(.caption2).foregroundStyle(.tertiary)
             }
+            Button("Profil & Aktivität ansehen",systemImage:"person.text.rectangle"){appState.showingPartnerProfile=true}.font(.subheadline.bold())
         }.loveCard()
     }
 
@@ -253,14 +252,13 @@ struct HomeView: View {
             }
             Text("Status, Akku und Herzgedanken auf Sperrbildschirm und Dynamic Island. Bis zu acht Stunden; bei eingeschalteter Option startet sie beim nächsten Öffnen erneut. Hintergrund-Ortung aktivierst du getrennt im Profil.")
                 .font(.subheadline).foregroundStyle(.secondary)
-            Button(appState.liveActivity.enabled ? "Live-Aktivität beenden" : "Live-Aktivität starten", systemImage: "livephoto") {
-                Task {
-                    do {
-                        if appState.liveActivity.enabled { await appState.liveActivity.stop() }
-                        else { try await appState.liveActivity.start(partnerName: partnerName, battery: appState.partner?.presence?.batteryLevel, motion: appState.partner?.presence?.motion ?? "Noch kein Status", mine: appState.myThoughtCount, partner: appState.partnerThoughtCount, updatedAt: appState.partner?.presence?.updatedAt?.rjDate) }
-                    } catch { appState.alert = AppAlert(title: "Live-Aktivität", message: error.localizedDescription) }
-                }
-            }.buttonStyle(.bordered).tint(LovePalette.pink)
+            HStack {
+                Button(appState.liveActivity.isStarting ? "Startet …":appState.liveActivity.isRunning ? "Live-Aktivität beenden":"Jetzt starten",systemImage:"livephoto") {
+                    Task {if appState.liveActivity.isRunning {await appState.liveActivity.stop()}else{await appState.startLiveActivity()}}
+                }.buttonStyle(.borderedProminent).disabled(appState.liveActivity.isStarting)
+                NavigationLink{LiveActivitySettingsView()}label:{Image(systemName:"slider.horizontal.3")}.buttonStyle(.bordered).accessibilityLabel("Live-Aktivität einstellen")
+            }
+            if appState.liveActivity.isRunning {Label("Live-Aktivität aktiv",systemImage:"checkmark.circle.fill").font(.caption).foregroundStyle(.green)}
         }.loveCard()
     }
 }

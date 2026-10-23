@@ -45,6 +45,9 @@ final class AppState {
     var alert: AppAlert?
     var showingChangelog = false
     var showingProfile = false
+    var showingPartnerProfile = false
+    var showingCountdowns = false
+    var activity:[String:PartnerActivity] = [:]
     var showingStatus = false
     var pendingSweet: SharedRecord?
     var pendingPhotoRequest: SharedRecord?
@@ -158,6 +161,7 @@ final class AppState {
     }
 
     func deactivateForeground() {
+        if phase == .authenticated {Task {try? await api.reportActivity(mode:"inactive")}}
         location.enterBackground()
         studio.finishRecording()
         studio.stopPlayback()
@@ -216,6 +220,7 @@ final class AppState {
         KeychainStore.delete(Self.tokenKey)
         phase = .setup
         me = nil
+        activity=[:]
         partners = []
         homeLayout = .standard; homeRevision = 0
         records = []; archiveKinds=[];thoughtHistory=[];lastOpened=[:];openedRecords=[];storageByUser=[:]
@@ -248,6 +253,7 @@ final class AppState {
             if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
+            activity = snapshot.activity ?? [:]
             myStatus = snapshot.myPresence
             if let preferences = snapshot.preferences { applyPreferences(preferences) }
             let snapshotIDs=Set(snapshot.records.map(\.id));let deleted=Set(snapshot.deletedRecordIDs ?? [])
@@ -381,6 +387,7 @@ final class AppState {
             records.removeAll { $0.id == record.id }
             records.insert(record, at: 0)
             synchronizeGeofences()
+            updateWidgetSnapshot()
             if kind == .reminder { await scheduleSharedReminders() }; if [.calendar,.milestone,.reminder].contains(kind) { await PlannerService.shared.reconcile(app: self) }
             persistCache()
             Haptics.success()
@@ -397,6 +404,7 @@ final class AppState {
             records.removeAll { $0.id == record.id }
             alarms.cancel(id: record.id)
             synchronizeGeofences()
+            updateWidgetSnapshot()
             persistCache()
             Haptics.success()
             return true
@@ -470,6 +478,7 @@ final class AppState {
             payload.healthMetrics = health.sharedMetrics
             payload.healthUpdatedAt = health.lastUpdated?.rjISO8601
         }
+        payload.appState = UIApplication.shared.applicationState == .active ? "foreground":"background"
         payload.statusMessage = statusMessage
         payload.deviceName = UIDevice.current.model
         payload.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
@@ -486,7 +495,7 @@ final class AppState {
         showingChangelog = false
     }
     func offerForegroundMoments() {
-        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingStatus, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
+        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
         let defaults = UserDefaults.standard
         if defaults.string(forKey:"rjlove.changelog-seen") != RJVersion.app {showingChangelog=true;return}
         if defaults.object(forKey:"rjlove.sweet-autoplay") == nil || defaults.bool(forKey:"rjlove.sweet-autoplay") {
@@ -658,9 +667,11 @@ final class AppState {
         )
         value.partnerSteps = partner?.presence?.steps
         value.partnerSleepMinutes = partner?.presence?.sleepMinutes
-        let milestone = records.filter { $0.kind == .milestone }.sorted { ($0.payload.startAt ?? "") < ($1.payload.startAt ?? "") }.first
-        value.milestoneTitle = milestone?.payload.title
-        value.milestoneDate = milestone?.payload.startAt
+        let countdowns=records.compactMap{LoveCountdown(record:$0)}.sorted{($0.nextDate() ?? .distantFuture)<($1.nextDate() ?? .distantFuture)}
+        value.countdowns=countdowns
+        let featured=countdowns.first{$0.anniversary} ?? countdowns.first
+        value.milestoneTitle=featured?.title
+        value.milestoneDate=featured?.nextDate()?.rjISO8601
         WidgetSharedStore.saveSnapshot(value)
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -683,15 +694,23 @@ final class AppState {
             quickFartRecording = false; showingFartRecorder = true
         case "radio", "messenger": selectedTab = .together
         case "settings", "health": selectedTab = .home; showingProfile=true
+        case "countdowns": selectedTab = .home;showingCountdowns=true
+        case "partner": selectedTab = .home;showingPartnerProfile=true
         case "status": selectedTab = .home; showingStatus=true
         case "bereal": selectedTab = .moments; experienceSection = .moments
         default: selectedTab = .home
         }
     }
 
+    func startLiveActivity() async {
+        do {
+            try await liveActivity.start(partnerName:partner?.displayName ?? "Schatzi",battery:partner?.presence?.batteryLevel,motion:partner?.presence?.motion ?? "Noch kein Status",mine:myThoughtCount,partner:partnerThoughtCount,updatedAt:partner?.presence?.updatedAt?.rjDate,status:partner?.presence?.visibleStatus,quietUntil:partner?.presence?.dndUntil?.rjDate)
+        }catch {alert=AppAlert(title:"Live-Aktivität",message:error.localizedDescription)}
+    }
+
     private func updateLiveActivity() async {
-        if liveActivity.enabled, !liveActivity.isRunning, UIApplication.shared.applicationState == .active {
-            try? await liveActivity.start(partnerName:partner?.displayName ?? "Schatzi",battery:partner?.presence?.batteryLevel,motion:partner?.presence?.motion ?? "Noch kein Status",mine:myThoughtCount,partner:partnerThoughtCount,updatedAt:partner?.presence?.updatedAt?.rjDate)
+        if liveActivity.enabled, liveActivity.automaticallyResume, !liveActivity.isRunning, UIApplication.shared.applicationState == .active {
+            await startLiveActivity()
         }
         guard liveActivity.isRunning else { return }
         await liveActivity.update(
@@ -729,6 +748,8 @@ final class AppState {
         me = cached.me
         LocalFartStore.shared.configure(server:cached.profile.baseURL,userID:cached.me.id)
         partners = cached.partners
+        activity = cached.activity ?? [:]
+        lastOpened = cached.lastOpened ?? [:]
         records = cached.records
         farts = cached.farts ?? []
         thoughts = cached.localDay == WidgetSharedStore.localDayStamp() ? cached.thoughts : [:]
@@ -745,6 +766,8 @@ final class AppState {
         AppCache.save(
             CachedAppSnapshot(
                 farts: farts,
+                activity:activity,
+                lastOpened:lastOpened,
                 profile: profile,
                 localDay: serverLocalDay,
                 me: me,

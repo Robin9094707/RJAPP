@@ -83,6 +83,10 @@ struct ConnectionActivityAttributes: ActivityAttributes {
     }
 
     var partnerName: String
+    var showBattery: Bool? = nil
+    var showThoughts: Bool? = nil
+    var showStatus: Bool? = nil
+    var showQuickAction: Bool? = nil
 }
 
 struct NearbySearchAttributes: ActivityAttributes {

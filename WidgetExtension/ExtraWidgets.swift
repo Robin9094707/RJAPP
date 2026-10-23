@@ -26,19 +26,10 @@ struct RJLoveHealthWidget: Widget {
 struct RJLoveCountdownWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "RJLoveCountdownWidget", provider: LoveTimelineProvider()) { entry in
-            VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: "calendar.badge.heart").font(.title2).foregroundStyle(.pink)
-                if let date = entry.snapshot.milestoneDate?.rjDate {
-                    let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: entry.date), to: Calendar.current.startOfDay(for: date)).day ?? 0
-                    Text(abs(days).formatted()).font(.system(size: 44, weight: .light, design: .serif)).minimumScaleFactor(0.6)
-                    Text(days < 0 ? "Tage voller Wir" : "Tage Vorfreude").font(.caption2).foregroundStyle(.secondary)
-                    Text(entry.snapshot.milestoneTitle ?? "Unsere Zeit").font(.caption.bold()).lineLimit(2)
-                } else {
-                    Text("Unsere Zeit").font(.headline)
-                    Text("Legt euren ersten besonderen Tag in der App an.").font(.caption).foregroundStyle(.secondary)
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-                .containerBackground(.fill.tertiary, for: .widget).widgetURL(URL(string: "rjlove://together"))
+            let items=entry.snapshot.countdowns ?? []
+            let item=items.first{$0.anniversary} ?? items.first
+            CountdownWidgetFace(item:item,now:entry.date)
+                .containerBackground(.fill.tertiary,for:.widget).widgetURL(URL(string:"rjlove://countdowns"))
         }.configurationDisplayName("Unsere Zeit").description("Euer besonderer Tag als Countdown oder gemeinsame Tage.").supportedFamilies([.systemSmall])
     }
 }

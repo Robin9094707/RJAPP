@@ -349,3 +349,27 @@ private struct UpdatedAtResponse: Codable {
     let updatedAt: String
     enum CodingKeys: String, CodingKey { case updatedAt = "updated_at" }
 }
+
+extension APIClient {
+    func fartComments(id:String,after:String?=nil) async throws -> FartCommentPage {
+        var req=try request(path:"/v1/farts/\(id)/comments",method:"GET")
+        var components=URLComponents(url:req.url!,resolvingAgainstBaseURL:false)!
+        components.queryItems=after.map{[URLQueryItem(name:"after",value:$0)]};req.url=components.url
+        return try await execute(req,as:FartCommentPage.self)
+    }
+    func addFartComment(clipID:String,id:String,text:String) async throws -> FartComment {
+        try await execute(try request(path:"/v1/farts/\(clipID)/comments",method:"POST",body:encoder.encode(["id":id,"text":text])),as:FartComment.self)
+    }
+    func deleteFartComment(clipID:String,id:String) async throws {
+        _ = try await execute(try request(path:"/v1/farts/\(clipID)/comments/\(id)",method:"DELETE"),as:EmptyResponse.self)
+    }
+    func reportActivity(mode:String,source:String="") async throws {
+        _ = try await execute(try request(path:"/v1/activity",method:"POST",body:encoder.encode(["mode":mode,"source":source])),as:EmptyResponse.self)
+    }
+}
+struct FartCommentPage:Decodable {
+    let comments:[FartComment]
+    let hasMore:Bool
+    let nextCursor:String?
+    enum CodingKeys:String,CodingKey {case comments;case hasMore="has_more",nextCursor="next_cursor"}
+}

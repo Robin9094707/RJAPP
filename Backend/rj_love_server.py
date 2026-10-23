@@ -50,8 +50,8 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.2.0"
-MINIMUM_APP_VERSION = "3.2.0"
+APP_VERSION = "3.3.0"
+MINIMUM_APP_VERSION = "3.3.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request"}
@@ -377,6 +377,9 @@ class Database:
                 CREATE TABLE IF NOT EXISTS thought_events (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, occurred_at TEXT, received_at TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS thought_event_date ON thought_events(received_at);
                 CREATE TABLE IF NOT EXISTS opened_records (record_id TEXT NOT NULL,user_id TEXT NOT NULL,opened_at TEXT NOT NULL,PRIMARY KEY(record_id,user_id));
+                CREATE TABLE IF NOT EXISTS fart_comments (id TEXT PRIMARY KEY,clip_id TEXT NOT NULL,user_id TEXT NOT NULL,text TEXT NOT NULL,created_at TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS fart_comments_clip ON fart_comments(clip_id,created_at,id);
+                CREATE TABLE IF NOT EXISTS app_activity (user_id TEXT PRIMARY KEY,foreground_at TEXT,foreground_ended_at TEXT,background_sync_at TEXT,background_source TEXT);
                 CREATE TABLE IF NOT EXISTS app_openings (user_id TEXT PRIMARY KEY,opened_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS app_releases (id TEXT PRIMARY KEY,asset_id TEXT NOT NULL,version TEXT NOT NULL,build TEXT NOT NULL,created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS update_feeds (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,base_url TEXT NOT NULL);
@@ -841,7 +844,7 @@ class RJLoveApplication:
             "calendar": {"title", "start_at", "end_at", "location", "notes", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"},
             "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id"}, "wish": {"title", "text", "completed"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
-            "milestone": {"title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
+            "milestone": {"countdown_type", "title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
             "album": {"title", "text"}, "instant": {"latitude", "longitude", "caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
         }[kind]
         unknown = set(payload) - allowed_fields
@@ -1007,6 +1010,9 @@ class RJLoveApplication:
                 if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not -limit<=value<=limit:
                     raise APIError(400,"invalid_photo_location","Aufnahmeort ist ungültig.")
                 clean[key]=float(value)
+        if "countdown_type" in clean:
+            if clean["countdown_type"] not in {"anniversary","countdown"}:raise APIError(400,"invalid_countdown","Countdown-Art ungültig.")
+            if clean["countdown_type"]=="anniversary":clean["recurrence"]="yearly"
         if "asset_ids" in clean:
             ids=clean["asset_ids"]
             if not isinstance(ids,list) or not 1<=len(ids)<=8 or any(not isinstance(v,str) or not re.fullmatch(r"[a-fA-F0-9-]{36}",v) for v in ids):
@@ -1128,7 +1134,7 @@ class RJLoveApplication:
                              "status":presence.get("status_message"),
                              "quietUntil":(parse_iso(presence.get("dnd_until")).timestamp()-978307200) if parse_iso(presence.get("dnd_until")) else None}
                     payload = {"aps": {"timestamp": int(time.time()), "event": "update", "content-state": state,
-                                       "stale-date": int(updated.timestamp() if updated else 0) + 120}}
+                                       "relevance-score":100, "stale-date": int(updated.timestamp() if updated else 0) + 120}}
                     host = "api.push.apple.com" if activity["environment"] == "production" else "api.sandbox.push.apple.com"
                     command = ["curl", "--silent", "--show-error", "--http2", "--max-time", "15", "--output", "/dev/null", "--write-out", "%{http_code}",
                                "--header", "authorization: bearer " + bearer,
@@ -1197,7 +1203,8 @@ class RJLoveApplication:
             ).fetchone()
             audio = connection.execute("SELECT COALESCE(SUM(v.size_bytes),0) AS total FROM audio_versions v JOIN fart_clips f ON f.id=v.clip_id WHERE f.owner_id=?", (user_id,)).fetchone()
             assets=connection.execute("SELECT COALESCE(SUM(size_bytes),0) FROM assets WHERE owner_id=?",(user_id,)).fetchone()[0]
-            return int(row["total"]) + int(audio["total"]) + int(assets)
+            comments=connection.execute("SELECT COALESCE(SUM(length(CAST(text AS BLOB))),0) FROM fart_comments WHERE user_id=?",(user_id,)).fetchone()[0]
+            return int(row["total"]) + int(audio["total"]) + int(assets) + int(comments)
         finally:
             if owns_connection:
                 connection.close()
@@ -1281,6 +1288,7 @@ class RJLoveApplication:
             result["location"] = json.loads(result["location"]) if result["location"] else None
             result["situation"] = result["situation"] or "alltag"
             result["ratings"] = [dict(r) for r in connection.execute("SELECT user_id,overall,power,style,comment,updated_at FROM fart_ratings WHERE clip_id=?", (clip_id,))]
+            result["comment_count"] = connection.execute("SELECT COUNT(*) FROM fart_comments WHERE clip_id=?",(clip_id,)).fetchone()[0]
             result["reactions"] = [dict(r) for r in connection.execute("SELECT user_id,emoji FROM fart_reactions WHERE clip_id=?", (clip_id,))]
             return result
         finally:
@@ -1309,6 +1317,22 @@ class RJLoveApplication:
         with self.database.connect() as db:return [r[0] for r in db.execute("SELECT id FROM records WHERE deleted_at IS NOT NULL")]
     def thought_history(self,limit=200,offset=0):
         with self.database.connect() as db:return [dict(r) for r in db.execute("SELECT * FROM thought_events ORDER BY received_at DESC,id DESC LIMIT ? OFFSET ?",(limit,offset))]
+    def record_activity(self,user_id,mode,source="",db=None):
+        owns=db is None
+        connection=db or self.database.connect()
+        try:
+            now=iso_now()
+            connection.execute("INSERT OR IGNORE INTO app_activity(user_id) VALUES(?)",(user_id,))
+            if mode=="foreground":connection.execute("UPDATE app_activity SET foreground_at=? WHERE user_id=?",(now,user_id))
+            elif mode=="inactive":connection.execute("UPDATE app_activity SET foreground_ended_at=? WHERE user_id=?",(now,user_id))
+            elif mode=="background":connection.execute("UPDATE app_activity SET background_sync_at=?,background_source=? WHERE user_id=?",(now,source,user_id))
+        finally:
+            if owns:connection.close()
+
+    def activity_history(self):
+        with self.database.connect() as db:
+            return {r["user_id"]:{k:r[k] for k in ("foreground_at","foreground_ended_at","background_sync_at","background_source")} for r in db.execute("SELECT * FROM app_activity")}
+
     def last_opened(self):
         with self.database.connect() as db:return {r["user_id"]:r["opened_at"] for r in db.execute("SELECT * FROM app_openings")}
     def opened_records(self):
@@ -1393,6 +1417,7 @@ class RJLoveApplication:
             "deleted_record_ids": self.deleted_record_ids(),
             "thought_history": self.thought_history(),
             "last_opened": self.last_opened(),
+            "activity":self.activity_history(),
             "opened_records": self.opened_records(),
             "farts": self.list_farts(),
             "features": {
@@ -1555,6 +1580,10 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/v1/bootstrap":
                 self.send_json(HTTPStatus.OK, self.app.bootstrap(self.current_user()))
                 return
+            if len(parts)==4 and parts[:2]==["v1","farts"] and parts[3]=="comments":
+                self.current_user()
+                self._list_fart_comments(parts[2],query)
+                return
             if path == "/v1/farts":
                 self.current_user()
                 try:
@@ -1600,6 +1629,17 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
+            if path == "/v1/activity":
+                body=self.read_json()
+                mode=body.get("mode")
+                if not isinstance(mode,str) or mode not in {"foreground","inactive","background"}:raise APIError(400,"invalid_activity","Aktivitätsart ungültig.")
+                source=safe_text(body.get("source",""),100)
+                self.app.record_activity(user_id,mode,source)
+                self.send_empty()
+                return
+            if len(parts)==4 and parts[:2]==["v1","farts"] and parts[3]=="comments":
+                self._add_fart_comment(user_id,parts[2])
+                return
             if path == "/v1/status":
                 self._save_status(user_id)
                 return
@@ -1648,9 +1688,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 if environment not in {"sandbox", "production"} or (token and (len(token) < 32 or any(c not in "0123456789abcdef" for c in token))):
                     raise APIError(400, "invalid_live_token", "Ungültiger Live-Aktivitäts-Token.")
                 with self.app.database.connect() as db:
-                    db.execute("DELETE FROM live_activities WHERE user_id=?", (user_id,))
                     if token:
+                        db.execute("DELETE FROM live_activities WHERE user_id=?", (user_id,))
                         db.execute("INSERT INTO live_activities VALUES(?,?,?,?,?)", (activity_id, user_id, token, environment, iso_now()))
+                    else:
+                        db.execute("DELETE FROM live_activities WHERE id=? AND user_id=?",(activity_id,user_id))
                 self.send_empty()
             elif path == "/v1/nearby":
                 body = self.read_json()
@@ -1698,7 +1740,14 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         try:
             _, parts, _ = self.route()
             user_id = self.current_user()
-            if len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] == "location":
+            if len(parts)==5 and parts[:2]==["v1","farts"] and parts[3]=="comments":
+                with self.app.database.connect() as db:
+                    row=db.execute("SELECT user_id FROM fart_comments WHERE id=? AND clip_id=?",(parts[4],parts[2])).fetchone()
+                    if row is None:raise APIError(404,"comment_missing","Dieser Kommentar wurde bereits entfernt.")
+                    if row["user_id"]!=user_id:raise APIError(403,"not_owner","Du kannst nur deinen eigenen Kommentar löschen.")
+                    db.execute("DELETE FROM fart_comments WHERE id=?",(parts[4],))
+                self.send_empty()
+            elif len(parts) == 4 and parts[:2] == ["v1", "farts"] and parts[3] == "location":
                 with self.app.media_lock, self.app.database.connect() as db:
                     db.execute("BEGIN IMMEDIATE")
                     clip = self.app.fart_clip(parts[2],db)
@@ -1824,7 +1873,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
     def _media_post(self,path,parts,user_id):
         if path=="/v1/open":
             self.read_json()
-            with self.app.database.connect() as db:db.execute("INSERT INTO app_openings VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET opened_at=excluded.opened_at",(user_id,iso_now()))
+            with self.app.database.connect() as db:
+                db.execute("INSERT INTO app_openings VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET opened_at=excluded.opened_at",(user_id,iso_now()))
+                self.app.record_activity(user_id,"foreground",db=db)
             self.send_empty();return True
         if len(parts)==4 and parts[:2]==["v1","records"] and parts[3]=="opened":
             self.read_json()
@@ -2053,7 +2104,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "course", "location_timestamp", "battery_level", "battery_state",
             "low_power_mode", "network_type", "wifi_name",
             "motion", "steps", "sleep_minutes", "sleep_score", "health_updated_at", "health_metrics",
-            "location_sharing", "status_message", "device_name", "app_version",
+            "location_sharing", "status_message", "device_name", "app_version", "app_state",
         }
         payload = {key: value for key, value in body.items() if key in allowed}
         if "latitude" in payload or "longitude" in payload:
@@ -2084,6 +2135,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if payload.get("location_sharing") is False:
             for key in ("latitude", "longitude", "horizontal_accuracy", "altitude", "speed", "course", "location_timestamp"):
                 payload.pop(key, None)
+        if "app_state" in payload and (not isinstance(payload["app_state"],str) or payload["app_state"] not in {"foreground","background"}):
+            raise APIError(400,"invalid_activity","Aktivitätsart ungültig.")
         payload["reported_at"] = iso_now()
 
         with self.app.database.connect() as db:
@@ -2091,6 +2144,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             previous_row = db.execute("SELECT payload FROM presence WHERE user_id=?", (user_id,)).fetchone()
             previous = json.loads(previous_row["payload"]) if previous_row else {}
             merged = payload
+            if payload.get("app_state")=="foreground":self.app.record_activity(user_id,"foreground",db=db)
+            elif payload.get("app_state")=="background":self.app.record_activity(user_id,"background","Standort-Update",db=db)
             now = iso_now()
             db.execute(
                 "INSERT INTO presence(user_id,payload,updated_at) VALUES(?,?,?) "
@@ -2347,6 +2402,38 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.app.broadcast_event(user_id, "fart_clip", "Neue Duftpost 💨", f"{sender} hat ein kleines Meisterwerk für dich aufgenommen.")
         self.send_json(200, self.app.fart_clip(clip_id))
 
+    def _list_fart_comments(self,clip_id,query):
+        after=query.get("after",[""])[0]
+        stamp,separator,identifier=after.partition("|")
+        if after and (not separator or parse_iso(stamp) is None or not re.fullmatch(r"[0-9a-fA-F-]{36}",identifier)):
+            raise APIError(400,"invalid_page","Ungültige Kommentarseite.")
+        with self.app.database.connect() as db:
+            self.app.fart_clip(clip_id,db)
+            rows=[dict(r) for r in db.execute("SELECT id,clip_id,user_id,text,created_at FROM fart_comments WHERE clip_id=? AND (created_at>? OR (created_at=? AND id>?)) ORDER BY created_at,id LIMIT 201",(clip_id,stamp,stamp,identifier))]
+        shown=rows[:200]
+        cursor=shown[-1]["created_at"]+"|"+shown[-1]["id"] if len(rows)>200 else None
+        self.send_json(200,{"comments":shown,"has_more":len(rows)>200,"next_cursor":cursor})
+
+    def _add_fart_comment(self,user_id,clip_id):
+        body=self.read_json()
+        comment_id=safe_text(body.get("id",""),64,allow_empty=False)
+        try:uuid.UUID(comment_id)
+        except ValueError:raise APIError(400,"invalid_id","Kommentar-ID ungültig.")
+        text=safe_text(body.get("text",""),1000,allow_empty=False)
+        created=iso_now()
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self.app.fart_clip(clip_id,db)
+            old=db.execute("SELECT * FROM fart_comments WHERE id=?",(comment_id,)).fetchone()
+            if old:
+                if old["user_id"]!=user_id or old["clip_id"]!=clip_id or old["text"]!=text:raise APIError(409,"comment_conflict","Kommentar-ID wird bereits verwendet.")
+                self.send_json(200,dict(old));return
+            self.app.enforce_quota(user_id,len(text.encode()),db=db)
+            db.execute("INSERT INTO fart_comments VALUES(?,?,?,?,?)",(comment_id,clip_id,user_id,text,created))
+        sender=self.app.user_by_id(user_id)["display_name"]
+        self.app.broadcast_event(user_id,"fart_comment","Neue Worte zur Duftpost",sender+" hat einen Kommentar geschrieben.",{"clip_id":clip_id})
+        self.send_json(201,{"id":comment_id,"clip_id":clip_id,"user_id":user_id,"text":text,"created_at":created})
+
     def _fart_audio(self, clip_id: str) -> None:
         with self.app.media_lock, self.app.database.connect() as db:
             row = db.execute("SELECT audio_path FROM fart_clips WHERE id=?", (clip_id,)).fetchone()
@@ -2402,7 +2489,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if directory.exists():
                 os.replace(directory, trash)
             try:
-                for table in ("fart_ratings", "fart_reactions", "audio_versions"):
+                for table in ("fart_ratings", "fart_reactions", "audio_versions", "fart_comments"):
                     db.execute(f"DELETE FROM {table} WHERE clip_id=?", (clip_id,))
                 db.execute("DELETE FROM fart_clips WHERE id=?", (clip_id,))
                 db.commit()

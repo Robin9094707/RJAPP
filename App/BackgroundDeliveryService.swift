@@ -112,6 +112,10 @@ struct PushReadiness: Decodable {
             await CommandDeliveryProcessor.shared.process(snapshot.commands, api: api, senderName: snapshot.senderName)
             guard !Task.isCancelled else { return false }
             await AlarmService.shared.reconcile(reminders: snapshot.reminders, myID: snapshot.userID, senderName: snapshot.senderName)
+            if UIApplication.shared.applicationState != .active {
+                try await api.reportActivity(mode:"background",source:source)
+                UserDefaults.standard.set(Date.now.rjISO8601,forKey:"rjlove.last-successful-background-at")
+            }
             UserDefaults.standard.set("Hintergrundabruf abgeschlossen; \(snapshot.commands.count) Weckauftrag/-aufträge geprüft.", forKey: "rjlove.last-background-result")
             return true
         } catch {

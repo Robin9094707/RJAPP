@@ -13,7 +13,7 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .history: "Herzchronik"
         case .planner: "Unsere Planung"
         case .instant: "Fotowünsche"
-        case .milestone: "Unser besonderer Tag"
+        case .milestone: "Jahrestag & Countdowns"
         case .health: "Schlaf & Wohlgefühl"
         case .live: "Live-Aktivität"
         case .delivery: "Push & Wecker"

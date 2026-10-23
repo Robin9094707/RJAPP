@@ -30,11 +30,12 @@ struct SettingsView: View {
                 }.padding(.vertical,10)
                 NavigationLink("Meinen Status setzen") { StatusEditorView() }
                 if let partner=appState.partner {
-                    LabeledContent(partner.displayName,value:partner.presence?.visibleStatus ?? "Kein Status")
+                    Button{appState.showingProfile=false;Task{try? await Task.sleep(for:.milliseconds(450));appState.showingPartnerProfile=true}}label:{LabeledContent(partner.displayName,value:partner.presence?.visibleStatus ?? "Profil & Aktivität")}
                     if partner.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").foregroundStyle(.secondary)}
                 }
             }
-            Section("Euer privater Raum · 3.2") {
+            Section("Euer privater Raum · 3.3") {
+                NavigationLink {LiveActivitySettingsView()}label:{Label("Live-Aktivität & Dynamic Island",systemImage:"livephoto")}
                 NavigationLink { DeliveryCenterView() } label: { Label("Push, Wecker & Hintergrund", systemImage: "checkmark.shield.fill") }
                 Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
                 NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }

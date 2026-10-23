@@ -1,3 +1,7 @@
+## Ergänzung 3.3
+
+Kommentare zur Duftpost werden mit Verfasser und Serverzeit im privaten Datenbestand gespeichert. Ein getrenntes Aktivitätsprotokoll enthält zuletzt bestätigte App-Öffnung, Vordergrundkontakt und erfolgreichen Hintergrundabgleich. Diese Zeiten sind innerhalb eures verbundenen Paars sichtbar. Ein Hintergrundabruf wird nicht als App-Öffnung ausgewiesen. Jahrestag und Countdowns bleiben im gemeinsamen privaten Datenbestand; die freiwillig gewählten Widget-Inhalte werden über die bestehende App Group lokal bereitgestellt.
+
 ## Ergänzung 3.2
 
 Neue Momente und BeReals können freiwillig Aufnahmeorte speichern. Bei importierten Medien wird ein verfügbarer Original-Aufnahmeort verwendet; eine Geräteposition wird nicht als historischer Aufnahmeort ausgegeben. Status und Ruhezeiten werden auf dem privaten Server gespeichert. Optional aktivierte Hintergrund-Ortung arbeitet unabhängig von Live-Aktivitäten und zeigt die iOS-Standortanzeige. Keine stille Kameraaufnahme im Hintergrund.

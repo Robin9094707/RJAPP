@@ -43,6 +43,7 @@ struct PresencePayload: Codable, Hashable, Sendable {
     var healthUpdatedAt: String?
     var locationSharing: Bool?
     var statusMessage: String?
+    var appState: String?
     var statusExpiresAt: String?
     var dndUntil: String?
     var deviceName: String?
@@ -65,6 +66,7 @@ struct PresencePayload: Codable, Hashable, Sendable {
         case healthUpdatedAt = "health_updated_at"
         case locationSharing = "location_sharing"
         case statusMessage = "status_message"
+        case appState = "app_state"
         case statusExpiresAt = "status_expires_at", dndUntil = "dnd_until"
         case deviceName = "device_name"
         case appVersion = "app_version"
@@ -148,6 +150,7 @@ struct RecordPayload: Codable, Hashable, Sendable {
     var reminderSync: Bool? = nil
     var calendarSync: Bool? = nil
     var requestID: String? = nil
+    var countdownType: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case title, text, message, completed, caption, comments, reactions, name
@@ -160,6 +163,7 @@ struct RecordPayload: Codable, Hashable, Sendable {
         case notifyOnEnter = "notify_on_enter"
         case notifyOnExit = "notify_on_exit"
         case assetIDs = "asset_ids", mediaKind = "media_kind", albumID = "album_id", capturedAt = "captured_at", posterBase64 = "poster_base64", autoplay, urgency, referenceID = "reference_id", recurrence, reminderSync = "reminder_sync", calendarSync = "calendar_sync", requestID = "request_id"
+        case countdownType = "countdown_type"
         case startAt = "start_at"
         case endAt = "end_at"
     }
@@ -296,10 +300,11 @@ struct BootstrapResponse: Codable, Sendable {
     var lastOpened: [String:String]? = nil
     var openedRecords: [OpenedRecord]? = nil
     var preferences: UserPreferences? = nil
+    var activity: [String:PartnerActivity]? = nil
     let features: ServerFeatures
 
     enum CodingKeys: String, CodingKey {
-        case me, partners, thoughts, records, commands, events, features, farts, preferences
+        case me, partners, thoughts, records, commands, events, features, farts, preferences, activity
         case serverTime = "server_time"
         case localDay = "local_day"
         case myPresence = "my_presence"
@@ -374,4 +379,16 @@ extension PresencePayload {
         return statusMessage?.isEmpty == false ? statusMessage : nil
     }
     var isQuiet: Bool { (dndUntil?.rjDate ?? .distantPast) > .now }
+}
+
+struct PartnerActivity:Codable,Hashable,Sendable {
+    var foregroundAt:String?
+    var foregroundEndedAt:String?
+    var backgroundSyncAt:String?
+    var backgroundSource:String?
+    enum CodingKeys:String,CodingKey {case foregroundAt="foreground_at",foregroundEndedAt="foreground_ended_at",backgroundSyncAt="background_sync_at",backgroundSource="background_source"}
+    func recentlyActive(at now:Date)->Bool {
+        guard let date=foregroundAt?.rjDate,now.timeIntervalSince(date)<45 else{return false}
+        return (foregroundEndedAt?.rjDate ?? .distantPast)<date
+    }
 }

@@ -21,6 +21,7 @@ struct LoveHubView: View {
                 ForEach(HubSection.allCases) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).padding(.horizontal, 18).padding(.vertical, 10)
             if section == .chat { chatContent }
+            else if section == .milestones {CountdownHubView()}
             else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {

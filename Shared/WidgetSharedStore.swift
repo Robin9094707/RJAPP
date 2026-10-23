@@ -12,6 +12,7 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
     var lastSync: String?
     var partnerSteps: Int?
     var partnerSleepMinutes: Int?
+    var countdowns:[LoveCountdown]? = nil
     var milestoneTitle: String?
     var milestoneDate: String?
 }

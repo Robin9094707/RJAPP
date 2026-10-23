@@ -90,7 +90,7 @@ class RJLoveBackendTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as failure:
             self.request("/v1/bootstrap",version="3.1.0")
         self.assertEqual(failure.exception.code,426)
-        self.assertEqual(json.loads(failure.exception.read())["compatibility"]["minimum_app_version"],"3.2.0")
+        self.assertEqual(json.loads(failure.exception.read())["compatibility"]["minimum_app_version"],SERVER.MINIMUM_APP_VERSION)
 
     def login(self, username="robin", password="robin-test-password"):
         status, body = self.request(
@@ -356,6 +356,55 @@ class RJLoveBackendTests(unittest.TestCase):
         with self.app.database.connect() as db:
             for table in ("devices", "nearby", "live_activities", "sessions"):
                 self.assertEqual(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0], 0)
+
+    def test_comments_on_existing_audio_are_idempotent_private_and_preserved(self):
+        import uuid
+        robin=self.login();raphaela=self.login("raphaela","raphaela-test-password")
+        body,(_,clip),audio=self.upload_clip(robin)
+        endpoint="/v1/farts/"+clip["id"]+"/comments"
+        self.assertEqual(self.request(endpoint,token=raphaela)[1]["comments"],[])
+        comment={"id":str(uuid.uuid4()),"text":"Auch beim alten Meisterwerk: 😂"}
+        self.assertEqual(self.request(endpoint,"POST",comment,raphaela)[0],201)
+        self.assertEqual(self.request(endpoint,"POST",comment,raphaela)[0],200)
+        self.request(endpoint,"POST",{"id":str(uuid.uuid4()),"text":"Danke Schatzi"},robin)
+        self.assertEqual(self.app.fart_clip(clip["id"])["comment_count"],2)
+        self.assertEqual(self.request_error(endpoint+"/"+comment["id"],"DELETE",token=robin)[0],403)
+        self.assertEqual(self.request_error(endpoint)[0],401)
+        edit=dict(body,title="Neuer Titel",base_revision=1,edit_id=str(uuid.uuid4()))
+        self.request("/v1/farts/"+clip["id"]+"/edit","POST",edit,robin)
+        self.assertEqual(len(self.request(endpoint,token=robin)[1]["comments"]),2)
+        self.request(endpoint+"/"+comment["id"],"DELETE",token=raphaela)
+        self.assertEqual(self.app.fart_clip(clip["id"])["comment_count"],1)
+        self.request("/v1/farts/"+clip["id"],"DELETE",token=robin)
+        with self.app.database.connect() as db:self.assertEqual(db.execute("SELECT COUNT(*) FROM fart_comments").fetchone()[0],0)
+
+    def test_activity_distinguishes_open_foreground_and_background(self):
+        token=self.login()
+        self.request("/v1/open","POST",{},token)
+        opened=self.app.last_opened()["robin"]
+        self.request("/v1/presence","POST",{"battery_level":52,"app_state":"foreground"},token)
+        foreground=self.app.activity_history()["robin"]["foreground_at"]
+        self.request("/v1/activity","POST",{"mode":"inactive"},token)
+        self.request("/v1/activity","POST",{"mode":"background","source":"iOS-Hintergrundaktualisierung"},token)
+        history=self.app.activity_history()["robin"]
+        self.assertEqual(history["foreground_at"],foreground)
+        self.assertEqual(self.app.last_opened()["robin"],opened)
+        self.assertIsNotNone(history["background_sync_at"])
+        self.assertIsNotNone(history["foreground_ended_at"])
+        self.assertEqual(self.app.bootstrap("raphaela")["activity"]["robin"],history)
+        self.assertEqual(self.request_error("/v1/activity","POST",{"mode":[]},token)[0],400)
+
+    def test_anniversary_roundtrip_and_live_token_removal_is_scoped(self):
+        import uuid
+        token=self.login()
+        payload={"title":"Unser Jahrestag","start_at":"2026-05-03T00:00:00+02:00","countdown_type":"anniversary","recurrence":"none"}
+        saved=self.request("/v1/records","POST",{"id":str(uuid.uuid4()),"kind":"milestone","payload":payload},token)[1]
+        self.assertEqual(saved["payload"]["recurrence"],"yearly")
+        self.assertEqual(saved["payload"]["countdown_type"],"anniversary")
+        for activity in ("old","new"):
+            self.request("/v1/live-activities","POST",{"activity_id":activity,"token":"ab"*32,"environment":"production"},token)
+        self.request("/v1/live-activities","POST",{"activity_id":"old","token":"","environment":"production"},token)
+        with self.app.database.connect() as db:self.assertEqual(db.execute("SELECT id FROM live_activities").fetchone()[0],"new")
 
     def upload_clip(self, token, clip_id=None, **overrides):
         import uuid, base64

@@ -25,10 +25,10 @@ extension APIClient {
     func aiSummary(day:Date) async throws -> AIDaySummary {
         let cal=Calendar.current,start=cal.startOfDay(for:day)
         guard let end=cal.date(byAdding:.day,value:1,to:start) else{throw APIClientError.invalidResponse}
-        var request=try request(path:"/v1/ai/summary",method:"POST",body:encoder.encode(["start":start.rjISO8601,"end":end.rjISO8601]));request.timeoutInterval=65
+        var req=try request(path:"/v1/ai/summary",method:"POST",body:encoder.encode(["start":start.rjISO8601,"end":end.rjISO8601]));req.timeoutInterval=65
         let config=URLSessionConfiguration.default;config.timeoutIntervalForRequest=65;config.timeoutIntervalForResource=80
         let session=URLSession(configuration:config);defer{session.finishTasksAndInvalidate()}
-        let (data,response)=try await session.data(for:request)
+        let (data,response)=try await session.data(for:req)
         guard let http=response as? HTTPURLResponse else{throw APIClientError.invalidResponse}
         guard http.statusCode==200 else{let issue=try? decoder.decode(APIErrorEnvelope.self,from:data);throw APIClientError.server(status:http.statusCode,message:issue?.message ?? "Der Rückblick konnte gerade nicht erstellt werden.")}
         return try decoder.decode(AIDaySummary.self,from:data)

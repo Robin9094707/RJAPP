@@ -75,17 +75,20 @@ struct EveningTrack:Identifiable {
             defer {if self.generation==operation{self.preparing=false;self.fillTask=nil;self.updateNowPlaying()}}
             while !Task.isCancelled,self.generation==operation,queue.items().count<3,self.nextLoad<self.tracks.count {
                 let i=self.nextLoad,track=self.tracks[i]
+                var uncommittedFile:URL?
+                defer {if let file=uncommittedFile{try? FileManager.default.removeItem(at:file)}}
                 do {
                     let file:URL
                     if let asset=track.assetID {file=try await api.assetFile(id:asset,mime:"video/quicktime")}
                     else {file=FileManager.default.temporaryDirectory.appendingPathComponent("rj-evening-"+UUID().uuidString+".m4a");let bytes=try await api.fartAudio(id:track.id);try bytes.write(to:file,options:.atomic)}
+                    uncommittedFile=file
                     guard !Task.isCancelled,self.generation==operation else{try? FileManager.default.removeItem(at:file);return}
                     try FileManager.default.setAttributes([.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication],ofItemAtPath:file.path)
                     let item=AVPlayerItem(url:file)
                     let playable=try await item.asset.load(.isPlayable)
                     guard playable else{try? FileManager.default.removeItem(at:file);throw MediaError.unreadable}
                     guard !Task.isCancelled,self.generation==operation else{try? FileManager.default.removeItem(at:file);return}
-                    self.files[i]=file;self.identities[ObjectIdentifier(item)]=i
+                    self.files[i]=file;uncommittedFile=nil;self.identities[ObjectIdentifier(item)]=i
                     queue.insert(item,after:nil);self.nextLoad=i+1
                     if self.playing{queue.play()}
                     self.error=nil

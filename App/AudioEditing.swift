@@ -34,7 +34,7 @@ private enum AudioEditError: LocalizedError {
     private var stopTask: Task<Void, Never>?
     private(set) var playing = false
     func play(url: URL, start: Double, end: Double) throws {
-        stop()
+        EveningPlaylistService.shared.stop();stop()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playback); try session.setActive(true)
         let player = try AVAudioPlayer(contentsOf: url)
@@ -48,7 +48,7 @@ private enum AudioEditError: LocalizedError {
     }
     func stop() {
         stopTask?.cancel(); stopTask = nil; player?.stop(); player = nil; playing = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if !EveningPlaylistService.shared.active {try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)}
     }
 }
 struct AudioTrimControls: View {

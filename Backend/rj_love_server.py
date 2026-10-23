@@ -1424,13 +1424,13 @@ class RJLoveApplication:
 
     def ai_source(self,start,end):
         stamp="COALESCE(json_extract(payload,'$.captured_at'),created_at)"
+        where=f"deleted_at IS NULL AND kind IN ('moment','instant') AND julianday({stamp})>=julianday(?) AND julianday({stamp})<julianday(?)"
+        bounds=(start.isoformat(),end.isoformat())
         with self.database.connect() as db:
-            rows=db.execute(f"SELECT * FROM records WHERE deleted_at IS NULL AND kind IN ('moment','instant') AND julianday({stamp})>=julianday(?) AND julianday({stamp})<julianday(?) ORDER BY {stamp},id",(start.isoformat(),end.isoformat())).fetchall()
-        entries=[]
-        for row in rows[:60]:
-            p=json.loads(row["payload"])
-            entries.append({"id":row["id"],"author":self.user_by_id(row["owner_id"])["display_name"],"captured_at":p.get("captured_at") or row["created_at"],"kind":p.get("media_kind","photo"),"title":str(p.get("title") or "")[:100],"caption":str(p.get("caption") or "")[:400]})
-        source={"start":start.isoformat(),"end":end.isoformat(),"total_moments":len(rows),"moments":entries}
+            total=db.execute(f"SELECT count(*) FROM records WHERE {where}",bounds).fetchone()[0]
+            rows=db.execute(f"SELECT id,owner_id,{stamp} captured_at,json_extract(payload,'$.media_kind') media_kind,substr(json_extract(payload,'$.title'),1,100) title,substr(json_extract(payload,'$.caption'),1,400) caption FROM records WHERE {where} ORDER BY {stamp},id LIMIT 60",bounds).fetchall()
+        entries=[{"id":row["id"],"author":self.user_by_id(row["owner_id"])["display_name"],"captured_at":row["captured_at"],"kind":row["media_kind"] or "photo","title":row["title"] or "","caption":row["caption"] or ""} for row in rows]
+        source={"start":start.isoformat(),"end":end.isoformat(),"total_moments":total,"moments":entries}
         fingerprint=hashlib.sha256(json_bytes({"v":1,"model":self.ai_settings()[2],"source":source})).hexdigest()
         return source,fingerprint
 

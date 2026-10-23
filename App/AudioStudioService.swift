@@ -286,7 +286,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         if clearQueue{playlist=[];playlistAPI=nil;queueIndex=0;queueCount=0}
         if !hasRecording{deactivateSession()}
     }
-    private func deactivateSession() { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+    private func deactivateSession() { if !EveningPlaylistService.shared.active {try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)} }
     private func startRecordingActivity() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let state = FartRecordingAttributes.ContentState(startedAt: .now, elapsed: 0, paused: false)

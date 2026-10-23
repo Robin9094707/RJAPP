@@ -79,7 +79,7 @@ struct MediaComposer:View {
     }.navigationTitle(kind == .chat ? "In unserem Gespräch":"Unser Moment").toolbar{
         ToolbarItem(placement:.cancellationAction){Button("Abbrechen"){dismiss()}.disabled(saving)}
         ToolbarItem(placement:.confirmationAction){Button("Teilen"){Task{await save()}}.disabled(saving)}
-    }.onAppear{capturedAt=media.capturedAt}.onDisappear{if !saving{for file in media.files{try? FileManager.default.removeItem(at:file)}}}.interactiveDismissDisabled(saving)}}
+    }.onAppear{capturedAt=media.capturedAt;sharePlace=LocationService.shared.photoLocationEnabled}.onDisappear{if !saving{for file in media.files{try? FileManager.default.removeItem(at:file)}}}.interactiveDismissDisabled(saving)}}
     private func save() async {
         saving=true;uploadError=nil;defer{saving=false}
         do {

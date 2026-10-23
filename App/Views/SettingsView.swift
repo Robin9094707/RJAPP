@@ -202,7 +202,7 @@ struct SettingsView: View {
         .onChange(of: health.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
         .onChange(of: location.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
         .onChange(of: appState.shareWiFiName) { _, _ in appState.queuePresenceUpload(force: true) }
-        .navigationTitle("Mehr")
+        .navigationTitle("Dein Profil")
         .confirmationDialog("Wirklich abmelden?", isPresented: $logoutConfirmation, titleVisibility: .visible) {
             Button("Abmelden", role: .destructive) { Task { await appState.logout() } }
             Button("Abbrechen", role: .cancel) {}

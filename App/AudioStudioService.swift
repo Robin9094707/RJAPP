@@ -104,6 +104,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     func start(ownerID: String) async {
         guard !hasRecording, draft == nil else { return }
         let operation = UUID(); operationID = operation
+        defer { if operationID == operation, !hasRecording, draft == nil { restoreParkedDraft() } }
         errorMessage = nil
         guard await AVAudioApplication.requestRecordPermission() else {
             errorMessage = "Bitte erlaube RJ Love den Mikrofonzugriff in den iPhone-Einstellungen."; return

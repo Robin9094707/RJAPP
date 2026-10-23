@@ -1422,11 +1422,11 @@ class RJLoveApplication:
         with self.database.connect() as db:consent={r["user_id"]:bool(r["enabled"]) for r in db.execute("SELECT * FROM ai_consent")}
         return {"available":available,"model":model,"my_consent":consent.get(user_id,False),"partner_consent":all(consent.get(i,False) for i in self.partner_ids(user_id)),"daily_limit":limit}
 
-    def ai_source(self,start,end):
+    def ai_source(self,start,end,db=None):
         stamp="COALESCE(json_extract(payload,'$.captured_at'),created_at)"
         where=f"deleted_at IS NULL AND kind IN ('moment','instant') AND julianday({stamp})>=julianday(?) AND julianday({stamp})<julianday(?)"
         bounds=(start.isoformat(),end.isoformat())
-        with self.database.connect() as db:
+        with (self.database.connect() if db is None else contextlib.nullcontext(db)) as db:
             total=db.execute(f"SELECT count(*) FROM records WHERE {where}",bounds).fetchone()[0]
             rows=db.execute(f"SELECT id,owner_id,{stamp} captured_at,json_extract(payload,'$.media_kind') media_kind,substr(json_extract(payload,'$.title'),1,100) title,substr(json_extract(payload,'$.caption'),1,400) caption FROM records WHERE {where} ORDER BY {stamp},id LIMIT 60",bounds).fetchall()
         entries=[{"id":row["id"],"author":self.user_by_id(row["owner_id"])["display_name"],"captured_at":row["captured_at"],"kind":row["media_kind"] or "photo","title":row["title"] or "","caption":row["caption"] or ""} for row in rows]
@@ -1461,6 +1461,7 @@ class RJLoveApplication:
                 db.execute("BEGIN IMMEDIATE")
                 permissions={r["user_id"]:bool(r["enabled"]) for r in db.execute("SELECT * FROM ai_consent")}
                 if not all(permissions.get(u["id"]) for u in self.config["users"]):raise APIError(403,"ai_consent_required","Die KI-Freigabe wurde inzwischen beendet.")
+                if self.ai_source(start,end,db=db)[1]!=fingerprint:raise APIError(409,"ai_source_changed","Die Momente wurden inzwischen geändert. Bitte den Tag neu laden.")
                 db.execute("INSERT OR REPLACE INTO ai_summaries VALUES(?,?,?)",(fingerprint,json.dumps(value,ensure_ascii=False),iso_now()))
                 db.execute("DELETE FROM ai_summaries WHERE created_at<?",((utc_now()-dt.timedelta(days=90)).isoformat(),))
             return value

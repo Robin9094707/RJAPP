@@ -105,7 +105,7 @@ struct EveningTrack:Identifiable {
             index=i;elapsed=0;duration=0
             for key in Array(files.keys) where key<i {if let file=files.removeValue(forKey:key){try? FileManager.default.removeItem(at:file)}}
             if playing{queue.play()}
-        }else if nextLoad>=tracks.count,!preparing {playing=false;index=max(0,tracks.count-1);MPNowPlayingInfoCenter.default().nowPlayingInfo=nil}
+        }else if nextLoad>=tracks.count,!preparing {stop();return}
         fill();updateNowPlaying()
     }
     private func tick() {

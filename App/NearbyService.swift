@@ -248,7 +248,7 @@ final class NearbyService:NSObject,NISessionDelegate {
         let hint:String
         switch convergence.status {
         case .converged:hint="Kamera kalibriert. Das Zielgerät weiter ruhig halten."
-        case .notConverged(let reasons):hint=reasons.map{$0.localizedDescription}.joined(separator:" ")
+        case .notConverged(let reasons):hint=reasons.compactMap{$0.localizedDescription}.joined(separator:" ")
         default:hint="Langsam seitlich und auf/ab bewegen. Ein Gerät bleibt ruhig stehen."
         }
         Task{@MainActor [weak self] in guard let self,self.running,self.session === session,self.cameraRequested else{return};self.coaching=hint.isEmpty ? "Bewege das suchende iPhone langsam seitlich und auf/ab.":hint}

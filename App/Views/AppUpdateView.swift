@@ -16,6 +16,7 @@ struct AppUpdateView:View {
         Text("Installiert: \(RJVersion.app)").font(.headline)
         if let release{Text("Auf eurem Server: \(release.version) (\(release.build))").font(.title3.bold());Text(RJVersion.older(RJVersion.app,than:release.version) ? "Ein neues Update wartet auf euch.":"Du hast diese Version oder eine neuere.").foregroundStyle(.secondary)}else{Text("Noch keine IPA auf eurem Server freigegeben.").foregroundStyle(.secondary)}
         Button("Neue RJ-Love-IPA hochladen",systemImage:"square.and.arrow.up"){importing=true}.buttonStyle(.borderedProminent).disabled(uploading)
+        Text("In Dateien die originale .ipa auswählen. Auch iCloud- und Drittanbieterdateien sind auswählbar; ZIP-Pakete vorher entpacken.").font(.caption).foregroundStyle(.secondary)
         if uploading{ProgressView(value:MediaTransfer.shared.progress);Text("Upload \(Int(MediaTransfer.shared.progress*100)) %").font(.caption)}
         if release != nil {Button("IPA laden & in Feather öffnen",systemImage:"square.and.arrow.down"){Task{do{sharedFile=try await app.api.latestIPA();share=true}catch{self.error=error.localizedDescription}}}.buttonStyle(.bordered)}
         Button("Private Feather-Quelle erstellen",systemImage:"link"){Task{do{let token=try await app.api.updateFeedToken(baseURL:app.profile?.baseURL ?? "");if let base=app.profile?.baseURL{feedURL=URL(string:base+"/updates/"+token+"/source.json")}}catch{self.error=error.localizedDescription}}}.buttonStyle(.bordered)
@@ -26,11 +27,22 @@ struct AppUpdateView:View {
         if let error{Text(error).foregroundStyle(.orange)}
     }.padding(24)}.background(LoveBackground()).navigationTitle("App & Feather").task{do{release=try await app.api.latestRelease()}catch{self.error=error.localizedDescription}}
         .sheet(isPresented:$share,onDismiss:{if let sharedFile{try? FileManager.default.removeItem(at:sharedFile)};sharedFile=nil}){if let sharedFile{FileShareView(urls:[sharedFile])}}
-        .fileImporter(isPresented:$importing,allowedContentTypes:[UTType(filenameExtension:"ipa") ?? .data]){result in switch result{case .success(let url):Task{await upload(url)};case .failure(let error):self.error=error.localizedDescription}}
+        .fileImporter(isPresented:$importing,allowedContentTypes:[.item]){result in switch result{case .success(let url):Task{await upload(url)};case .failure(let error):if (error as NSError).code != NSUserCancelledError{self.error=error.localizedDescription}}}
     }
     private func upload(_ url:URL) async {
         uploading=true;defer{uploading=false};let access=url.startAccessingSecurityScopedResource();defer{if access{url.stopAccessingSecurityScopedResource()}}
-        do {let copied=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".ipa");try FileManager.default.copyItem(at:url,to:copied);defer{try? FileManager.default.removeItem(at:copied)};let ids=try await MediaTransfer.shared.upload(SelectedMedia(files:[copied],mimeTypes:["application/octet-stream"],kind:"ipa",capturedAt:.now,poster:nil),api:app.api);if let id=ids.first{release=try await app.api.publishIPA(assetID:id);error=nil}}
+        do {
+            guard url.pathExtension.lowercased()=="ipa" else{throw APIClientError.transport("Bitte eine .ipa-Datei auswählen. Entpacke ZIP-Downloads zuerst in Dateien.")}
+            let copied=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".ipa")
+            defer{try? FileManager.default.removeItem(at:copied)}
+            try await Task.detached(priority:.userInitiated){
+                let coordinator=NSFileCoordinator();var coordinationError:NSError?;var copyError:Error?
+                coordinator.coordinate(readingItemAt:url,options:[],error:&coordinationError){source in do{try FileManager.default.copyItem(at:source,to:copied)}catch{copyError=error}}
+                if let error=coordinationError{throw error}
+                if let error=copyError{throw error}
+                let handle=try FileHandle(forReadingFrom:copied);defer{try? handle.close()}
+                guard let header=try handle.read(upToCount:4),header.starts(with:[0x50,0x4b]) else{throw APIClientError.invalidResponse}
+            }.value;let ids=try await MediaTransfer.shared.upload(SelectedMedia(files:[copied],mimeTypes:["application/octet-stream"],kind:"ipa",capturedAt:.now,poster:nil),api:app.api);if let id=ids.first{release=try await app.api.publishIPA(assetID:id);error=nil}}
         catch{self.error=error.localizedDescription}
     }
 }

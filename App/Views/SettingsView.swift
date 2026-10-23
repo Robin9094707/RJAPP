@@ -34,7 +34,7 @@ struct SettingsView: View {
                     if partner.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").foregroundStyle(.secondary)}
                 }
             }
-            Section("Euer privater Raum · 3.3") {
+            Section("Euer privater Raum · 3.4") {
                 NavigationLink {LiveActivitySettingsView()}label:{Label("Live-Aktivität & Dynamic Island",systemImage:"livephoto")}
                 NavigationLink { DeliveryCenterView() } label: { Label("Push, Wecker & Hintergrund", systemImage: "checkmark.shield.fill") }
                 Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
@@ -130,8 +130,8 @@ struct SettingsView: View {
                     status: health.requested ? "Angefragt · in Health verwalten" : "Nicht eingerichtet",
                     symbol: "heart.text.square.fill",
                     tint: health.requested ? .green : LovePalette.pink,
-                    actionTitle: health.requested ? "Aktualisieren" : "Verbinden"
-                ) { Task { health.requested ? await health.refresh() : await health.requestAuthorization() } }
+                    actionTitle: "Freigaben prüfen"
+                ) { Task { await health.requestAuthorization() } }
 
                 PermissionRow(
                     title: "Bewegung & Fitness",

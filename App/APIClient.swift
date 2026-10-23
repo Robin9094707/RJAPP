@@ -293,8 +293,10 @@ final class APIClient: @unchecked Sendable {
         _ = try await execute(try request(path: "/v1/auth/credentials", method: "POST", body: encoder.encode(body)), as: EmptyResponse.self)
     }
 
-    func publishNearbyToken(_ token: String, lifetime: Int = 20) async throws {
-        _ = try await execute(try request(path: "/v1/nearby", method: "POST", body: JSONSerialization.data(withJSONObject: ["token": token, "lifetime": min(900, max(20, lifetime))])), as: EmptyResponse.self)
+    func publishNearbyToken(_ token: String, lifetime: Int = 20,expectedToken:String?=nil) async throws {
+        var body:[String:Any]=["token":token,"lifetime":min(900,max(20,lifetime))]
+        if let expectedToken{body["expected_token"]=expectedToken}
+        _ = try await execute(try request(path:"/v1/nearby",method:"POST",body:JSONSerialization.data(withJSONObject:body)),as:EmptyResponse.self)
     }
 
     func partnerNearbyToken() async throws -> String? {

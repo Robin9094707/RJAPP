@@ -16,6 +16,9 @@ final class DeviceStatusService: ObservableObject {
     @Published private(set) var motion = "Unbekannt"
     @Published private(set) var motionAuthorization = CMMotionActivityManager.authorizationStatus()
 
+    @Published private(set) var motionConfidence:String?
+    @Published private(set) var motionUpdatedAt:Date?
+
     var onMeaningfulChange: (() -> Void)?
 
     private let pathMonitor = NWPathMonitor()
@@ -109,11 +112,11 @@ final class DeviceStatusService: ObservableObject {
             }
         }
         motionAuthorization = CMMotionActivityManager.authorizationStatus()
-        startMotionUpdates()
+        if motionAuthorization == .authorized {startMotionUpdates()}
     }
 
     func startMotionUpdates() {
-        guard CMMotionActivityManager.isActivityAvailable() else { return }
+        guard CMMotionActivityManager.isActivityAvailable(),CMMotionActivityManager.authorizationStatus() == .authorized else { return }
         motionManager.startActivityUpdates(to: .main) { [weak self] activity in
             guard let activity else { return }
             Task { @MainActor in
@@ -126,7 +129,10 @@ final class DeviceStatusService: ObservableObject {
                 else if activity.walking { next = "Zu Fuß" }
                 else if activity.stationary { next = "Stationär" }
                 else { next = "Unbekannt" }
-                if next != self.motion {
+                let confidence=activity.confidence == .high ? "hoch":activity.confidence == .medium ? "mittel":"niedrig"
+                self.motionUpdatedAt=activity.startDate
+                if next != self.motion || confidence != self.motionConfidence {
+                    self.motionConfidence=confidence
                     self.motion = next
                     LocationService.shared.updateActivity(next)
                     self.onMeaningfulChange?()

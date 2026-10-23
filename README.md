@@ -1,6 +1,8 @@
-# RJ Love 3.3
+# RJ Love 3.4
 
-Aktuelles Update: [Änderungen und Installation 3.3](RELEASE-3.3.md). App und Server gemeinsam aktualisieren.
+Aktuelles Update: [Änderungen und Installation 3.4](RELEASE-3.4.md). App und Server gemeinsam aktualisieren.
+
+Neu: echte Schlafphasen und Verlauf, eigener transparenter RJ-Schlafindex, mehr Health-Messwerte mit Datum, überarbeitete UWB-Nahsuche und IPA-Dateiauswahl sowie ein persönliches App-Icon.
 
 > Aktuell: [Version 3.1 – Fotos, Startseite, Schlafbalance und UWB](RELEASE-3.1.md). Für App 3.1 zuerst den Python-Server auf 3.1 aktualisieren; Konfiguration und Daten behalten.
 

@@ -65,7 +65,7 @@ struct HomeView: View {
         case .milestone: homeLink(card,detail:"Jahrestag, gemeinsame Tage und eure Countdowns") {CountdownHubView()}
         case .health:
             if card.size == .compact {
-                HStack { Label("RJ-Schlafbalance", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "–").bold() }.loveCard()
+                HStack { Label("RJ-Schlafindex", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "–").bold() }.loveCard()
             } else { healthCard }
         case .live:
             if card.size == .compact { homeLink(card, detail: "Deine Live-Aktivitäten") { DeliveryCenterView() } }
@@ -186,7 +186,7 @@ struct HomeView: View {
             if appState.partner?.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").font(.caption).foregroundStyle(.secondary)}
             Divider().opacity(0.5)
             HStack {
-                Label(appState.partner?.presence?.motion ?? "Noch kein Bewegungsstatus", systemImage: "figure.walk")
+                Label(appState.partner?.presence?.motion ?? "Noch kein Bewegungsstatus", systemImage: MotionPresentation.symbol(appState.partner?.presence?.motion ?? ""))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState)
@@ -239,9 +239,9 @@ struct HomeView: View {
             }
             HStack(spacing: 10) {
                 LoveMetric(title: "Schritte heute", value: appState.partner?.presence?.steps?.formatted() ?? "–", symbol: "figure.walk", tint: LovePalette.cyan)
-                LoveMetric(title: "Schlaf · 24 Std.", value: appState.partner?.presence?.sleepMinutes.map { "\($0 / 60) h \($0 % 60)" } ?? "–", symbol: "moon.zzz.fill", tint: LovePalette.violet)
+                LoveMetric(title: "Letzter Schlaf", value: appState.partner?.presence?.sleepMinutes.map { "\($0 / 60) h \($0 % 60)" } ?? "–", symbol: "moon.zzz.fill", tint: LovePalette.violet)
             }
-            HStack { Label("RJ-Schlafbalance", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "Noch kein Wert").bold() }.font(.subheadline).padding(16).background(homeTint.opacity(0.09), in: RoundedRectangle(cornerRadius: 18))
+            HStack { Label("RJ-Schlafindex", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "Noch kein Wert").bold() }.font(.subheadline).padding(16).background(homeTint.opacity(0.09), in: RoundedRectangle(cornerRadius: 18))
         }.loveCard()
     }
     private var liveCard: some View {

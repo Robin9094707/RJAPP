@@ -50,8 +50,8 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.3.0"
-MINIMUM_APP_VERSION = "3.3.0"
+APP_VERSION = "3.4.0"
+MINIMUM_APP_VERSION = "3.4.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request"}
@@ -831,6 +831,45 @@ class RJLoveApplication:
 
     def partner_ids(self, user_id: str) -> list[str]:
         return [item["id"] for item in self.config["users"] if item["id"] != user_id]
+
+    @staticmethod
+    def validate_sleep_summary(value):
+        if not isinstance(value,dict) or set(value)-{"night","segments","history","score","duration_points","consistency_points","interruption_points","baseline_nights","target_minutes","algorithm"}:
+            raise APIError(400,"invalid_sleep","Schlafzusammenfassung ungültig.")
+        if value.get("algorithm")!="rj_sleep_v2":raise APIError(400,"invalid_sleep","Schlafberechnung unbekannt.")
+        def number(container,key,maximum,required=False):
+            v=container.get(key)
+            if v is None and not required:return
+            if isinstance(v,bool) or not isinstance(v,(float,int)) or not math.isfinite(v) or not 0<=v<=maximum:
+                raise APIError(400,"invalid_sleep","Ein Schlafwert ist ungültig.")
+        def night(n):
+            if not isinstance(n,dict) or set(n)-{"start_at","end_at","total_minutes","rem_minutes","core_minutes","deep_minutes","awake_minutes","unspecified_minutes","wake_count","source"}:
+                raise APIError(400,"invalid_sleep","Schlafabschnitt ungültig.")
+            start,end=parse_iso(n.get("start_at")),parse_iso(n.get("end_at"))
+            if start is None or end is None or end<=start or (end-start).total_seconds()>86400:raise APIError(400,"invalid_sleep","Schlafzeitraum ungültig.")
+            for key in ("total_minutes","rem_minutes","core_minutes","deep_minutes","awake_minutes","unspecified_minutes"):number(n,key,1440,key=="total_minutes")
+            number(n,"wake_count",1000)
+            if any(v is not None and not isinstance(v,int) for k,v in n.items() if k.endswith("minutes") or k=="wake_count"):
+                raise APIError(400,"invalid_sleep","Schlafminuten müssen ganze Zahlen sein.")
+            if sum(n.get(k) or 0 for k in ("rem_minutes","core_minutes","deep_minutes","unspecified_minutes"))>n.get("total_minutes",0)+3:raise APIError(400,"invalid_sleep","Schlafphasen überschreiten die Gesamtdauer.")
+            safe_text(n.get("source",""),200)
+        night(value.get("night"))
+        history=value.get("history",[]);segments=value.get("segments",[])
+        if not isinstance(history,list) or len(history)>13 or not isinstance(segments,list) or len(segments)>300:raise APIError(400,"invalid_sleep","Schlafverlauf zu groß.")
+        for n in history:night(n)
+        previous=None
+        for segment in segments:
+            if not isinstance(segment,dict) or set(segment)!={"stage","start_at","end_at"} or segment["stage"] not in {"awake","rem","core","deep","unspecified","bed"}:raise APIError(400,"invalid_sleep","Schlafphase ungültig.")
+            start,end=parse_iso(segment["start_at"]),parse_iso(segment["end_at"])
+            if start is None or end is None or end<=start or start<parse_iso(value["night"]["start_at"]) or end>parse_iso(value["night"]["end_at"]) or (previous is not None and start<previous):raise APIError(400,"invalid_sleep","Schlafphasen überlappen oder sind ungültig.")
+            previous=end
+        for key,maximum in (("score",100),("duration_points",50),("consistency_points",30),("interruption_points",20),("baseline_nights",13),("target_minutes",720)):number(value,key,maximum,key in {"duration_points","baseline_nights","target_minutes"})
+        for key in ("score","baseline_nights","target_minutes"):
+            if value.get(key) is not None and not isinstance(value[key],int):raise APIError(400,"invalid_sleep","Schlafwert muss ganzzahlig sein.")
+        if value["target_minutes"]<240:raise APIError(400,"invalid_sleep","Schlafziel ungültig.")
+        if value.get("score") is not None and (value.get("consistency_points") is None or value.get("interruption_points") is None or value["baseline_nights"]<3):
+            raise APIError(400,"invalid_sleep","Gesamtwert ohne Vergleichsdaten ungültig.")
+        return value
 
     def validate_record_payload(self, kind: str, payload: dict[str, Any]) -> dict[str, Any]:
         allowed_fields = {
@@ -1706,10 +1745,16 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 if isinstance(lifetime, bool) or not isinstance(lifetime, int) or not 20 <= lifetime <= 900:
                     raise APIError(400, "invalid_lifetime", "Ungültige Suchdauer.")
                 with self.app.database.connect() as db:
-                    db.execute("DELETE FROM nearby WHERE user_id=?", (user_id,))
                     if token:
+                        db.execute("DELETE FROM nearby WHERE user_id=?", (user_id,))
                         expires = (utc_now() + dt.timedelta(seconds=lifetime)).isoformat().replace("+00:00", "Z")
                         db.execute("INSERT INTO nearby VALUES(?,?,?)", (user_id, token, expires))
+                    else:
+                        expected=body.get("expected_token")
+                        if expected is not None:
+                            expected=safe_text(expected,16000)
+                            db.execute("DELETE FROM nearby WHERE user_id=? AND token=?",(user_id,expected))
+                        else:db.execute("DELETE FROM nearby WHERE user_id=?",(user_id,))
                 self.send_empty()
             elif path == "/v1/presence":
                 self._presence(user_id)
@@ -2103,7 +2148,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "latitude", "longitude", "horizontal_accuracy", "altitude", "speed",
             "course", "location_timestamp", "battery_level", "battery_state",
             "low_power_mode", "network_type", "wifi_name",
-            "motion", "steps", "sleep_minutes", "sleep_score", "health_updated_at", "health_metrics",
+            "motion", "motion_confidence", "motion_updated_at", "steps", "sleep_minutes", "sleep_score", "health_updated_at", "health_metrics", "health_metric_dates", "sleep_summary",
             "location_sharing", "status_message", "device_name", "app_version", "app_state",
         }
         payload = {key: value for key, value in body.items() if key in allowed}
@@ -2120,15 +2165,24 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if "battery_level" in payload:
             if isinstance(payload["battery_level"], bool) or not isinstance(payload["battery_level"], int) or not 0 <= payload["battery_level"] <= 100:
                 raise APIError(400, "invalid_battery", "Ungültiger Akkuwert.")
+        if "motion_confidence" in payload and payload["motion_confidence"] not in ("hoch","mittel","niedrig"):
+            raise APIError(400,"invalid_motion","Bewegungserkennung ungültig.")
+        if "motion_updated_at" in payload and parse_iso(payload["motion_updated_at"]) is None:raise APIError(400,"invalid_motion","Bewegungszeit ungültig.")
         if "status_message" in payload:
             payload["status_message"] = safe_text(payload["status_message"], 120)
         if "wifi_name" in payload and payload["wifi_name"] is not None:
             payload["wifi_name"] = safe_text(str(payload["wifi_name"]), 80)
         if "health_metrics" in payload:
             metrics = payload["health_metrics"]
-            allowed_metrics = {"distance_km", "active_kcal", "exercise_minutes", "flights", "heart_rate", "resting_heart_rate", "hrv_ms", "oxygen_percent", "respiratory_rate"}
+            allowed_metrics = {"distance_km", "active_kcal", "exercise_minutes", "flights", "heart_rate", "resting_heart_rate", "hrv_ms", "oxygen_percent", "respiratory_rate", "cycling_km", "resting_kcal", "stand_minutes", "walking_heart_rate", "body_mass_kg", "body_temperature_c", "wrist_temperature_c", "vo2_max", "walking_speed_kmh", "step_length_cm", "systolic_mmhg", "diastolic_mmhg"}
             if not isinstance(metrics, dict) or any(k not in allowed_metrics or isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 or v > 100000 for k, v in metrics.items()):
                 raise APIError(400, "invalid_health", "Ungültige Health-Zusammenfassung.")
+        if "health_metric_dates" in payload:
+            dates=payload["health_metric_dates"]
+            if not isinstance(dates,dict) or len(dates)>32 or any(k not in payload.get("health_metrics",{}) or parse_iso(v) is None for k,v in dates.items()):
+                raise APIError(400,"invalid_health_dates","Health-Zeitpunkte ungültig.")
+        if "sleep_summary" in payload:
+            payload["sleep_summary"]=self.app.validate_sleep_summary(payload["sleep_summary"])
         for key, maximum in (("steps", 200000), ("sleep_minutes", 1440), ("sleep_score", 100)):
             if key in payload and (isinstance(payload[key], bool) or not isinstance(payload[key], int) or not 0 <= payload[key] <= maximum):
                 raise APIError(400, "invalid_health", "Ungültiger Health-Wert.")

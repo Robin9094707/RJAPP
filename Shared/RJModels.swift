@@ -36,10 +36,14 @@ struct PresencePayload: Codable, Hashable, Sendable {
     var networkType: String?
     var wifiName: String?
     var motion: String?
+    var motionConfidence:String?
+    var motionUpdatedAt:String?
     var steps: Int?
     var sleepMinutes: Int?
     var sleepScore: Int?
     var healthMetrics: [String: Double]?
+    var healthMetricDates:[String:String]?
+    var sleepSummary:SleepSummary?
     var healthUpdatedAt: String?
     var locationSharing: Bool?
     var statusMessage: String?
@@ -53,6 +57,7 @@ struct PresencePayload: Codable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case latitude, longitude, altitude, speed, course, steps, motion
+        case motionConfidence="motion_confidence",motionUpdatedAt="motion_updated_at"
         case horizontalAccuracy = "horizontal_accuracy"
         case locationTimestamp = "location_timestamp"
         case batteryLevel = "battery_level"
@@ -63,6 +68,7 @@ struct PresencePayload: Codable, Hashable, Sendable {
         case sleepMinutes = "sleep_minutes"
         case sleepScore = "sleep_score"
         case healthMetrics = "health_metrics"
+        case healthMetricDates="health_metric_dates",sleepSummary="sleep_summary"
         case healthUpdatedAt = "health_updated_at"
         case locationSharing = "location_sharing"
         case statusMessage = "status_message"

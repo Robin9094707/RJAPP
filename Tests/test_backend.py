@@ -310,6 +310,34 @@ class RJLoveBackendTests(unittest.TestCase):
             if kind in {"chat", "checkin"}:
                 self.assertEqual(self.request_error("/v1/records", "POST", body, other)[0], 403)
 
+    def test_extended_health_sleep_roundtrip_validation_and_revocation(self):
+        import copy
+        token=self.login()
+        partner=self.login("raphaela","raphaela-test-password")
+        night={"start_at":"2026-10-22T22:00:00Z","end_at":"2026-10-23T06:00:00Z","total_minutes":450,"rem_minutes":90,"core_minutes":270,"deep_minutes":90,"awake_minutes":30,"unspecified_minutes":0,"wake_count":2,"source":"Apple Watch"}
+        summary={"algorithm":"rj_sleep_v2","night":night,"segments":[{"stage":"core","start_at":night["start_at"],"end_at":"2026-10-22T23:00:00Z"}],"history":[],"duration_points":46.875,"baseline_nights":0,"target_minutes":480}
+        body={"sleep_summary":summary,"sleep_minutes":450,"health_metrics":{"wrist_temperature_c":36.2,"vo2_max":42,"systolic_mmhg":120},"health_metric_dates":{"vo2_max":"2026-10-21T10:00:00Z"},"motion":"Zu Fuß","motion_confidence":"hoch","motion_updated_at":"2026-10-23T10:00:00Z"}
+        self.assertEqual(self.request("/v1/presence","POST",body,token)[0],200)
+        shared=self.request("/v1/bootstrap",token=partner)[1]["partners"][0]["presence"]
+        for key in body:self.assertEqual(shared[key],body[key])
+        for edit in (lambda x:x.update(score=98),lambda x:x["night"].update(rem_minutes=1000),lambda x:x["segments"].append(dict(x["segments"][0])),lambda x:x.update(baseline_nights=True)):
+            invalid=copy.deepcopy(summary);edit(invalid)
+            self.assertEqual(self.request_error("/v1/presence","POST",{"sleep_summary":invalid},token)[0],400)
+        self.assertEqual(self.request_error("/v1/presence","POST",{"health_metrics":{"vo2_max":42},"health_metric_dates":{"vo2_max":"invalid"}},token)[0],400)
+        self.request("/v1/presence","POST",{"battery_level":80},token)
+        shared=self.request("/v1/bootstrap",token=partner)[1]["partners"][0]["presence"]
+        for key in body:self.assertNotIn(key,shared)
+
+    def test_old_nearby_stop_does_not_revoke_new_search(self):
+        token=self.login()
+        partner=self.login("raphaela","raphaela-test-password")
+        old,new="b2xk","bmV3"
+        for value in (old,new):self.request("/v1/nearby","POST",{"token":value},token)
+        self.request("/v1/nearby","POST",{"token":"","expected_token":old},token)
+        self.assertEqual(self.request("/v1/nearby",token=partner)[1]["token"],new)
+        self.request("/v1/nearby","POST",{"token":"","expected_token":new},token)
+        self.assertIsNone(self.request("/v1/nearby",token=partner)[1]["token"])
+
     def test_nearby_exchange_requires_auth_and_expires(self):
         import datetime
         token = self.login()

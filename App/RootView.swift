@@ -46,6 +46,7 @@ struct MainTabView:View {
 
         .sheet(isPresented:$state.showingPartnerProfile){PartnerProfileView()}
         .sheet(isPresented:$state.showingCountdowns){NavigationStack{CountdownHubView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingCountdowns=false}}}}}
+        .sheet(isPresented:$state.showingHealthUpgrade,onDismiss:{appState.health.deferExpandedAccess();appState.offerForegroundMoments()}){HealthPermissionsUpgradeView()}
         .sheet(isPresented:$state.showingStatus){StatusEditorView()}
         .onChange(of:state.selectedTab){_,tab in if tab == .settings{state.selectedTab = .home;state.showingProfile=true}}
         .sheet(isPresented:$state.showingFartRecorder,onDismiss:{appState.offerForegroundMoments()}){FartRecorderView(autoStart:appState.quickFartRecording)}
@@ -62,12 +63,13 @@ struct ChangelogView:View {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 Image(systemName:"heart.text.clipboard.fill").font(.system(size:50)).foregroundStyle(LovePalette.pink)
                 Text("Noch mehr wir.").font(.system(size:36,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.3").font(.title3.bold())
-                Label("Kommentare zu jeder Duftpost – auch zu euren alten Klassikern",systemImage:"bubble.left.and.bubble.right.fill")
-                Label("Partnerprofil mit bestätigten Öffnungs-, Aktivitäts- und Hintergrundzeiten",systemImage:"person.text.rectangle")
-                Label("Jahrestag und eigene Countdowns mit frei wählbaren Widgets",systemImage:"calendar.badge.heart")
-                Label("Live-Aktivität direkt lokal starten und die Anzeige einstellen",systemImage:"livephoto")
-                Text("Eure bisherigen Aufnahmen, Bewertungen und Termine bleiben erhalten. App und Server gemeinsam auf 3.3 aktualisieren. Hintergrundzeiten zeigen nur erfolgreiche, am Server bestätigte Updates.").font(.footnote).foregroundStyle(.secondary)
+                Text("Willkommen in RJ Love 3.4").font(.title3.bold())
+                Label("Mehr Health-Werte, Schlafphasen und Nächte im Verlauf",systemImage:"moon.stars.fill")
+                Label("RJ-Schlafindex aus Dauer, Regelmäßigkeit und Unterbrechungen",systemImage:"chart.bar.fill")
+                Label("Nahsuche mit Kamera-Coaching und automatischem UWB-Neustart",systemImage:"viewfinder")
+                Label("IPA-Dateien aus Dateien und iCloud auswählbar",systemImage:"folder.fill")
+                Label("Euer neues Glasherz-Icon mit euren Gesichtern",systemImage:"heart.fill")
+                Text("Beide iPhones können ihre erweiterten Health-Leserechte jetzt selbst bestätigen. Eure bisherigen Freigaben bleiben bestehen. Der RJ-Schlafindex ist eine eigene Schätzung und kein ausgelesener Apple-Score. App und Server gemeinsam auf 3.4 aktualisieren.").font(.footnote).foregroundStyle(.secondary)
                 Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
             }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")
         }.interactiveDismissDisabled()

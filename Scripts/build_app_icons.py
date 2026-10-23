@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from PIL import Image
 root = Path(__file__).resolve().parents[1]
-source = Image.open(root / 'Design/RJ-AppIcon-2.1.png').convert('RGB')
+source = Image.open(root / 'Design/RJ-AppIcon-3.4.png').convert('RGB')
 icons = root / 'App/Resources/Assets.xcassets/AppIcon.appiconset'
 for entry in json.loads((icons / 'Contents.json').read_text())['images']:
     pixels = round(float(entry['size'].split('x')[0]) * float(entry['scale'].replace('x', '')))

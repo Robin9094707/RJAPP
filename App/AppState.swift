@@ -49,6 +49,7 @@ final class AppState {
     var showingCountdowns = false
     var activity:[String:PartnerActivity] = [:]
     var showingStatus = false
+    var showingHealthUpgrade = false
     var pendingSweet: SharedRecord?
     var pendingPhotoRequest: SharedRecord?
     var storageByUser: [String:Int] = [:]
@@ -126,6 +127,7 @@ final class AppState {
         guard UIApplication.shared.applicationState == .active, !activating else { return }
         activating = true; defer { activating = false }
         acceptQuickCaptureRequest()
+        nearby.resumeForeground()
         if phase == .authenticated { try? await api.recordAppOpen() }
         if health.sharingEnabled { await health.refresh(force:true); lastHealthRefresh = .now }
 
@@ -471,11 +473,15 @@ final class AppState {
         payload.networkType = deviceStatus.networkType
         payload.wifiName = shareWiFiName ? deviceStatus.wifiName : nil
         payload.motion = deviceStatus.motion
+        payload.motionConfidence=deviceStatus.motionConfidence
+        payload.motionUpdatedAt=deviceStatus.motionUpdatedAt?.rjISO8601
         if health.sharingEnabled {
             payload.steps = health.shareActivity ? health.steps : nil
             payload.sleepMinutes = health.shareSleep ? health.sleepMinutes : nil
             payload.sleepScore = health.shareSleep ? health.sleepScore : nil
             payload.healthMetrics = health.sharedMetrics
+            payload.healthMetricDates = health.sharedMetricDates
+            payload.sleepSummary = health.shareSleep ? health.sleepSummary:nil
             payload.healthUpdatedAt = health.lastUpdated?.rjISO8601
         }
         payload.appState = UIApplication.shared.applicationState == .active ? "foreground":"background"
@@ -495,9 +501,10 @@ final class AppState {
         showingChangelog = false
     }
     func offerForegroundMoments() {
-        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
+        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, !showingHealthUpgrade, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
         let defaults = UserDefaults.standard
         if defaults.string(forKey:"rjlove.changelog-seen") != RJVersion.app {showingChangelog=true;return}
+        if health.needsExpandedAccess {showingHealthUpgrade=true;return}
         if defaults.object(forKey:"rjlove.sweet-autoplay") == nil || defaults.bool(forKey:"rjlove.sweet-autoplay") {
             pendingSweet = records.filter { $0.kind == .chat && $0.ownerID != me?.id && $0.payload.autoplay == true }.sorted { $0.createdAt < $1.createdAt }.first { record in !openedRecords.contains { $0.recordID == record.id && $0.userID == me?.id } && !defaults.bool(forKey:"rjlove.opened."+record.id) }
         }

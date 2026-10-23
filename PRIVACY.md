@@ -1,3 +1,11 @@
+## Ergänzung 3.4
+
+Health-Leserechte werden auf jedem iPhone separat über iOS angefragt. Die bestehenden Weitergabe-Schalter bleiben beim Update erhalten. Aktivität, Schlaf und Vitalwerte sind weiterhin getrennt abschaltbar. Die Vitalwerte-Kategorie umfasst jetzt auch Körpergewicht, Blutdruck, Körper-/Handgelenktemperatur und Cardiofitness; vor dem Erweitern der Leserechte erklärt die App diese zusätzlichen Kategorien. Nur in Health tatsächlich vorhandene und freigegebene Daten können erscheinen. Die App schreibt keine Health-Daten.
+
+Bei aktivierter Schlaffreigabe wird eine Zusammenfassung der letzten Hauptnacht inklusive aufgezeichneter Phasenintervalle, Quellenname und bis zu 13 vorherigen Nächten auf eurem privaten Server gespeichert und mit dem Partner geteilt. Der RJ-Schlafindex ist eine eigene Schätzung, kein medizinischer Wert und kein Originalwert von Apple. Einzelne Vitalwerte behalten ihr Messdatum (bis zu 30 Tage alt). Heute summierte Aktivität und der Zeitpunkt des Abgleichs werden getrennt benannt. Ausschalten der Weitergabe entfernt die Kategorie beim nächsten erfolgreichen Status-Upload.
+
+Bewegung kann Erkennungssicherheit und den Beginn der erkannten Aktivität teilen. Die optionale Kamera-Unterstützung der Nahsuche läuft sichtbar in der geöffneten Suchansicht; sie speichert oder überträgt keine Kamerabilder. Beim Verlassen der Ansicht wird die Kamera pausiert. Ein fehlender Kamerafortschritt führt zur normalen UWB-Messung. Die Auswahl einer IPA liest nur die ausdrücklich gewählte Datei und erstellt eine temporäre Uploadkopie, die anschließend entfernt wird.
+
 ## Ergänzung 3.3
 
 Kommentare zur Duftpost werden mit Verfasser und Serverzeit im privaten Datenbestand gespeichert. Ein getrenntes Aktivitätsprotokoll enthält zuletzt bestätigte App-Öffnung, Vordergrundkontakt und erfolgreichen Hintergrundabgleich. Diese Zeiten sind innerhalb eures verbundenen Paars sichtbar. Ein Hintergrundabruf wird nicht als App-Öffnung ausgewiesen. Jahrestag und Countdowns bleiben im gemeinsamen privaten Datenbestand; die freiwillig gewählten Widget-Inhalte werden über die bestehende App Group lokal bereitgestellt.

@@ -54,6 +54,9 @@ final class AppState {
     private var eveningPresentedDay=Date.now
     var pendingSweet: SharedRecord?
     var pendingPhotoRequest: SharedRecord?
+    private(set) var sendingPhotoRequest=false
+    private(set) var recallingPhotoRequest=false
+    var outgoingPhotoRequest:SharedRecord? {records.first{$0.kind == .photo_request && $0.ownerID==me?.id && $0.payload.completed != true}}
     var storageByUser: [String:Int] = [:]
     var thoughtHistory: [ThoughtEvent] = []
     var lastOpened: [String:String] = [:]
@@ -264,6 +267,7 @@ final class AppState {
             let snapshotIDs=Set(snapshot.records.map(\.id));let deleted=Set(snapshot.deletedRecordIDs ?? [])
             let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deleted.contains($0.id)}
             records = snapshot.records + history
+            dismissRecalledPhotoRequest()
             if fartArchiveVisible { farts = try await api.loadFartArchive() }
             else { farts = snapshot.farts ?? [] }
             thoughts = snapshot.thoughts
@@ -530,14 +534,39 @@ final class AppState {
             UserDefaults.standard.set(data, forKey: "rjlove.home-layout." + profile.baseURL + "." + profile.username)
         }
     }
+    func refreshPhotoRequests() async throws -> PhotoRequestState {
+        let state=try await api.photoRequestState()
+        records.removeAll{$0.kind == .photo_request && $0.payload.completed != true}
+        if let outgoing=state.outgoing {records.removeAll{$0.id==outgoing.id};records.append(outgoing)}
+        for request in state.incoming {records.removeAll{$0.id==request.id};records.append(request)}
+        dismissRecalledPhotoRequest();persistCache();return state
+    }
+    private func dismissRecalledPhotoRequest() {
+        if let pendingPhotoRequest,!records.contains(where:{$0.id==pendingPhotoRequest.id && $0.kind == .photo_request && $0.payload.completed != true}) {self.pendingPhotoRequest=nil}
+    }
     func requestPhoto(title: String, id: String) async -> Bool {
+        guard !sendingPhotoRequest else{return false}
+        guard outgoingPhotoRequest==nil else{alert=AppAlert(title:"Ein Fotowunsch wartet schon",message:"Lass deinen offenen Wunsch beantworten oder rufe ihn zuerst zurück.");return false}
+        sendingPhotoRequest=true;defer{sendingPhotoRequest=false}
         do {
             let photoRequest = try await api.createPhotoRequest(id: id, title: title.trimmingCharacters(in: .whitespacesAndNewlines))
             records.removeAll { $0.id == photoRequest.id }; records.insert(photoRequest, at: 0)
             persistCache(); return true
         } catch {
-            alert = AppAlert(title: "Fotowunsch nicht gesendet", message: error.localizedDescription)
+            if case APIClientError.server(status:409,message:_) = error {_ = try? await refreshPhotoRequests()}
+            alert = AppAlert(title: "Fotowunsch", message: error.localizedDescription)
             return false
+        }
+    }
+    func recallPhotoRequest(_ request:SharedRecord) async -> Bool {
+        guard !recallingPhotoRequest,request.ownerID==me?.id else{return false}
+        recallingPhotoRequest=true;defer{recallingPhotoRequest=false}
+        do {
+            try await api.recallPhotoRequest(id:request.id)
+            records.removeAll{$0.id==request.id};dismissRecalledPhotoRequest();persistCache();Haptics.success();return true
+        }catch{
+            _ = try? await refreshPhotoRequests()
+            alert=AppAlert(title:"Fotowunsch zurückrufen",message:error.localizedDescription);return false
         }
     }
     func receiveInstantPhoto(_ photo: SharedRecord, requestID: String) {

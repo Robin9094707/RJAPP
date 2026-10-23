@@ -50,8 +50,8 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.5.1"
-MINIMUM_APP_VERSION = "3.5.1"
+APP_VERSION = "3.6.0"
+MINIMUM_APP_VERSION = "3.6.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual"}
@@ -420,6 +420,17 @@ class Database:
                 CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
                 """
             )
+
+            # Keep the newest pending request per sender when upgrading a spammed queue.
+            # Existing photos and completed requests are never changed.
+            pending=db.execute("SELECT id,owner_id FROM records WHERE kind='photo_request' AND deleted_at IS NULL AND COALESCE(json_extract(payload,'$.completed'),0)=0 ORDER BY created_at DESC,id DESC").fetchall()
+            seen=set();now=iso_now()
+            for row in pending:
+                if row["owner_id"] in seen:
+                    db.execute("UPDATE records SET deleted_at=?,updated_at=? WHERE id=?",(now,now,row["id"]))
+                    db.execute("UPDATE events SET read_at=? WHERE kind='record_photo_request' AND json_extract(payload,'$.record_id')=? AND read_at IS NULL",(now,row["id"]))
+                else:seen.add(row["owner_id"])
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_open_photo_request_per_sender ON records(owner_id) WHERE kind='photo_request' AND deleted_at IS NULL AND COALESCE(json_extract(payload,'$.completed'),0)=0")
 
             device_columns = {r["name"] for r in db.execute("PRAGMA table_info(devices)")}
             for name, declaration in {"bundle_id": "TEXT", "team_id": "TEXT"}.items():
@@ -1411,7 +1422,7 @@ class RJLoveApplication:
             record_rows = db.execute(
                 "SELECT id,kind,owner_id,payload,created_at,updated_at FROM records "
                 "WHERE id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind='chat' ORDER BY created_at DESC LIMIT 200) "
-                "OR id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind<>'chat' ORDER BY updated_at DESC LIMIT 500) OR (deleted_at IS NULL AND kind IN ('calendar','milestone','reminder')) "
+                "OR id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind<>'chat' ORDER BY updated_at DESC LIMIT 500) OR (deleted_at IS NULL AND kind IN ('calendar','milestone','reminder')) OR (deleted_at IS NULL AND kind='photo_request' AND COALESCE(json_extract(payload,'$.completed'),0)=0) "
                 "ORDER BY updated_at DESC"
             ).fetchall()
             command_rows = db.execute(
@@ -1695,6 +1706,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/v1/photo-requests":
                 self._request_photo(user_id)
                 return
+            if len(parts)==4 and parts[:2]==["v1","photo-requests"] and parts[3]=="recall":
+                self.read_json();self._recall_photo_request(user_id,parts[2]);return
             if path == "/v1/preferences":
                 self._save_preferences(user_id)
                 return
@@ -1838,6 +1851,13 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "server_error", "message": f"Serverfehler ({request_id})."})
 
     def _media_get(self, path, parts, query):
+        if path=="/v1/photo-requests":
+            user_id=self.current_user()
+            with self.app.database.connect() as db:
+                rows=db.execute("SELECT * FROM records WHERE kind='photo_request' AND deleted_at IS NULL AND COALESCE(json_extract(payload,'$.completed'),0)=0 ORDER BY created_at DESC,id DESC").fetchall()
+            outgoing=next((self._record_dict(r) for r in rows if r["owner_id"]==user_id),None)
+            incoming=[self._record_dict(r) for r in rows if json.loads(r["payload"]).get("target_id")==user_id]
+            self.send_json(200,{"outgoing":outgoing,"incoming":incoming});return True
         if len(parts)==3 and parts[0]=="updates":
             with self.app.database.connect() as db:
                 allowed=db.execute("SELECT * FROM update_feeds WHERE token_hash=?",(hashlib.sha256(parts[1].encode()).hexdigest(),)).fetchone()
@@ -2062,6 +2082,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             raise APIError(400, "invalid_id", "Ungültige Fotowunsch-ID.")
         title = safe_text(body.get("title", "Bitte lächeln 🥰"), 120) or "Bitte lächeln 🥰"
+        self._create_photo_request(user_id,request_id,title)
+
+    def _create_photo_request(self,user_id,request_id,title):
         target_id = self.app.partner_ids(user_id)[0]
         now = iso_now()
         payload = {"title": title, "target_id": target_id, "completed": False}
@@ -2074,10 +2097,24 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     raise APIError(409, "request_conflict", "Dieser Fotowunsch kann nicht erneut gesendet werden.")
                 self.send_json(200, self._record_dict(old))
                 return
+            pending=db.execute("SELECT id FROM records WHERE owner_id=? AND kind='photo_request' AND deleted_at IS NULL AND COALESCE(json_extract(payload,'$.completed'),0)=0",(user_id,)).fetchone()
+            if pending:raise APIError(409,"photo_request_pending","Dein Fotowunsch wartet noch. Erst beantworten lassen oder zurückrufen.")
             self.app.enforce_quota(user_id, len(raw.encode()), db=db)
             db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)", (request_id, "photo_request", user_id, raw, len(raw.encode()), now, now))
         self.app.create_event(target_id, "record_photo_request", "Bitte lächeln 📷", "Ein Fotowunsch wartet in RJ Love.", {"record_id": request_id})
         self.send_json(200, {"id": request_id, "kind": "photo_request", "owner_id": user_id, "payload": payload, "created_at": now, "updated_at": now})
+
+    def _recall_photo_request(self,user_id,request_id):
+        now=iso_now()
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row=db.execute("SELECT * FROM records WHERE id=? AND kind='photo_request'",(request_id,)).fetchone()
+            if not row:raise APIError(404,"request_missing","Dieser Fotowunsch existiert nicht mehr.")
+            if row["owner_id"]!=user_id:raise APIError(403,"not_owner","Du kannst nur deinen eigenen Fotowunsch zurückrufen.")
+            if json.loads(row["payload"]).get("completed"):raise APIError(409,"request_completed","Dieser Fotowunsch wurde bereits beantwortet. Das Foto bleibt erhalten.")
+            db.execute("UPDATE records SET deleted_at=?,updated_at=? WHERE id=?",(now,now,request_id))
+            db.execute("UPDATE events SET read_at=? WHERE kind='record_photo_request' AND json_extract(payload,'$.record_id')=? AND read_at IS NULL",(now,request_id))
+        self.send_empty()
 
     def _save_preferences(self, user_id):
         body = self.read_json()
@@ -2300,6 +2337,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise APIError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Der Datensatzinhalt ist ungültig.")
         payload = self.app.validate_record_payload(kind, payload)
+        if kind=="photo_request":
+            if payload.get("target_id") not in self.app.partner_ids(user_id):raise APIError(403,"invalid_target","Fotowünsche sind nur für dein Gegenüber bestimmt.")
+            if payload.get("completed"):raise APIError(400,"reply_required","Ein Fotowunsch wird ausschließlich durch eine Fotoantwort erledigt.")
+            self._create_photo_request(user_id,record_id,payload.get("title") or "Bitte lächeln 🥰")
+            return
         raw_payload = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         size = len(raw_payload.encode("utf-8"))
         now = iso_now()
@@ -2380,6 +2422,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         )
 
     def _delete_record(self, user_id: str, record_id: str) -> None:
+        with self.app.database.connect() as db:
+            is_request=db.execute("SELECT 1 FROM records WHERE id=? AND kind='photo_request'",(record_id,)).fetchone()
+        if is_request:self._recall_photo_request(user_id,record_id);return
         now = iso_now()
         with self.app.database.connect() as db:
             row = db.execute("SELECT kind,owner_id FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()

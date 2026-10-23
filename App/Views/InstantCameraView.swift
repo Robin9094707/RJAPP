@@ -60,6 +60,7 @@ struct InstantCameraView: View {
     @State private var longitude:Double?
     @State private var uploadTask: Task<Void, Never>?
     @State private var uploadedAsset: String?
+    @State private var requestVerified=false
     @State private var error: String?
     private var prompt: String { request.payload.title?.isEmpty == false ? request.payload.title! : "Bitte lächeln 🥰" }
     var body: some View {
@@ -78,6 +79,7 @@ struct InstantCameraView: View {
                 if let error = error ?? camera.error {
                     Text(error).font(.footnote).foregroundStyle(.orange)
                     if camera.photo != nil { Button("Foto erneut senden") { beginUpload() }.buttonStyle(.borderedProminent) }
+                    else {Button("Fotowunsch erneut prüfen"){Task{await verifyRequestAndStart()}}.buttonStyle(.bordered)}
                 } else {
                     Text("Sobald die sichtbare Kamera bereit ist, wird ein Foto aufgenommen und direkt geteilt. Du kannst es später unter Unser Jetzt zurückrufen.").font(.footnote).foregroundStyle(.secondary)
                 }
@@ -91,7 +93,7 @@ struct InstantCameraView: View {
                 }
                 #endif
                 app.location.requestPhotoLocation()
-                await camera.start()
+                await verifyRequestAndStart()
             }
             .onAppear { cancelled = false }
             .onChange(of: camera.running) { _, _ in advanceCamera() }
@@ -105,6 +107,14 @@ struct InstantCameraView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in resumeVisibleCamera() }
             .onDisappear { cancelled = true; uploadTask?.cancel(); camera.stop() }
     }
+    private func verifyRequestAndStart() async {
+        error=nil
+        do {
+            let state=try await app.refreshPhotoRequests()
+            guard state.incoming.contains(where:{$0.id==request.id}),!cancelled else{camera.stop();dismiss();return}
+            requestVerified=true;await camera.start()
+        }catch{self.error="Fotowunsch konnte nicht geprüft werden: "+error.localizedDescription}
+    }
     private func advanceCamera() {
         guard !cancelled, UIApplication.shared.applicationState == .active else { return }
         if camera.photo != nil { beginUpload() }
@@ -115,7 +125,7 @@ struct InstantCameraView: View {
         }
     }
     private func resumeVisibleCamera() {
-        guard !cancelled else { return }
+        guard !cancelled,requestVerified else { return }
         if camera.photo != nil { beginUpload() }
         else { captured = false; Task { await camera.start(); advanceCamera() } }
     }
@@ -158,12 +168,14 @@ struct InstantGalleryView:View {
     @State private var deleting:SharedRecord?
     @State private var editing:SharedRecord?
     @State private var selectedDay=Date.now
+    @State private var recalling:SharedRecord?
     private var photos:[SharedRecord]{app.records.filter{$0.kind == .instant}.sorted{(JournalDates.date($0) ?? .distantPast)>(JournalDates.date($1) ?? .distantPast)}}
     private var dayPhotos:[SharedRecord]{photos.filter{Calendar.current.isDate(JournalDates.date($0) ?? .distantPast,inSameDayAs:selectedDay)}}
-    private var requests:[SharedRecord]{app.records.filter{$0.kind == .photo_request && $0.payload.completed != true}}
+    private var requests:[SharedRecord]{app.records.filter{$0.kind == .photo_request && $0.payload.targetID==app.me?.id && $0.payload.completed != true}}
     var body:some View {
         ScrollView {LazyVStack(alignment:.leading,spacing:22) {
             introduction
+            if let request=app.outgoingPhotoRequest {outgoingCard(request)}
             VStack(alignment:.leading,spacing:10) {
                 HStack{Label("Euer Fotokalender",systemImage:"calendar").font(.headline);Spacer();Button("Heute"){selectedDay = .now}}
                 PhotoCalendarView(selection:$selectedDay,photos:photos).frame(height:365)
@@ -182,8 +194,9 @@ struct InstantGalleryView:View {
         }.padding(20)}.background(LoveBackground()).navigationTitle("Unser BeReal").navigationBarTitleDisplayMode(.inline)
         .sheet(item:$editing){MomentMetadataEditor(record:$0)}
         .alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true;requestID=UUID().uuidString};sendingRequest=false}};Button("Abbrechen",role:.cancel){}}
+        .confirmationDialog("Fotowunsch zurückrufen?",isPresented:Binding(get:{recalling != nil},set:{if !$0{recalling=nil}}),titleVisibility:.visible){Button("Fotowunsch zurückrufen",role:.destructive){if let request=recalling{Task{_ = await app.recallPhotoRequest(request)}};recalling=nil};Button("Behalten",role:.cancel){recalling=nil}}message:{Text("Dein Gegenüber kann diesen Wunsch danach nicht mehr beantworten. Ein bereits fertig gesendetes Foto wird nicht gelöscht.")}
         .alert("Foto für beide zurückrufen?",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}})){Button("Zurückrufen",role:.destructive){if let photo=deleting{Task{_ = await app.deleteRecord(photo)}};deleting=nil};Button("Abbrechen",role:.cancel){deleting=nil}}
-        .task{await app.loadRecordArchive(kind:.instant);await app.loadRecordArchive(kind:.photo_request)}
+        .task{await app.loadRecordArchive(kind:.instant);_ = try? await app.refreshPhotoRequests()}
         .refreshable{_ = await app.syncNow(showErrors:false);await app.loadRecordArchive(kind:.instant)}
     }
     private var introduction:some View {
@@ -191,9 +204,18 @@ struct InstantGalleryView:View {
             LoveEyebrow(text:"Echte Augenblicke. Unser kleines Leben.")
             HStack{Text("Ein Tag. Ein Blick.\nGanz viel wir.").font(.system(size:33,weight:.medium,design:.serif));Spacer(minLength:0);Image(systemName:"camera.on.rectangle.fill").font(.system(size:46)).foregroundStyle(LovePalette.pink.gradient)}
             Text("Blättert durch eure Tage und findet das Lächeln dazwischen. Ein Fotowunsch öffnet beim Gegenüber die sichtbare Kamera, wenn die App geöffnet und die Funktion erlaubt ist.").font(.subheadline).foregroundStyle(.secondary)
-            Button(sendingRequest ? "Wird gewünscht …":"Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest).buttonStyle(.borderedProminent).controlSize(.large)
-            if sent {Label("Fotowunsch gesendet",systemImage:"checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent")}
+            Button(sendingRequest ? "Wird gewünscht …":"Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest || app.sendingPhotoRequest || app.outgoingPhotoRequest != nil || app.recallingPhotoRequest).buttonStyle(.borderedProminent).controlSize(.large)
+            if sent,app.outgoingPhotoRequest != nil {Label("Fotowunsch gesendet",systemImage:"checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent")}
         }.loveCard()
+    }
+    private func outgoingCard(_ request:SharedRecord)->some View {
+        VStack(alignment:.leading,spacing:16){
+            HStack(spacing:12){LoveIcon(symbol:"paperplane.fill",tint:LovePalette.violet);VStack(alignment:.leading,spacing:4){Text("Dein Fotowunsch wartet").font(.headline);Text("Bei "+(app.partner?.displayName ?? "deinem Lieblingsmenschen")).font(.caption).foregroundStyle(.secondary)};Spacer();Image(systemName:"clock").foregroundStyle(LovePalette.violet)}
+            Text(request.payload.title ?? "Bitte lächeln").font(.system(.title3,design:.serif))
+            if let date=request.createdAt.rjDate{Text("Gesendet "+date.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)}
+            Text("Ein Wunsch nach dem anderen. Sobald das Foto da ist oder du zurückrufst, kannst du einen neuen senden.").font(.subheadline).foregroundStyle(.secondary)
+            Button(app.recallingPhotoRequest ? "Wird zurückgerufen …":"Fotowunsch zurückrufen",systemImage:"arrow.uturn.backward"){recalling=request}.buttonStyle(.bordered).disabled(app.recallingPhotoRequest).accessibilityIdentifier("photo-request-recall")
+        }.loveCard().accessibilityIdentifier("outgoing-photo-request")
     }
     private func photoCard(_ photo:SharedRecord)->some View {
         VStack(alignment:.leading,spacing:14) {

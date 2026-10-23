@@ -2,30 +2,50 @@ import SwiftUI
 import UIKit
 
 enum LovePalette {
-    static let cyan = Color(red: 0.15, green: 0.61, blue: 0.64)
-    static let blue = Color(red: 0.18, green: 0.42, blue: 1.0)
-    static let pink = Color(red: 0.88, green: 0.20, blue: 0.46)
-    static let coral = Color(red: 1.0, green: 0.48, blue: 0.42)
-    static let violet = Color(red: 0.48, green: 0.34, blue: 0.78)
+    static let cyan=Color(red:0.12,green:0.51,blue:0.55)
+    static let blue=Color(red:0.23,green:0.43,blue:0.78)
+    static let pink=Color(red:0.78,green:0.24,blue:0.43)
+    static let coral=Color(red:0.87,green:0.46,blue:0.36)
+    static let violet=Color(red:0.43,green:0.35,blue:0.64)
+    static let surface=Color(uiColor:.secondarySystemGroupedBackground)
 }
 
-/// Decorative shapes must never participate in the intrinsic width of a screen.
-/// GeometryReader follows the actual window, including small iPhones and split view.
-struct LoveBackground: View {
+struct LoveBackground:View {
     @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                (scheme == .dark ? Color(red: 0.065, green: 0.055, blue: 0.085) : Color(red: 0.985, green: 0.965, blue: 0.95))
-                RadialGradient(colors: [LovePalette.cyan.opacity(scheme == .dark ? 0.11 : 0.07), .clear], center: .topLeading, startRadius: 0, endRadius: geometry.size.width * 1.1)
-                Ellipse().fill(LovePalette.pink.opacity(scheme == .dark ? 0.23 : 0.13))
-                    .frame(width: geometry.size.width * 1.05, height: geometry.size.height * 0.6)
-                    .blur(radius: 70).offset(x: geometry.size.width * 0.34, y: -geometry.size.height * 0.3)
-                Ellipse().fill(LovePalette.violet.opacity(0.14))
-                    .frame(width: geometry.size.width, height: geometry.size.height * 0.65)
-                    .blur(radius: 75).offset(x: -geometry.size.width * 0.35, y: geometry.size.height * 0.3)
-            }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
+    var body:some View {
+        ZStack {
+            Color(uiColor:.systemGroupedBackground)
+            LinearGradient(colors:[LovePalette.pink.opacity(scheme == .dark ? 0.09:0.045),.clear,LovePalette.violet.opacity(0.025)],startPoint:.topLeading,endPoint:.bottomTrailing)
         }.ignoresSafeArea().accessibilityHidden(true).allowsHitTesting(false)
+    }
+}
+
+struct LoveIcon:View {
+    let symbol:String
+    var tint:Color=LovePalette.pink
+    var size:CGFloat=44
+    var body:some View {
+        Image(systemName:symbol).font(.system(size:size*0.42,weight:.semibold)).foregroundStyle(tint)
+            .frame(width:size,height:size).background(tint.opacity(0.1),in:RoundedRectangle(cornerRadius:size*0.31,style:.continuous))
+            .accessibilityHidden(true)
+    }
+}
+struct LoveSettingsRow:View {
+    let title:String
+    var subtitle:String?=nil
+    let symbol:String
+    var tint:Color=LovePalette.pink
+    var body:some View {
+        HStack(spacing:14){LoveIcon(symbol:symbol,tint:tint);VStack(alignment:.leading,spacing:4){Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary);if let subtitle{Text(subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)}};Spacer(minLength:8);Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)}.padding(.vertical,4).contentShape(Rectangle())
+    }
+}
+private struct LoveCardSurface:ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    func body(content:Content)->some View {
+        content.padding(20).frame(maxWidth:.infinity,alignment:.leading)
+            .background(LovePalette.surface,in:RoundedRectangle(cornerRadius:26,style:.continuous))
+            .overlay{RoundedRectangle(cornerRadius:26,style:.continuous).stroke(Color.primary.opacity(scheme == .dark ? 0.07:0.025),lineWidth:1).allowsHitTesting(false)}
+            .shadow(color:.black.opacity(scheme == .dark ? 0:0.025),radius:14,y:5)
     }
 }
 
@@ -53,12 +73,8 @@ extension View {
         }
     }
 
-    func loveCard() -> some View {
-        padding(22)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .loveGlass(in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-            .shadow(color: LovePalette.violet.opacity(0.07), radius: 22, y: 12)
-    }
+    func loveCard()->some View {modifier(LoveCardSurface())}
+
 }
 
 struct LoveSectionTitle: View {
@@ -110,19 +126,19 @@ struct PartnerAvatar: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [LovePalette.cyan, LovePalette.violet, LovePalette.pink],
+                        colors: [LovePalette.pink, LovePalette.violet],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
             Circle()
-                .stroke(.white.opacity(0.72), lineWidth: 3)
+                .stroke(.white.opacity(0.45), lineWidth: 2)
             Text(initials)
                 .font(.system(size: size * 0.32, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
         }
         .frame(width: size, height: size)
-        .shadow(color: LovePalette.pink.opacity(0.28), radius: 15, y: 6)
+        .shadow(color: LovePalette.pink.opacity(0.12), radius: 8, y: 4)
         .accessibilityLabel("Profilbild von \(name)")
     }
 
@@ -190,7 +206,7 @@ struct LoveEyebrow: View {
     let text: String
     var body: some View {
         Text(text.uppercased()).fixedSize(horizontal: false, vertical: true).font(.system(size: 10, weight: .bold, design: .rounded))
-            .tracking(2.4).foregroundStyle(LovePalette.pink)
+            .tracking(1.8).foregroundStyle(LovePalette.pink)
     }
 }
 struct LoveMetric: View {
@@ -200,7 +216,7 @@ struct LoveMetric: View {
     var tint: Color = LovePalette.pink
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: symbol).font(.title3).foregroundStyle(tint)
+            LoveIcon(symbol:symbol,tint:tint,size:34)
             Text(value).font(.system(.title2, design: .rounded, weight: .bold)).minimumScaleFactor(0.6).lineLimit(1)
             Text(title).font(.caption).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(17)

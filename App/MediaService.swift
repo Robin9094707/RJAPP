@@ -133,6 +133,12 @@ extension APIClient {
         struct Response:Decodable {let token:String}
         return try await execute(try request(path:"/v1/update-feed",method:"POST",body:encoder.encode(["base_url":baseURL])),as:Response.self).token
     }
+    func photoRequestState() async throws -> PhotoRequestState {
+        try await execute(try request(path:"/v1/photo-requests",method:"GET"),as:PhotoRequestState.self)
+    }
+    func recallPhotoRequest(id:String) async throws {
+        _ = try await execute(try request(path:"/v1/photo-requests/\(id)/recall",method:"POST",body:Data("{}".utf8)),as:EmptyResponse.self)
+    }
     func createPhotoRequest(id: String, title: String) async throws -> SharedRecord {
         try await execute(try request(path: "/v1/photo-requests", method: "POST", body: encoder.encode(["id": id, "title": title])), as: SharedRecord.self)
     }
@@ -262,3 +268,5 @@ struct FileShareView:UIViewControllerRepresentable {
     func makeUIViewController(context:Context)->UIActivityViewController {UIActivityViewController(activityItems:urls,applicationActivities:nil)}
     func updateUIViewController(_ uiViewController:UIActivityViewController,context:Context){}
 }
+
+struct PhotoRequestState:Decodable {let outgoing:SharedRecord?;let incoming:[SharedRecord]}

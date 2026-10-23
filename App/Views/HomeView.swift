@@ -35,8 +35,8 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $editingHome) { HomeEditorView() }
         .sheet(isPresented: $showingWakeComposer) { WakeComposerView() }
-        .sheet(isPresented: $showingStatusEditor) { StatusEditorView() }
-        .sheet(isPresented: Binding(get:{appState.showingProfile},set:{appState.showingProfile=$0})) { NavigationStack { SettingsView().toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { appState.showingProfile=false } } } }.navigationTransition(.zoom(sourceID:"profile",in:profileTransition)) }
+        .sheet(isPresented: $showingStatusEditor) { StatusEditorSheet() }
+        .sheet(isPresented: Binding(get:{appState.showingProfile},set:{appState.showingProfile=$0})) { NavigationStack { SettingsView().toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { appState.showingProfile=false } } } }.navigationTransition(.zoom(sourceID:"profile",in:profileTransition)).presentationDetents([.large]).presentationDragIndicator(.visible) }
         .sheet(isPresented: $showingHealth) { NavigationStack { HealthDashboardView() } }
         .sheet(isPresented: $showingNearby) { NavigationStack { NearbyView() } }
         .refreshable { await appState.syncNow(showErrors: false) }
@@ -77,13 +77,13 @@ struct HomeView: View {
     private func homeLink<Destination: View>(_ card: HomeCard, detail: String, @ViewBuilder destination: @escaping () -> Destination) -> some View {
         NavigationLink { destination() } label: {
             HStack(spacing: 14) {
-                Image(systemName: card.kind.symbol).font(card.size == .large ? .title : .title3).foregroundStyle(homeTint)
+                LoveIcon(symbol:card.kind.symbol,tint:homeTint)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(card.kind.title).font(.headline)
                     if card.size == .large { Text(detail).font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(card.size == .large ? 22 : 14).loveGlass(in: RoundedRectangle(cornerRadius: 25))
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(card.size == .large ? 18 : 14).background(LovePalette.surface,in:RoundedRectangle(cornerRadius:24))
         }.buttonStyle(.plain)
     }
 
@@ -118,7 +118,7 @@ struct HomeView: View {
             }.accessibilityLabel("Startseite anpassen").accessibilityIdentifier("home-customize")
             Button { appState.showingProfile = true } label: {
                 PartnerAvatar(name: appState.me?.displayName ?? "R", size: 46)
-            }.matchedTransitionSource(id:"profile",in:profileTransition).accessibilityLabel("Dein Profil und Einstellungen")
+            }.matchedTransitionSource(id:"profile",in:profileTransition).accessibilityLabel("Dein Profil und Einstellungen").accessibilityIdentifier("home-profile")
         }.padding(.top, 20)
     }
 
@@ -136,12 +136,12 @@ struct HomeView: View {
     private var heartSpace: some View {
         VStack(spacing: 18) {
             LoveEyebrow(text: "Robin & Raphaela")
-            Text("Nah. Auch wenn ihr\nweit auseinander seid.")
+            Text("Ein kleiner Gedanke.\nGanz nah bei dir.")
                 .font(.system(size: 27, weight: .medium, design: .serif)).multilineTextAlignment(.center).lineSpacing(3)
             ZStack {
                 ForEach(0..<3) { ring in
                     Circle().stroke(LovePalette.pink.opacity(0.12 - Double(ring) * 0.025), lineWidth: 1)
-                        .frame(width: CGFloat(142 + ring * 35), height: CGFloat(142 + ring * 35))
+                        .frame(width: CGFloat(130 + ring * 27), height: CGFloat(130 + ring * 27))
                         .scaleEffect(heartPulse && !reduceMotion ? 1.06 : 1)
                 }
                 Button {
@@ -156,7 +156,7 @@ struct HomeView: View {
                         .shadow(color: LovePalette.pink.opacity(0.3), radius: 22, y: 10)
                         .scaleEffect(heartPulse && !reduceMotion ? 1.12 : 1)
                 }.buttonStyle(.plain).accessibilityLabel("Herzgedanken an \(partnerName) senden")
-            }.frame(maxWidth: .infinity).frame(height: 220).accessibilityIdentifier("rj-heart-space")
+            }.frame(maxWidth: .infinity).frame(height: 190).accessibilityIdentifier("rj-heart-space")
             Text("Ein Tipp. Ein Ich-denke-an-dich.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 thoughtCount("Von dir", appState.myThoughtCount)
@@ -210,11 +210,11 @@ struct HomeView: View {
     private func action(_ title: String, _ detail: String, _ symbol: String, _ tint: Color, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 11) {
-                Image(systemName: symbol).font(.title2).foregroundStyle(tint)
+                LoveIcon(symbol:symbol,tint:tint)
                 Text(title).font(.subheadline.bold()).foregroundStyle(.primary)
                 Text(detail).font(.caption2).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
-                .loveGlass(in: RoundedRectangle(cornerRadius: 25))
+                .background(LovePalette.surface,in:RoundedRectangle(cornerRadius:24))
         }.buttonStyle(.plain)
     }
     private func milestoneCard(_ record: SharedRecord) -> some View {

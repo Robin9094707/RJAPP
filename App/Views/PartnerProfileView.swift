@@ -6,8 +6,7 @@ struct PartnerProfileView:View {
     private var partner:PartnerSnapshot? {app.partner}
     private var activity:PartnerActivity? {partner.flatMap{app.activity[$0.id]}}
     var body:some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 VStack(alignment:.leading,spacing:22) {
                     VStack(spacing:12) {
                         PartnerAvatar(name:partner?.displayName ?? "Schatzi",size:100)
@@ -36,7 +35,6 @@ struct PartnerProfileView:View {
             }.background(LoveBackground()).navigationTitle("Dein Lieblingsmensch").navigationBarTitleDisplayMode(.inline)
                 .toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){dismiss()}}}
                 .refreshable{_ = await app.syncNow(showErrors:false)}
-        }
     }
 }
 private struct ActivityDateRow:View {

@@ -106,9 +106,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-3.5.1-Komplettpaket
+          name: RJ-Love-3.6-Komplettpaket
           path: |
-            RJ-Love-3.5.1-Komplettpaket.zip
+            RJ-Love-3.6-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -137,7 +137,7 @@ jobs:
     name: Verify ${{ matrix.device }} layout
     runs-on: macos-26
     timeout-minutes: 40
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[design]')
     strategy:
       matrix:
         include:
@@ -152,7 +152,7 @@ jobs:
           set -o pipefail
           xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Simulator-build.log
       - name: Capture preview
-        run: python3 Scripts/capture_preview.py --device "${{ matrix.device }}"
+        run: python3 Scripts/capture_design_preview.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

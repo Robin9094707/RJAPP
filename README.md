@@ -1,6 +1,6 @@
-# RJ Love 3.5.1
+# RJ Love 3.6
 
-Aktuelles Update: [Kamera-/UWB-Korrektur 3.5.1](RELEASE-3.5.1.md). Beide Apps aktualisieren. Server 3.5.0 bleibt kompatibel; der beigefügte Server 3.5.1 fordert die neue App an.
+Aktuelles Update: [Design und einzelne Fotowünsche 3.6](RELEASE-3.6.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 
 Neu: BeReal-Fotokalender, Tagesrückblick, gemeinsamer Feed, Abendritual und ein aufgeräumtes Duftstudio. Die UWB-Diagnose unterscheidet fehlenden Token, Serveraustausch und tatsächliche Freigabefehler.
 

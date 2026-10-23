@@ -1,3 +1,7 @@
+## Ergänzung 3.6
+
+Es kann pro Konto nur ein unbeantworteter ausgehender Fotowunsch gespeichert werden. Zurückrufen markiert diesen Wunsch serverseitig als gelöscht und beendet seine weitere Beantwortbarkeit. Alte überzählige offene Wünsche werden beim Upgrade auf den neuesten je Absender begrenzt; fertige Fotos bleiben erhalten. Vor einer Kameraaufnahme prüft die App den noch offenen Auftrag. Die Oberfläche ändert keine vorhandenen Freigaben und erfasst keine zusätzlichen Daten.
+
 ## Ergänzung 3.5.1
 
 Bei aktiver Kamera-Unterstützung der Nahsuche verwaltet Nearby Interaction die AR-Kamera intern. Es gibt keine zusätzliche Kameraaufzeichnung oder SceneKit-Vorschau. Nur der Mess- und Kalibrierzustand erscheint in der Suchansicht; keine Kamerabilder werden gespeichert oder auf den Server geladen. Beim Verlassen der Suchansicht wird die kameraaktive Sitzung beendet; eine ausdrücklich erlaubte Suche im Hintergrund wird ohne Kamera neu aufgebaut.

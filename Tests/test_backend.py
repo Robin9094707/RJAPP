@@ -880,6 +880,54 @@ class RJLoveBackendTests(unittest.TestCase):
             self.assertEqual(self.request_error("/v1/preferences", "POST", invalid, token)[0], 400)
         self.assertEqual(self.request_error("/v1/preferences")[0], 401)
 
+    def test_one_outgoing_photo_request_atomic_recall_and_reply(self):
+        import uuid,concurrent.futures
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        def send(index):
+            try:
+                if index==0:return self.request("/v1/photo-requests","POST",{"id":str(uuid.uuid4()),"title":"Ein Foto"},token)
+                return self.request("/v1/records","POST",{"id":str(uuid.uuid4()),"kind":"photo_request","payload":{"title":"Noch eins","target_id":"raphaela","completed":False}},token)
+            except urllib.error.HTTPError as e:return e.code,json.loads(e.read())
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(send,range(2)))
+        self.assertEqual(sorted(r[0] for r in results),[200,409])
+        outgoing=self.request("/v1/photo-requests",token=token)[1]["outgoing"]
+        self.assertIsNotNone(outgoing)
+        request_id=outgoing["id"];recall="/v1/photo-requests/"+request_id+"/recall"
+        self.assertEqual(self.request_error(recall,"POST",{},partner)[0],403)
+        self.assertEqual(len(self.request("/v1/photo-requests",token=partner)[1]["incoming"]),1)
+        self.assertEqual(self.request(recall,"POST",{},token)[0],204)
+        self.assertEqual(self.request(recall,"POST",{},token)[0],204)
+        self.assertIsNone(self.request("/v1/photo-requests",token=token)[1]["outgoing"])
+        asset=self.upload_asset(partner,b"photo")
+        self.assertEqual(self.request_error("/v1/photo-requests/"+request_id+"/reply","POST",{"asset_id":asset},partner)[0],404)
+        next_request=self.request("/v1/photo-requests","POST",{"id":str(uuid.uuid4())},token)[1]
+        self.request("/v1/photo-requests/"+next_request["id"]+"/reply","POST",{"asset_id":asset},partner)
+        self.assertIsNone(self.request("/v1/photo-requests",token=token)[1]["outgoing"])
+        self.assertEqual(self.request_error("/v1/photo-requests/"+next_request["id"]+"/recall","POST",{},token)[0],409)
+        self.assertEqual(self.request("/v1/photo-requests","POST",{"id":str(uuid.uuid4())},token)[0],200)
+        # The other sender has an independent slot.
+        self.assertEqual(self.request("/v1/photo-requests","POST",{"id":str(uuid.uuid4())},partner)[0],200)
+        self.assertEqual(self.request_error("/v1/photo-requests")[0],401)
+
+    def test_upgrade_collapses_old_pending_photo_queue_preserving_answers(self):
+        import uuid,sqlite3
+        ids=[str(uuid.uuid4()) for _ in range(4)]
+        with self.app.database.connect() as db:
+            db.execute("DROP INDEX one_open_photo_request_per_sender")
+            for index,record_id in enumerate(ids):
+                payload=json.dumps({"title":"Old wish","target_id":"raphaela","completed":index==3})
+                stamp=f"2026-10-23T10:00:0{index}Z"
+                db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)",(record_id,"photo_request","robin",payload,len(payload),stamp,stamp))
+        SERVER.Database(self.app.database.path).initialize()
+        with self.app.database.connect() as db:
+            rows={r["id"]:dict(r) for r in db.execute("SELECT * FROM records")}
+            self.assertIsNotNone(rows[ids[0]]["deleted_at"]);self.assertIsNotNone(rows[ids[1]]["deleted_at"])
+            self.assertIsNone(rows[ids[2]]["deleted_at"]);self.assertIsNone(rows[ids[3]]["deleted_at"])
+            self.assertTrue(json.loads(rows[ids[3]]["payload"])["completed"])
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)",(str(uuid.uuid4()),"photo_request","robin",rows[ids[2]]["payload"],10,SERVER.iso_now(),SERVER.iso_now()))
+        SERVER.Database(self.app.database.path).initialize()
+
     def test_photo_request_endpoint_delivers_once_and_can_be_recalled(self):
         import uuid
         token = self.login(); partner = self.login("raphaela", "raphaela-test-password")

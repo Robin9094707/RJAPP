@@ -13,6 +13,8 @@ struct RootView:View {
             case .authenticated:
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--preview-instant-gallery") {NavigationStack{InstantGalleryView()}.fullScreenCover(item:Binding(get:{appState.pendingPhotoRequest},set:{appState.pendingPhotoRequest=$0})){InstantCameraView(request:$0)}}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {NavigationStack{SettingsView()}}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-status") {NavigationStack{StatusEditorView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {FartRecorderView(autoStart:false)}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-delivery") {NavigationStack{DeliveryCenterView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-planner") {NavigationStack{PlannerView()}}
@@ -44,11 +46,12 @@ struct MainTabView:View {
 
         }
 
+        .tint(LovePalette.pink)
         .sheet(isPresented:$state.showingEvening,onDismiss:{appState.didCloseEvening()}){NavigationStack{SharedJournalView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingEvening=false}}}}}
-        .sheet(isPresented:$state.showingPartnerProfile){PartnerProfileView()}
+        .sheet(isPresented:$state.showingPartnerProfile){NavigationStack{PartnerProfileView()}.presentationDragIndicator(.visible)}
         .sheet(isPresented:$state.showingCountdowns){NavigationStack{CountdownHubView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingCountdowns=false}}}}}
         .sheet(isPresented:$state.showingHealthUpgrade,onDismiss:{appState.health.deferExpandedAccess();appState.offerForegroundMoments()}){HealthPermissionsUpgradeView()}
-        .sheet(isPresented:$state.showingStatus){StatusEditorView()}
+        .sheet(isPresented:$state.showingStatus){StatusEditorSheet()}
         .onChange(of:state.selectedTab){_,tab in if tab == .settings{state.selectedTab = .home;state.showingProfile=true}}
         .sheet(isPresented:$state.showingFartRecorder,onDismiss:{appState.offerForegroundMoments()}){FartRecorderView(autoStart:appState.quickFartRecording)}
         .sheet(isPresented:$state.showingChangelog,onDismiss:{appState.offerForegroundMoments()}){ChangelogView()}
@@ -62,15 +65,15 @@ struct ChangelogView:View {
     var body:some View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
-                Image(systemName:"viewfinder").font(.system(size:50)).foregroundStyle(LovePalette.cyan)
-                Text("Ein Stück näher.").font(.system(size:36,weight:.medium,design:.serif))
-                Text("RJ Love 3.5.1 · Nahsuche korrigiert").font(.title3.bold())
-                Label("iOS übernimmt die Kamerakalibrierung direkt",systemImage:"camera.fill")
-                Label("Richtungspfeil über den kameragestützten Winkel",systemImage:"location.north.fill")
-                Label("Verständliche Hinweise zum Bewegen und Ausrichten",systemImage:"iphone.radiowaves.left.and.right")
-                Label("Kamerafehler führen zu einer echten Suche ohne Kamera",systemImage:"arrow.clockwise")
-                Text("Auf beiden iPhones aktualisieren. Kamera-Unterstützung einschalten und zunächst ohne Hintergrundoption suchen. Ein Gerät ruhig halten, das suchende iPhone langsam seitlich und auf/ab bewegen. Der Pfeil erscheint erst, wenn iOS einen Winkel liefert.").font(.subheadline).foregroundStyle(.secondary)
-                Text("Euer BeReal-Kalender, Tagesrückblick, Feed und Abendritual bleiben erhalten. Keine Kameraaufnahmen werden gespeichert oder geteilt.").font(.footnote).foregroundStyle(.secondary)
+                LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
+                Text("Mehr Ruhe.\nMehr wir.").font(.system(size:38,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 3.6").font(.title3.bold())
+                Label("Ein offener Fotowunsch pro Person",systemImage:"camera.badge.ellipsis")
+                Label("Wartende Wünsche sehen und bewusst zurückrufen",systemImage:"arrow.uturn.backward")
+                Label("Ein neues Profil mit klaren Einstellungen",systemImage:"person.crop.circle.fill")
+                Label("Ruhigere Farben, Karten und einheitliche Symbole",systemImage:"square.stack.3d.up.fill")
+                Text("Dein Status öffnet sich jetzt innerhalb des Profils mit einem normalen iOS-Übergang. Die Karten in der App sind ruhiger, während Bedienelemente ihren nativen Glasstil behalten.").font(.subheadline).foregroundStyle(.secondary)
+                Text("Alte unbeantwortete Fotowunsch-Stapel werden beim Serverupdate auf den neuesten Wunsch pro Absender begrenzt. Fertige Fotos und eure Erinnerungen bleiben erhalten. Bitte App und Server gemeinsam aktualisieren.").font(.footnote).foregroundStyle(.secondary)
                 Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
             }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")
         }.interactiveDismissDisabled()

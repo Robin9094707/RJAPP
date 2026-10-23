@@ -6,7 +6,8 @@ import EventKit
 import SwiftUI
 import UserNotifications
 
-struct SettingsView: View {
+struct ProfileSettingsDetailView: View {
+    let section:ProfileSettingsSection
     @Environment(AppState.self) private var appState
     @ObservedObject private var location = LocationService.shared
     @ObservedObject private var health = HealthService.shared
@@ -17,56 +18,11 @@ struct SettingsView: View {
     @State private var logoutConfirmation = false
     @State private var microphone = AVAudioApplication.shared.recordPermission
 
-    var body: some View {
-        @Bindable var state = appState
-
+    var body:some View {
+        @Bindable var state=appState
         Form {
-            Section {
-                HStack(spacing:14) {
-                    PartnerAvatar(name:appState.me?.displayName ?? "Du",size:60)
-                    VStack(alignment:.leading,spacing:4) {
-                        Text(appState.me?.displayName ?? "Dein Profil").font(.title2.bold())
-                        Text(appState.myStatus?.visibleStatus ?? "Wie geht es dir gerade?").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }.padding(.vertical,10)
-                NavigationLink("Meinen Status setzen") { StatusEditorView() }
-                if let partner=appState.partner {
-                    Button{appState.showingProfile=false;Task{try? await Task.sleep(for:.milliseconds(450));appState.showingPartnerProfile=true}}label:{LabeledContent(partner.displayName,value:partner.presence?.visibleStatus ?? "Profil & Aktivität")}
-                    if partner.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").foregroundStyle(.secondary)}
-                }
-            }
-            Section("Euer privater Raum · 3.5.1") {
-                NavigationLink {LiveActivitySettingsView()}label:{Label("Live-Aktivität & Dynamic Island",systemImage:"livephoto")}
-                NavigationLink { DeliveryCenterView() } label: { Label("Push, Wecker & Hintergrund", systemImage: "checkmark.shield.fill") }
-                Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
-                NavigationLink { AccountView() } label: { Label("Meinen Zugang ändern", systemImage: "person.badge.key.fill") }
-                NavigationLink { HealthDashboardView() } label: { Label("Health & Freigaben", systemImage: "heart.text.square.fill") }
-                NavigationLink { AppUpdateView() } label: { Label("App aktualisieren · Feather",systemImage:"arrow.down.app.fill") }
-                NavigationLink { CapabilitiesView() } label: { Label("Funktionen & Signatur", systemImage: "checkmark.seal.fill") }
-            }
-
-            Section("Unser Tagesrückblick") {
-                Toggle("Abends beim Öffnen anzeigen",isOn:$eveningAuto)
-                Text("Ab 19 Uhr erscheint der Tagesrückblick einmal pro Tag, wenn die App geöffnet ist. Ohne Hintergrundausführung wird kein automatischer Bericht erzeugt. Ihr könnt alle Tage jederzeit über die Wir-Seite öffnen.").font(.caption).foregroundStyle(.secondary)
-                NavigationLink{SharedJournalView()}label:{Label("Unser Journal",systemImage:"sparkles.rectangle.stack")}
-            }
-            Section("Verbindung") {
-                LabeledContent("Server", value: appState.profile?.baseURL ?? "–")
-                    .lineLimit(1)
-                LabeledContent("Benutzer", value: appState.me?.displayName ?? appState.profile?.username ?? "–")
-                LabeledContent("Transport") {
-                    Label(appState.isUsingHTTPS ? "HTTPS" : "HTTP", systemImage: appState.isUsingHTTPS ? "lock.fill" : "exclamationmark.lock.open.fill")
-                        .foregroundStyle(appState.isUsingHTTPS ? .green : .orange)
-                }
-                LabeledContent("Status", value: appState.connectionMessage)
-                Button {
-                    Task { await appState.syncNow() }
-                } label: {
-                    Label("Jetzt synchronisieren", systemImage: "arrow.clockwise")
-                }
-                .disabled(appState.isSyncing)
-            }
-
+            switch section {
+            case .sharing:
             Section {
                 Toggle("Live-Standort", isOn: $location.sharingEnabled)
                 if location.sharingEnabled {
@@ -77,13 +33,13 @@ struct SettingsView: View {
                 Toggle("Aufnahmeort bei neuen Fotos",isOn:$location.photoLocationEnabled)
                 Toggle("Health-Zusammenfassung", isOn: $health.sharingEnabled)
                 Toggle("WLAN-Name, wenn verfügbar", isOn: $state.shareWiFiName)
-                NavigationLink("Status & Bitte nicht stören") { StatusEditorView() }
             } header: {
                 Text("Was ich teile")
             } footer: {
                 Text("Wähle unter Health & Freigaben getrennt aus, ob du Aktivität, Schlaf oder Vitalwerte teilst.")
             }
 
+            case .permissions:
             Section("Berechtigungen") {
                 PermissionRow(title: "Mikrofon", status: microphone == .granted ? "Erlaubt" : microphone == .denied ? "Abgelehnt" : "Nicht gefragt", symbol: "mic.fill", tint: microphone == .granted ? .green : .orange, actionTitle: microphone == .granted ? nil : microphone == .denied ? "Einstellungen" : "Erlauben") {
                     if microphone == .denied { openSettings() }
@@ -145,7 +101,7 @@ struct SettingsView: View {
                     symbol: "figure.walk.motion",
                     tint: device.motionAuthorization == .authorized ? .green : .orange,
                     actionTitle: device.motionAuthorization == .notDetermined ? "Anfragen" : nil
-                ) { device.startMotionUpdates() }
+                ) { Task{await device.requestMotionAccess()} }
 
                 PermissionRow(
                     title: "iOS-Kalender",
@@ -158,6 +114,7 @@ struct SettingsView: View {
                 Text("Abgelehnte Zugriffe kannst du dort ändern. Die Health-Leseauswahl verwaltest du in Apple Health. Eine Freigabe in der App ersetzt keine iOS-Erlaubnis.").font(.caption).foregroundStyle(.secondary)
             }
 
+            case .privacy:
             Section("Privatsphäre") {
                 Toggle("Süße Nachrichten beim Öffnen abspielen",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.sweet-autoplay") == nil || UserDefaults.standard.bool(forKey:"rjlove.sweet-autoplay")},set:{UserDefaults.standard.set($0,forKey:"rjlove.sweet-autoplay")}))
                 Toggle("Aufnahmeorte für neue Furze",isOn:Binding(get:{UserDefaults.standard.object(forKey:"rjlove.fart-locations") == nil || UserDefaults.standard.bool(forKey:"rjlove.fart-locations")},set:{UserDefaults.standard.set($0,forKey:"rjlove.fart-locations")}))
@@ -168,6 +125,46 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Unser Tagesrückblick") {
+                Toggle("Abends beim Öffnen anzeigen",isOn:$eveningAuto)
+                Text("Ab 19 Uhr erscheint der Tagesrückblick einmal pro Tag, wenn die App geöffnet ist. Ohne Hintergrundausführung wird kein automatischer Bericht erzeugt. Ihr könnt alle Tage jederzeit über die Wir-Seite öffnen.").font(.caption).foregroundStyle(.secondary)
+                NavigationLink{SharedJournalView()}label:{Label("Unser Journal",systemImage:"sparkles.rectangle.stack")}
+            }
+            case .connection:
+            Section("Verbindung") {
+                LabeledContent("Server", value: appState.profile?.baseURL ?? "–")
+                    .lineLimit(1)
+                LabeledContent("Benutzer", value: appState.me?.displayName ?? appState.profile?.username ?? "–")
+                LabeledContent("Transport") {
+                    Label(appState.isUsingHTTPS ? "HTTPS" : "HTTP", systemImage: appState.isUsingHTTPS ? "lock.fill" : "exclamationmark.lock.open.fill")
+                        .foregroundStyle(appState.isUsingHTTPS ? .green : .orange)
+                }
+                LabeledContent("Status", value: appState.connectionMessage)
+                Button {
+                    Task { await appState.syncNow() }
+                } label: {
+                    Label("Jetzt synchronisieren", systemImage: "arrow.clockwise")
+                }
+                .disabled(appState.isSyncing)
+            }
+
+            Section("Systemgrenzen – ehrlich erklärt") {
+                InfoLine(symbol: "iphone.radiowaves.left.and.right", text: "Push benötigt nach dem Signieren ein Profil mit Push-Entitlement und konfigurierte APNs-Schlüssel auf dem Server. Ohne APNs synchronisiert die App beim Öffnen, bei Standortereignissen und nach von iOS gewährten Hintergrundläufen.")
+                InfoLine(symbol: "wifi", text: "Der WLAN-Name ist nur verfügbar, wenn iOS die Access-WiFi-Information-Berechtigung akzeptiert; WLAN/Mobilfunk wird immer erkannt.")
+                InfoLine(symbol: "heart.text.square", text: "Der RJ-Schlafindex berücksichtigt Dauer, Regelmäßigkeit und aufgezeichnete Unterbrechungen. Er ist eine eigene Schätzung, kein Originalscore von Apple.")
+            }
+
+            Section("Diagnose") {
+                NavigationLink {
+                    DebugConsoleView()
+                } label: {
+                    Label("Debug-Konsole", systemImage: "terminal.fill")
+                }
+                LabeledContent("App-Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                LabeledContent("Backend", value: appState.features == nil ? "Noch nicht erkannt" : "Verbunden")
+            }
+
+            case .storage:
             Section("Speicher") {
                 StorageSummaryView()
                 LabeledContent("Von dir belegt", value: ByteCountFormatter.string(fromByteCount: Int64(appState.storageUsedBytes), countStyle: .file))
@@ -183,43 +180,13 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Systemgrenzen – ehrlich erklärt") {
-                InfoLine(symbol: "iphone.radiowaves.left.and.right", text: "Push benötigt nach dem Signieren ein Profil mit Push-Entitlement und konfigurierte APNs-Schlüssel auf dem Server. Ohne APNs synchronisiert die App beim Öffnen, bei Standortereignissen und nach von iOS gewährten Hintergrundläufen.")
-                InfoLine(symbol: "wifi", text: "Der WLAN-Name ist nur verfügbar, wenn iOS die Access-WiFi-Information-Berechtigung akzeptiert; WLAN/Mobilfunk wird immer erkannt.")
-                InfoLine(symbol: "heart.text.square", text: "Die Schlafbalance ist eine klar gekennzeichnete RJ-Love-Berechnung aus der Schlafdauer, kein offizieller Apple-Schlafscore.")
             }
-
-            Section("Diagnose") {
-                NavigationLink {
-                    DebugConsoleView()
-                } label: {
-                    Label("Debug-Konsole", systemImage: "terminal.fill")
-                }
-                LabeledContent("App-Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                LabeledContent("Backend", value: appState.features == nil ? "Noch nicht erkannt" : "Verbunden")
-            }
-
-            Section {
-                Button("Abmelden", role: .destructive) { logoutConfirmation = true }
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(LoveBackground())
-        .onChange(of: health.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
-        .onChange(of: location.sharingEnabled) { _, _ in appState.queuePresenceUpload(force: true) }
-        .onChange(of: appState.shareWiFiName) { _, _ in appState.queuePresenceUpload(force: true) }
-        .navigationTitle("Dein Profil")
-        .confirmationDialog("Wirklich abmelden?", isPresented: $logoutConfirmation, titleVisibility: .visible) {
-            Button("Abmelden", role: .destructive) { Task { await appState.logout() } }
-            Button("Abbrechen", role: .cancel) {}
-        } message: {
-            Text("Serveradresse bleibt als Hilfe gespeichert; der sichere Sitzungstoken wird gelöscht.")
-        }
-        .task {
-            await notifications.refreshStatus()
-            microphone = AVAudioApplication.shared.recordPermission
-        }
+        }.scrollContentBackground(.hidden).background(LoveBackground())
+        .navigationTitle(section.rawValue).navigationBarTitleDisplayMode(.inline)
+        .onChange(of:health.sharingEnabled){_,_ in appState.queuePresenceUpload(force:true)}
+        .onChange(of:location.sharingEnabled){_,_ in appState.queuePresenceUpload(force:true)}
+        .onChange(of:appState.shareWiFiName){_,_ in appState.queuePresenceUpload(force:true)}
+        .task{await notifications.refreshStatus();microphone=AVAudioApplication.shared.recordPermission}
     }
 
     private func openSettings() {

@@ -31,7 +31,7 @@ struct PartnerProfileView:View {
                         ActivityDateRow(title:"Auf deinem iPhone abgeglichen",date:app.lastSync?.rjISO8601,symbol:"iphone",detail:"Wann diese App den Server zuletzt erfolgreich abgerufen hat.")
                     }.loveCard()
                     Text("Eine Hintergrundaktualisierung bedeutet nicht, dass die App geöffnet wurde. Ohne Netz, nach erzwungenem Beenden oder wenn iOS pausiert, bleiben die letzten bestätigten Zeiten stehen. Frühere Zeitpunkte werden nicht nachträglich erfunden.").font(.footnote).foregroundStyle(.secondary)
-                    NavigationLink("Jahrestag & Countdowns",systemImage:"calendar.badge.heart"){CountdownHubView()}.buttonStyle(.bordered)
+                    NavigationLink{CountdownHubView()}label:{Label("Jahrestag & Countdowns",systemImage:"calendar.badge.heart")}.buttonStyle(.bordered)
                 }.padding(20)
             }.background(LoveBackground()).navigationTitle("Dein Lieblingsmensch").navigationBarTitleDisplayMode(.inline)
                 .toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){dismiss()}}}

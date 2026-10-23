@@ -1,6 +1,6 @@
-# RJ Love 3.6
+# RJ Love 3.7
 
-Aktuelles Update: [Design und einzelne Fotowünsche 3.6](RELEASE-3.6.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
+Aktuelles Update: [Abendplayer, Schnellzugriffe und optionaler KI-Rückblick 3.7](RELEASE-3.7.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 
 Neu: BeReal-Fotokalender, Tagesrückblick, gemeinsamer Feed, Abendritual und ein aufgeräumtes Duftstudio. Die UWB-Diagnose unterscheidet fehlenden Token, Serveraustausch und tatsächliche Freigabefehler.
 

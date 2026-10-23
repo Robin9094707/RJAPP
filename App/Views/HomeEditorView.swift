@@ -17,6 +17,15 @@ struct HomeEditorView: View {
                     }
                 }
                 Section {
+                    ForEach($draft.shortcuts) { $shortcut in
+                        VStack(alignment:.leading,spacing:8){
+                            TextField("Name des Buttons",text:$shortcut.title).accessibilityIdentifier("shortcut-title-"+shortcut.id)
+                            Picker("Öffnet",selection:$shortcut.action){ForEach(HomeQuickAction.allCases){action in Label(action.title,systemImage:action.symbol).tag(action)}}
+                        }.padding(.vertical,4)
+                    }.onMove{draft.shortcuts.move(fromOffsets:$0,toOffset:$1)}.onDelete{draft.shortcuts.remove(atOffsets:$0)}
+                    if draft.shortcuts.count<12 {Menu("Schnellzugriff hinzufügen",systemImage:"plus.circle"){ForEach(HomeQuickAction.allCases){action in Button(action.title,systemImage:action.symbol){draft.shortcuts.append(HomeShortcut(action:action))}}}}
+                } header:{Text("Kleine Schnellzugriffe")} footer:{Text("Bis zu zwölf Buttons direkt oben auf deiner Startseite. Namen frei ändern, verschieben oder entfernen. Jeder von euch hat seine eigene Auswahl.")}
+                Section {
                     ForEach($draft.cards) { $card in
                         VStack(alignment: .leading, spacing: 10) {
                             Label(card.kind.title, systemImage: card.kind.symbol).font(.headline)
@@ -48,7 +57,7 @@ struct HomeEditorView: View {
                     ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() }.disabled(saving) }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(saving ? "Speichert …" : "Speichern") { Task { await save() } }
-                            .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.title.count > 80)
+                            .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.title.count > 80 || draft.shortcuts.contains{$0.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || $0.title.count>24})
                             .accessibilityIdentifier("home-layout-save")
                     }
                 }.interactiveDismissDisabled(saving)

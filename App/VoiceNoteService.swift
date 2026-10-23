@@ -15,6 +15,7 @@ import Observation
     private var timer:Task<Void,Never>?
     private var onFinish:(()->Void)?
     func record() async {
+        EveningPlaylistService.shared.stop()
         guard await AVAudioApplication.requestRecordPermission() else{error="Bitte Mikrofonzugriff erlauben.";return}
         stop();error=nil
         do {
@@ -27,7 +28,7 @@ import Observation
     }
     func stopRecording(){if let recorder{duration=recorder.currentTime;recorder.stop()};recorder=nil;recording=false;timer?.cancel();timer=nil;try? AVAudioSession.sharedInstance().setActive(false,options:.notifyOthersOnDeactivation)}
     func play(_ url:URL,volume:Double=1,onFinish:(()->Void)?=nil) throws {
-        stop();let session=AVAudioSession.sharedInstance();try session.setCategory(.playback,mode:.default);try session.setActive(true)
+        EveningPlaylistService.shared.stop();stop();let session=AVAudioSession.sharedInstance();try session.setCategory(.playback,mode:.default);try session.setActive(true)
         let player=try AVAudioPlayer(contentsOf:url);player.delegate=self;player.volume=Float(max(0.05,min(1,volume)))
         guard player.play() else{throw MediaError.unreadable};self.player=player;playing=true;self.onFinish=onFinish
     }

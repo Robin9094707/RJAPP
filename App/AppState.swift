@@ -171,9 +171,9 @@ final class AppState {
         if phase == .authenticated {Task {try? await api.reportActivity(mode:"inactive")}}
         location.enterBackground()
         studio.finishRecording()
-        studio.stopPlayback()
+        if !EveningPlaylistService.shared.active {studio.stopPlayback()}
         nearby.enterBackground(api: api)
-        VoiceNoteService.shared.stop()
+        if !EveningPlaylistService.shared.active {VoiceNoteService.shared.stop()}
         pollTask?.cancel()
         pollTask = nil
         BackgroundRefreshCoordinator.shared.schedule()
@@ -221,6 +221,7 @@ final class AppState {
     }
 
     func logout() async {
+        EveningPlaylistService.shared.stop()
         nearby.stop(api: api)
         await liveActivity.stop()
         await api.logout()

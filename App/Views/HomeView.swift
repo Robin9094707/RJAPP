@@ -20,6 +20,8 @@ struct HomeView: View {
             LazyVStack(alignment: .leading, spacing: 20) {
                 header
                 connection
+                HomeShortcutsView()
+                if EveningPlaylistService.shared.active {EveningPlayerHomeCard()}
                 DailyJournalHomeCard()
                 ForEach(appState.homeLayout.cards) { card in
                     homeCard(card).accessibilityIdentifier("home-card-" + card.id)

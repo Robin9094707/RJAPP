@@ -12,6 +12,7 @@ struct FartLibraryView:View {
     private var entries:[SavedFart]{library.clips.filter{query.isEmpty || ($0.clip.title+" "+$0.clip.caption+" "+$0.clip.category+" "+(($0.clip.date?.formatted(date:.numeric,time:.omitted)) ?? "")).localizedStandardContains(query)}}
     var body:some View {List{
         Section{Button("Vorhandenen Furz importieren",systemImage:"square.and.arrow.down"){importing=true};Text("Lokale Kopien sind unabhängig vom Server. Beim Löschen auf dem Server bleiben sie bewusst hier erhalten. Audio und Metadaten werden zusammen auf deinem iPhone gesichert.").font(.footnote).foregroundStyle(.secondary)}
+        Section {NavigationLink{EveningPlaylistView()}label:{Label("Euer Abend · vollständiges Serverarchiv",systemImage:"play.square.stack.fill")}}
         Section("Dein privates Konzert") {
             Picker("Soundart",selection:Binding(get:{app.studio.soundEffect},set:{app.studio.soundEffect=$0})){ForEach(FartSoundEffect.allCases){Text($0.rawValue).tag($0)}}
             HStack{Slider(value:Binding(get:{app.studio.playbackRate},set:{app.studio.playbackRate=$0}),in:0.25...3);Text(String(format:"%.2f×",app.studio.playbackRate)).font(.caption.monospacedDigit())}

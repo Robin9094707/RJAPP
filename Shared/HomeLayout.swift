@@ -46,7 +46,17 @@ struct HomeLayout: Codable, Hashable, Sendable {
     var cards: [HomeCard] = HomeCardKind.allCases.map { HomeCard(kind: $0) }
     var theme: String = "rose"
     var title: String = "Euer kleines Wir."
+    var shortcuts:[HomeShortcut]=HomeShortcut.standard
     static let standard = HomeLayout()
+    enum CodingKeys:String,CodingKey {case cards,theme,title,shortcuts}
+    init(){}
+    init(from decoder:Decoder)throws {
+        let c=try decoder.container(keyedBy:CodingKeys.self)
+        cards=try c.decodeIfPresent([HomeCard].self,forKey:.cards) ?? HomeCardKind.allCases.map{HomeCard(kind:$0)}
+        theme=try c.decodeIfPresent(String.self,forKey:.theme) ?? "rose"
+        title=try c.decodeIfPresent(String.self,forKey:.title) ?? "Euer kleines Wir."
+        shortcuts=try c.decodeIfPresent([HomeShortcut].self,forKey:.shortcuts) ?? HomeShortcut.standard
+    }
 }
 struct UserPreferences: Codable, Sendable {
     var dashboard: HomeLayout

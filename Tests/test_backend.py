@@ -54,6 +54,72 @@ class RJLoveBackendTests(unittest.TestCase):
             raw = response.read()
             return response.status, json.loads(raw) if raw else None
 
+    def test_ai_summary_consent_cache_privacy_limits_and_provider_shape(self):
+        import io,uuid,datetime
+        from unittest.mock import patch
+        robin=self.login();partner=self.login("raphaela","raphaela-test-password")
+        start=SERVER.utc_now().replace(hour=0,minute=0,second=0,microsecond=0);end=start+datetime.timedelta(days=1)
+        body={"start":start.isoformat(),"end":end.isoformat()}
+        self.assertEqual(self.request_error("/v1/ai/status")[0],401)
+        self.assertEqual(self.request_error("/v1/ai/summary","POST",body,robin)[0],503)
+        self.config["openai"]={"enabled":True,"api_key":"test-server-only-key","model":"gpt-6-luna","daily_limit":2}
+        public=self.request("/v1/ai/status",token=robin)[1]
+        self.assertNotIn("test-server-only-key",json.dumps(public));self.assertFalse(public["my_consent"])
+        self.request("/v1/ai/consent","POST",{"enabled":True},robin)
+        self.assertEqual(self.request_error("/v1/ai/summary","POST",body,robin)[0],403)
+        self.request("/v1/ai/consent","POST",{"enabled":True},partner)
+        self.assertEqual(self.request_error("/v1/ai/summary","POST",body,robin)[0],422)
+        record_id=str(uuid.uuid4());stamp=SERVER.iso_now()
+        payload={"caption":"Unser Spaziergang","media_kind":"image","captured_at":stamp,"latitude":51.2,"longitude":6.5,"image_base64":"PRIVATE-BINARY","comments":[{"text":"PRIVATE-COMMENT"}]}
+        with self.app.database.connect() as db:
+            db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)",(record_id,"moment","robin",json.dumps(payload),1,stamp,stamp))
+        summary={"title":"Ein kleiner Tag für uns","intro":"Ein gespeicherter Moment.","highlights":[{"title":"Euer Spaziergang","detail":"So habt ihr den Moment beschrieben.","record_ids":[record_id]}],"reflection":"Schön, dass ihr Erinnerungen teilt.","question":"Was möchtet ihr bewahren?"}
+        real_open=urllib.request.urlopen;sent=[]
+        def provider(request,*args,**kwargs):
+            if request.full_url!="https://api.openai.com/v1/responses":return real_open(request,*args,**kwargs)
+            sent.append(json.loads(request.data));return io.BytesIO(json.dumps({"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":json.dumps(summary)}]}]}).encode())
+        with patch.object(SERVER.urllib.request,"urlopen",side_effect=provider):
+            first=self.request("/v1/ai/summary","POST",body,robin)[1]
+            second=self.request("/v1/ai/summary","POST",body,partner)[1]
+            self.assertFalse(first["cached"]);self.assertTrue(second["cached"]);self.assertEqual(len(sent),1)
+            self.assertFalse(sent[0]["store"]);self.assertTrue(sent[0]["text"]["format"]["strict"])
+            source=json.loads(sent[0]["input"]);self.assertEqual(source["moments"][0]["caption"],"Unser Spaziergang")
+            for private in ("latitude","longitude","PRIVATE-BINARY","PRIVATE-COMMENT","image_base64"):self.assertNotIn(private,json.dumps(source))
+            # Revocation clears shared cache; a later opt-in requires a new bounded request.
+            self.request("/v1/ai/consent","POST",{"enabled":False},partner)
+            with self.app.database.connect() as db:self.assertEqual(db.execute("SELECT count(*) FROM ai_summaries").fetchone()[0],0)
+            self.assertEqual(self.request_error("/v1/ai/summary","POST",body,robin)[0],403)
+            self.request("/v1/ai/consent","POST",{"enabled":True},partner)
+            self.request("/v1/ai/summary","POST",body,robin)
+            with self.app.database.connect() as db:db.execute("UPDATE records SET payload=? WHERE id=?",(json.dumps(payload|{"caption":"Ein neuer Text"}),record_id))
+            self.assertEqual(self.request_error("/v1/ai/summary","POST",body,robin)[0],429)
+            self.assertEqual(len(sent),2)
+        # Incomplete output and invented source references must never be cached/displayed.
+        source,_=self.app.ai_source(start,end)
+        for response in ({"status":"incomplete","output":[]},{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":json.dumps(summary|{"highlights":[{"title":"x","detail":"y","record_ids":["invented"]}]})}]}]}):
+            with patch.object(SERVER.urllib.request,"urlopen",return_value=io.BytesIO(json.dumps(response).encode())):
+                with self.assertRaises(SERVER.APIError) as failure:self.app.call_openai_summary(source)
+                self.assertEqual(failure.exception.status,502)
+
+    def test_shortcuts_persist_per_person_and_legacy_writer_preserves_them(self):
+        import uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        original=self.request("/v1/preferences",token=token)[1]
+        self.assertEqual(len(original["dashboard"]["shortcuts"]),6)
+        shortcut={"id":str(uuid.uuid4()),"action":"captureMoment","title":"Unser Jetzt"}
+        original["dashboard"]["shortcuts"]=[shortcut]
+        saved=self.request("/v1/preferences","POST",original,token)[1]
+        self.assertEqual(saved["dashboard"]["shortcuts"],[shortcut])
+        self.assertEqual(len(self.request("/v1/preferences",token=partner)[1]["dashboard"]["shortcuts"]),6)
+        legacy=json.loads(json.dumps(saved));del legacy["dashboard"]["shortcuts"]
+        updated=self.request("/v1/preferences","POST",legacy,token)[1]
+        self.assertEqual(updated["dashboard"]["shortcuts"],[shortcut])
+        for invalid in ([shortcut]*2,[shortcut|{"action":[]}],[shortcut|{"title":"x"*25}],[shortcut|{"action":"unknown"}]):
+            body=json.loads(json.dumps(updated));body["dashboard"]["shortcuts"]=invalid
+            self.assertEqual(self.request_error("/v1/preferences","POST",body,token)[0],400)
+        updated["dashboard"]["shortcuts"]=[]
+        self.assertEqual(self.request("/v1/preferences","POST",updated,token)[1]["dashboard"]["shortcuts"],[])
+
     def test_status_expiry_quiet_and_telemetry_independence(self):
         import datetime
         token=self.login()

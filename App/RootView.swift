@@ -13,6 +13,8 @@ struct RootView:View {
             case .authenticated:
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--preview-instant-gallery") {NavigationStack{InstantGalleryView()}.fullScreenCover(item:Binding(get:{appState.pendingPhotoRequest},set:{appState.pendingPhotoRequest=$0})){InstantCameraView(request:$0)}}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-playlist") {NavigationStack{EveningPlaylistView()}}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-ai-summary") {NavigationStack{AIDaySummaryView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {NavigationStack{SettingsView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-status") {NavigationStack{StatusEditorView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-recorder") {FartRecorderView(autoStart:false)}
@@ -66,14 +68,14 @@ struct ChangelogView:View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
-                Text("Mehr Ruhe.\nMehr wir.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.6").font(.title3.bold())
-                Label("Ein offener Fotowunsch pro Person",systemImage:"camera.badge.ellipsis")
-                Label("Wartende Wünsche sehen und bewusst zurückrufen",systemImage:"arrow.uturn.backward")
-                Label("Ein neues Profil mit klaren Einstellungen",systemImage:"person.crop.circle.fill")
-                Label("Ruhigere Farben, Karten und einheitliche Symbole",systemImage:"square.stack.3d.up.fill")
-                Text("Dein Status öffnet sich jetzt innerhalb des Profils mit einem normalen iOS-Übergang. Die Karten in der App sind ruhiger, während Bedienelemente ihren nativen Glasstil behalten.").font(.subheadline).foregroundStyle(.secondary)
-                Text("Alte unbeantwortete Fotowunsch-Stapel werden beim Serverupdate auf den neuesten Wunsch pro Absender begrenzt. Fertige Fotos und eure Erinnerungen bleiben erhalten. Bitte App und Server gemeinsam aktualisieren.").font(.footnote).foregroundStyle(.secondary)
+                Text("Unser Abend.\nUnsere kleinen Kapitel.").font(.system(size:38,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 3.7").font(.title3.bold())
+                Label("Ein Abendplayer für Server-Aufnahmen und Filme",systemImage:"play.square.stack.fill")
+                Label("Nur meine, nur deine oder wir beide gemixt",systemImage:"person.2.fill")
+                Label("Eigene kleine Schnellzugriffe direkt zum Start",systemImage:"square.grid.3x2.fill")
+                Label("Optional: ein KI-Rückblick aus euren Momenttexten",systemImage:"sparkles")
+                Text("Der Abendplayer spielt eure Beiträge nacheinander, mit Einschlaftimer und Sperrbildschirm-Steuerung. Oben auf der Startseite passt jeder seine eigenen Buttons und Namen an.").font(.subheadline).foregroundStyle(.secondary)
+                Text("KI ist standardmäßig ausgeschaltet. Der OpenAI-Schlüssel bleibt auf eurem Server. Erst nach eurer beider Freigabe und einem Tipp auf Zusammenfassen gehen die Momenttexte eines Tages an OpenAI. Eure bestehenden Inhalte bleiben erhalten.").font(.footnote).foregroundStyle(.secondary)
                 Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
             }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")
         }.interactiveDismissDisabled()

@@ -2,6 +2,8 @@ import PhotosUI
 import SwiftUI
 import UIKit
 struct MomentsView:View {
+    var captureOnOpen=false
+    @State private var didOpenCamera=false
     @Environment(AppState.self) private var app
     @State private var queuedMedia:SelectedMedia?
     @State private var picker=false
@@ -19,6 +21,7 @@ struct MomentsView:View {
         ScrollView {VStack(alignment:.leading,spacing:20){
             VStack(alignment:.leading,spacing:12){LoveEyebrow(text:"Unsere kleine Ewigkeit");Text("Momente, die bleiben.").font(.system(size:32,weight:.medium,design:.serif));Text("Fotos, Videos und echte Live Photos. In unseren Alben, auf unserem Server.").foregroundStyle(.secondary);StorageSummaryView()}.loveCard()
             Button("Moment aufnehmen",systemImage:"camera.fill"){camera=true}.buttonStyle(.borderedProminent).controlSize(.large)
+            NavigationLink{EveningPlaylistView(initialVideo:true)}label:{Label("Unsere Filme nacheinander",systemImage:"play.rectangle.on.rectangle")}.buttonStyle(.bordered)
             NavigationLink { InstantGalleryView() } label: { Label("Unser BeReal-Verlauf",systemImage:"camera.on.rectangle.fill") }.buttonStyle(.bordered)
             HStack{Button("Moment hinzufügen",systemImage:"plus"){picker=true}.buttonStyle(.borderedProminent);Button("Album",systemImage:"folder.badge.plus"){albumName="";newAlbum=true}.buttonStyle(.bordered)}
             ScrollView(.horizontal,showsIndicators:false){HStack{Button("Alle Momente"){albumID=""}.buttonStyle(.bordered).tint(albumID.isEmpty ? LovePalette.pink:LovePalette.violet);ForEach(albums){album in Button(album.payload.title ?? "Album"){albumID=album.id}.buttonStyle(.bordered).tint(albumID==album.id ? LovePalette.pink:LovePalette.violet).contextMenu{Button("Umbenennen"){albumName=album.payload.title ?? "";renameAlbum=album};Button("Album entfernen",role:.destructive){deleteAlbum=album}}}}}
@@ -34,7 +37,7 @@ struct MomentsView:View {
             .alert("Unser neues Album",isPresented:$newAlbum){TextField("Albumname",text:$albumName);Button("Anlegen"){Task{if let album=await app.saveRecord(kind:.album,payload:RecordPayload(title:albumName)){albumID=album.id}}}.disabled(albumName.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty);Button("Abbrechen",role:.cancel){}}
             .alert("Album umbenennen",isPresented:Binding(get:{renameAlbum != nil},set:{if !$0{renameAlbum=nil}})){TextField("Albumname",text:$albumName);Button("Speichern"){if let album=renameAlbum{Task{_ = await app.saveRecord(id:album.id,kind:.album,payload:RecordPayload(title:albumName))}};renameAlbum=nil}.disabled(albumName.isEmpty);Button("Abbrechen",role:.cancel){renameAlbum=nil}}
             .alert("Album entfernen?",isPresented:Binding(get:{deleteAlbum != nil},set:{if !$0{deleteAlbum=nil}})){Button("Album entfernen",role:.destructive){if let album=deleteAlbum{Task{_ = await app.deleteRecord(album)}};albumID="";deleteAlbum=nil};Button("Abbrechen",role:.cancel){deleteAlbum=nil}}message:{Text("Die Fotos und Videos bleiben unter Alle Momente erhalten.")}
-            .task{await app.loadRecordArchive(kind:.moment);await app.loadRecordArchive(kind:.album)}
+            .task{if captureOnOpen,!didOpenCamera{didOpenCamera=true;camera=true};await app.loadRecordArchive(kind:.moment);await app.loadRecordArchive(kind:.album)}
     }
 }
 struct StorageSummaryView:View {

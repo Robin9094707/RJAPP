@@ -21,6 +21,8 @@ struct SettingsView:View {
             }.loveCard()
             VStack(alignment:.leading,spacing:16){
                 LoveSectionTitle("Deine Entscheidung",subtitle:"Freigaben und Ruhe, so wie du sie brauchst")
+                NavigationLink{AISettingsView()}label:{LoveSettingsRow(title:"KI-Rückblick",subtitle:"Optional · Freigaben & Kostenkontrolle",symbol:"sparkles",tint:LovePalette.violet)}
+                Divider()
                 detail(.sharing,"location.fill",LovePalette.cyan,"Standort, Fotos und Health")
                 Divider();detail(.privacy,"hand.raised.fill",LovePalette.violet,"Fotowünsche, Wiedergabe & Tagesrückblick")
                 Divider();detail(.permissions,"checkmark.shield.fill",LovePalette.pink,"Die Berechtigungen auf deinem iPhone")

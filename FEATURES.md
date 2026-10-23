@@ -24,3 +24,8 @@ Nicht zugesichert: dauerhaft laufender iOS-Hintergrundprozess, exakte Widget-Akt
 Vier fest erreichbare Ansichten: vollständige Sammlung, Monats-/Jahreskalender mit Tagwahl und Zählern, Furzkarte mit ausdrücklich geteilten Aufnahmeorten sowie Bilanz aus echten Archivdaten. Suche nach Text, Person, Situation und Datum; Filter für Kategorie, Person, Favoriten und Zeitraum; Sortierung nach Datum, Bewertung oder Länge. Metadaten werden über die gesamte Sammlung nachgeladen, Audio nur bei Bedarf.
 
 Recorder mit fester Aufnahme-/Sendeaktion, Schnitt vor und nach dem Teilen und 400 offline gespeicherten Spruchkombinationen für acht Situationen. App und Server erkennen erforderliche Gegenstellen-Updates. Der Server übernimmt vorhandene passende APNs-Schlüssel automatisch ohne Konsolenbefehl; echte Apple-Schlüssel und passende Signaturrechte bleiben Voraussetzung. Details: [RELEASE-2.4.md](RELEASE-2.4.md).
+
+### Neu in 3.7
+- Abendplayer für das vollständige Serverarchiv: Duftaufnahmen und Moment-Videos, eigene/Partner-/gemischte Auswahl, Shuffle, Warteschlange, Einschlaftimer, Hintergrund-Audio und Sperrbildschirm-Steuerung.
+- Bis zu zwölf kleine persönliche Schnellzugriffe mit eigenen Namen und Reihenfolge direkt oben auf der Startseite.
+- Optionaler KI-Tagesrückblick aus Momenttexten: OpenAI-Schlüssel nur am Server, beiderseitige Freigabe, formatierte Karten, Quellen-Verweise, Cache und gemeinsames Tageslimit. Einrichtung: RELEASE-3.7.md.

@@ -79,7 +79,7 @@ struct FartStudioView: View {
                     HStack {
                         NavigationLink {FartLibraryView()} label:{Label("Duftschatzkiste & Import",systemImage:"square.and.arrow.down")}
                         Spacer()
-                        Menu {Button("Alle abspielen"){app.studio.startPlaylist(clips,api:app.api)};Button("Alle durcheinander"){app.studio.startPlaylist(clips,api:app.api,shuffle:true)};Button("Nur meine"){app.studio.startPlaylist(clips.filter{$0.ownerID==app.me?.id},api:app.api)};Button("Nur von meinem Lieblingsmenschen"){app.studio.startPlaylist(clips.filter{$0.ownerID != app.me?.id},api:app.api)}}label:{Image(systemName:"play.square.stack.fill")}.accessibilityLabel("Furz-Playlist")
+                        NavigationLink{EveningPlaylistView()}label:{Label("Abendplayer",systemImage:"play.square.stack.fill")}.accessibilityIdentifier("evening-playlist-link")
                     }.font(.caption.bold())
                     if app.studio.queueCount>0{HStack{Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)");Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18))}
                     DisclosureGroup("Verfeinern · \(clips.count) Werke",isExpanded:$filtersExpanded){filters.padding(.top,12)}.font(.subheadline.bold()).loveCard()
@@ -122,7 +122,7 @@ struct FartStudioView: View {
                 await app.loadFartArchive()
             }
             .onChange(of: app.farts, initial: true) { _, value in dates = Dictionary(uniqueKeysWithValues: value.compactMap { clip in clip.date.map { (clip.id,$0) } }) }
-            .onDisappear { app.fartArchiveVisible = false; app.studio.stopPlayback() }
+            .onDisappear { app.fartArchiveVisible = false; if !EveningPlaylistService.shared.active {app.studio.stopPlayback()} }
             .onChange(of: yearMode) { _, _ in selectedDay = nil }
             .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: room)
     }

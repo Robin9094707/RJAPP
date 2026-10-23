@@ -103,6 +103,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
     }
     func start(ownerID: String) async {
         guard !hasRecording, draft == nil else { return }
+        EveningPlaylistService.shared.stop()
         let operation = UUID(); operationID = operation
         defer { if operationID == operation, !hasRecording, draft == nil { restoreParkedDraft() } }
         errorMessage = nil
@@ -271,6 +272,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         }catch{if !Task.isCancelled{self?.errorMessage=error.localizedDescription;self?.stopPlayback()}};if self?.loadingID==clip.id{self?.loadingID=nil}}
     }
     private func play(data:Data,id:String)throws {
+        EveningPlaylistService.shared.stop()
         funny.stop();playerTask?.cancel()
         let session=AVAudioSession.sharedInstance();try session.setCategory(.playback,mode:.default);try session.setActive(true)
         funny.rate=playbackRate;funny.effect=soundEffect

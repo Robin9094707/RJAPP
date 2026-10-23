@@ -26,6 +26,7 @@ struct NearbyView: View {
                 }
                 if let elevation=appState.nearby.elevation,abs(elevation)>20 {Label(elevation>0 ? "Etwas höher suchen":"Etwas tiefer suchen",systemImage:elevation>0 ? "arrow.up":"arrow.down").font(.headline)}
                 if appState.nearby.running,appState.nearby.angle == nil {Text("Noch kein Richtungswert von iOS. Ein Pfeil erscheint erst bei einem echten Signal.").font(.caption).foregroundStyle(.secondary)}
+                Text(appState.nearby.stage).font(.caption.bold()).foregroundStyle(LovePalette.violet)
                 Text(appState.nearby.message).multilineTextAlignment(.center).font(.headline).frame(minHeight: 60)
                 Toggle("Mit Live-Aktivität im Hintergrund weitersuchen", isOn: Binding(get: { appState.nearby.backgroundSearch }, set: { appState.nearby.backgroundSearch = $0 })).disabled(appState.nearby.running)
                 Text("Startet die Suche einmal auf beiden iPhones. Danach kann die bereits aktive Suche bis zu 15 Minuten mit sichtbarer Live-Aktivität beim Sperren oder App-Wechsel weiterlaufen. Bei beendeter App oder beendetem Signal bitte beide wieder öffnen.").font(.caption).foregroundStyle(.secondary)
@@ -35,6 +36,15 @@ struct NearbyView: View {
                     if appState.nearby.running { appState.nearby.stop(api: appState.api) }
                     else { Task {await appState.nearby.start(api: appState.api)} }
                 }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!appState.nearby.supported)
+                DisclosureGroup("Verbindung prüfen & Diagnose") {
+                    VStack(alignment:.leading,spacing:12) {
+                        Text("Die Standortkarte und UWB sind getrennte Funktionen. Ein fehlender Token beweist keine verweigerte Freigabe. Starte zuerst ohne Kamera und ohne Hintergrundoption auf beiden Geräten.").font(.subheadline)
+                        Text("Bluetooth einschalten, Flugmodus ausschalten und beide Apps sichtbar halten. UWB hängt zusätzlich von Hardware, Region und iOS-Systemzustand ab.").font(.caption).foregroundStyle(.secondary)
+                        Text(appState.nearby.diagnostics).font(.caption.monospaced()).textSelection(.enabled)
+                        ShareLink(item:appState.nearby.diagnostics){Label("Diagnose teilen",systemImage:"square.and.arrow.up")}
+                        Button("App-Einstellungen öffnen"){if let url=URL(string:UIApplication.openSettingsURLString){UIApplication.shared.open(url)}}
+                    }.padding(.top,10)
+                }.loveCard()
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Öffnet beide diese Ansicht und startet die Suche.", systemImage: "person.2.fill")
                     Label("Die Suche nutzt Ultra-Breitband im Nahbereich. Haltet beide iPhones aufrecht und richtet ihre Rückseiten zueinander.", systemImage: "iphone.radiowaves.left.and.right")

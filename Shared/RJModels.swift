@@ -6,7 +6,7 @@ enum RecordKind: String, Codable, CaseIterable, Sendable {
     case moment
     case geofence
     case calendar
-    case chat, wish, milestone, checkin, coupon, gratitude, album, instant, photo_request
+    case chat, wish, milestone, checkin, coupon, gratitude, album, instant, photo_request, ritual
 }
 
 struct UserProfile: Codable, Identifiable, Hashable, Sendable {
@@ -157,6 +157,7 @@ struct RecordPayload: Codable, Hashable, Sendable {
     var calendarSync: Bool? = nil
     var requestID: String? = nil
     var countdownType: String? = nil
+    var day: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case title, text, message, completed, caption, comments, reactions, name
@@ -169,7 +170,7 @@ struct RecordPayload: Codable, Hashable, Sendable {
         case notifyOnEnter = "notify_on_enter"
         case notifyOnExit = "notify_on_exit"
         case assetIDs = "asset_ids", mediaKind = "media_kind", albumID = "album_id", capturedAt = "captured_at", posterBase64 = "poster_base64", autoplay, urgency, referenceID = "reference_id", recurrence, reminderSync = "reminder_sync", calendarSync = "calendar_sync", requestID = "request_id"
-        case countdownType = "countdown_type"
+        case countdownType = "countdown_type", day
         case startAt = "start_at"
         case endAt = "end_at"
     }

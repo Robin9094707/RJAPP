@@ -150,20 +150,57 @@ struct InstantCameraView: View {
 }
 struct InstantGalleryView:View {
     @Environment(AppState.self) private var app
-    @State private var title="Ein Lächeln nur für mich 🥰"
     @State private var creating=false
+    @State private var title="Bitte lächeln, nur für mich 💗"
     @State private var sendingRequest=false
-    @State private var requestID=UUID().uuidString
     @State private var sent=false
+    @State private var requestID=UUID().uuidString
     @State private var deleting:SharedRecord?
     @State private var editing:SharedRecord?
-    private var photos:[SharedRecord]{app.records.filter{$0.kind == .instant}.sorted{$0.createdAt>$1.createdAt}}
-    var body:some View {ScrollView{VStack(alignment:.leading,spacing:20){
-        Text("Unser BeReal-Verlauf.").font(.system(size:32,weight:.medium,design:.serif))
-        Text("Schick einen Fotowunsch. In der geöffneten App erscheint beim Gegenüber die sichtbare Kamera und nimmt direkt ein Foto auf. Beide können das unter Mehr ausschalten.").font(.subheadline).foregroundStyle(.secondary)
-        Button(sendingRequest ? "Wird gewünscht …" : "Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest).buttonStyle(.borderedProminent)
-        if sent { Label("Fotowunsch gesendet", systemImage: "checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent") }
-        ForEach(app.records.filter{$0.kind == .photo_request && $0.payload.completed != true}){request in HStack{Text(request.payload.title ?? "Ein Fotowunsch");Spacer();if request.payload.targetID==app.me?.id{Button("Beantworten"){UserDefaults.standard.removeObject(forKey:"rjlove.photo-skip."+request.id);app.pendingPhotoRequest=request}}else{Text("Wartet auf deinen Lieblingsmenschen").font(.caption)}}.loveCard()}
-        ForEach(photos){photo in VStack(alignment:.leading,spacing:12){MediaAttachmentView(record:photo);PhotoPlaceView(payload:photo.payload);Text(photo.payload.caption ?? "Unser Jetzt").font(.headline).accessibilityIdentifier("instant-photo-caption");if let date=(photo.payload.capturedAt ?? photo.createdAt).rjDate{Text(date.formatted(.dateTime.day().month(.wide).year().hour().minute().second())).font(.caption.monospacedDigit())};if photo.ownerID==app.me?.id{Button("Beschreiben",systemImage:"pencil"){editing=photo};Button("Foto zurückrufen",role:.destructive){deleting=photo}}}.loveCard()}
-    }.padding(22)}.background(LoveBackground()).navigationTitle("BeReal").sheet(item:$editing){MomentMetadataEditor(record:$0)}.alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true;requestID=UUID().uuidString};sendingRequest=false}};Button("Abbrechen",role:.cancel){}}.alert("Foto für beide zurückrufen?",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}})){Button("Zurückrufen",role:.destructive){if let photo=deleting{Task{_ = await app.deleteRecord(photo)}};deleting=nil};Button("Abbrechen",role:.cancel){deleting=nil}}.task{await app.loadRecordArchive(kind:.instant);await app.loadRecordArchive(kind:.photo_request)}}
+    @State private var selectedDay=Date.now
+    private var photos:[SharedRecord]{app.records.filter{$0.kind == .instant}.sorted{(JournalDates.date($0) ?? .distantPast)>(JournalDates.date($1) ?? .distantPast)}}
+    private var dayPhotos:[SharedRecord]{photos.filter{Calendar.current.isDate(JournalDates.date($0) ?? .distantPast,inSameDayAs:selectedDay)}}
+    private var requests:[SharedRecord]{app.records.filter{$0.kind == .photo_request && $0.payload.completed != true}}
+    var body:some View {
+        ScrollView {LazyVStack(alignment:.leading,spacing:22) {
+            introduction
+            VStack(alignment:.leading,spacing:10) {
+                HStack{Label("Euer Fotokalender",systemImage:"calendar").font(.headline);Spacer();Button("Heute"){selectedDay = .now}}
+                PhotoCalendarView(selection:$selectedDay,photos:photos).frame(height:365)
+                Text("Die rosa Zahl zeigt eure BeReal-Fotos an diesem Tag. Maßgeblich ist die gespeicherte Aufnahmezeit.").font(.caption).foregroundStyle(.secondary)
+            }.loveCard()
+            HStack(alignment:.firstTextBaseline) {
+                VStack(alignment:.leading,spacing:5) {Text(selectedDay.formatted(.dateTime.weekday(.wide))).font(.caption.bold()).foregroundStyle(LovePalette.pink);Text(selectedDay.formatted(date:.long,time:.omitted)).font(.title2.bold())}
+                Spacer();Text("\(dayPhotos.count) Fotos").font(.caption.bold()).foregroundStyle(.secondary)
+            }
+            NavigationLink{SharedJournalView(initialDay:selectedDay)}label:{Label("Diesen Tag gemeinsam ansehen",systemImage:"sparkles.rectangle.stack.fill").frame(maxWidth:.infinity)}.buttonStyle(.bordered)
+            if dayPhotos.isEmpty {ContentUnavailableView("Platz für euer echtes Leben",systemImage:"camera.on.rectangle",description:Text("An diesem Tag gibt es noch kein BeReal. Auch die leisen Tage gehören zu euch."))}
+            ForEach(dayPhotos){photo in photoCard(photo)}
+            if !requests.isEmpty {DisclosureGroup("Offene Fotowünsche · \(requests.count)") {ForEach(requests){request in
+                HStack{Text(request.payload.title ?? "Ein Fotowunsch").font(.subheadline);Spacer();if request.payload.targetID==app.me?.id{Button("Beantworten"){UserDefaults.standard.removeObject(forKey:"rjlove.photo-skip."+request.id);app.pendingPhotoRequest=request}}else{Image(systemName:"clock").foregroundStyle(.secondary)}}.padding(.vertical,8)
+            }}.loveCard()}
+        }.padding(20)}.background(LoveBackground()).navigationTitle("Unser BeReal").navigationBarTitleDisplayMode(.inline)
+        .sheet(item:$editing){MomentMetadataEditor(record:$0)}
+        .alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true;requestID=UUID().uuidString};sendingRequest=false}};Button("Abbrechen",role:.cancel){}}
+        .alert("Foto für beide zurückrufen?",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}})){Button("Zurückrufen",role:.destructive){if let photo=deleting{Task{_ = await app.deleteRecord(photo)}};deleting=nil};Button("Abbrechen",role:.cancel){deleting=nil}}
+        .task{await app.loadRecordArchive(kind:.instant);await app.loadRecordArchive(kind:.photo_request)}
+        .refreshable{_ = await app.syncNow(showErrors:false);await app.loadRecordArchive(kind:.instant)}
+    }
+    private var introduction:some View {
+        VStack(alignment:.leading,spacing:16) {
+            LoveEyebrow(text:"Echte Augenblicke. Unser kleines Leben.")
+            HStack{Text("Ein Tag. Ein Blick.\nGanz viel wir.").font(.system(size:33,weight:.medium,design:.serif));Spacer(minLength:0);Image(systemName:"camera.on.rectangle.fill").font(.system(size:46)).foregroundStyle(LovePalette.pink.gradient)}
+            Text("Blättert durch eure Tage und findet das Lächeln dazwischen. Ein Fotowunsch öffnet beim Gegenüber die sichtbare Kamera, wenn die App geöffnet und die Funktion erlaubt ist.").font(.subheadline).foregroundStyle(.secondary)
+            Button(sendingRequest ? "Wird gewünscht …":"Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest).buttonStyle(.borderedProminent).controlSize(.large)
+            if sent {Label("Fotowunsch gesendet",systemImage:"checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent")}
+        }.loveCard()
+    }
+    private func photoCard(_ photo:SharedRecord)->some View {
+        VStack(alignment:.leading,spacing:14) {
+            HStack{PartnerAvatar(name:photo.ownerID==app.me?.id ? app.me?.displayName ?? "Du":app.partner?.displayName ?? "Dein Lieblingsmensch",size:34);VStack(alignment:.leading){Text(photo.ownerID==app.me?.id ? "Dein Jetzt":"Ein Blick von "+(app.partner?.displayName ?? "deinem Lieblingsmenschen")).font(.subheadline.bold());if let date=JournalDates.date(photo){Text(date.formatted(date:.omitted,time:.shortened)).font(.caption).foregroundStyle(.secondary)}};Spacer();if photo.ownerID==app.me?.id{Menu{Button("Beschreiben",systemImage:"pencil"){editing=photo};Button("Foto zurückrufen",systemImage:"trash",role:.destructive){deleting=photo}}label:{Image(systemName:"ellipsis.circle")}.accessibilityLabel("BeReal verwalten")}}
+            MediaAttachmentView(record:photo)
+            Text(photo.payload.caption?.isEmpty == false ? photo.payload.caption!:"Unser Jetzt").font(.system(.title3,design:.serif)).accessibilityIdentifier("instant-photo-caption")
+            PhotoPlaceView(payload:photo.payload)
+        }.loveCard()
+    }
 }

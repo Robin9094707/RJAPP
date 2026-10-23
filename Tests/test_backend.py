@@ -338,6 +338,52 @@ class RJLoveBackendTests(unittest.TestCase):
         self.request("/v1/nearby","POST",{"token":"","expected_token":new},token)
         self.assertIsNone(self.request("/v1/nearby",token=partner)[1]["token"])
 
+    def test_ritual_unique_daily_owner_and_preserved_history(self):
+        import uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        payload={"title":"Drei kleine Dinge","text":"Unser Spaziergang","message":"Danke fürs Zuhören","notes":"Auf morgen","day":"2026-10-23","start_at":"2026-10-22T22:00:00Z"}
+        record={"id":str(uuid.uuid4()),"kind":"ritual","payload":payload}
+        self.assertEqual(self.request("/v1/records","POST",record,token)[0],200)
+        self.assertEqual(self.request_error("/v1/records","POST",record,partner)[0],403)
+        self.assertEqual(self.request_error("/v1/records/"+record["id"],"DELETE",token=partner)[0],403)
+        duplicate={**record,"id":str(uuid.uuid4())}
+        self.assertEqual(self.request_error("/v1/records","POST",duplicate,token)[0],409)
+        self.assertEqual(self.request("/v1/records","POST",duplicate,partner)[0],200)
+        record["payload"]={**payload,"text":"Unser Abend"}
+        self.assertEqual(self.request("/v1/records","POST",record,token)[1]["payload"]["text"],"Unser Abend")
+        for day in ("2026-02-30","20261023",None):
+            bad={**record,"id":str(uuid.uuid4()),"payload":{**payload,"day":day}}
+            self.assertEqual(self.request_error("/v1/records","POST",bad,token)[0],400)
+        records=self.request("/v1/records/archive?kind=ritual",token=partner)[1]["records"]
+        self.assertEqual(len(records),2)
+
+    def test_daily_journal_boundaries_capture_dates_pagination_and_auth(self):
+        import uuid,urllib.parse
+        token=self.login()
+        # A 25-hour local calendar day (Europe/Berlin DST change).
+        params={"start":"2026-10-24T22:00:00Z","end":"2026-10-25T23:00:00Z"}
+        path="/v1/journal?"+urllib.parse.urlencode(params)
+        self.assertEqual(self.request_error(path)[0],401)
+        photo_id=str(uuid.uuid4())
+        photo={"id":photo_id,"kind":"moment","payload":{"caption":"Historischer Moment","image_base64":"YQ==","mime_type":"image/jpeg","captured_at":"2026-10-25T22:59:59Z"}}
+        self.request("/v1/records","POST",photo,token)
+        with self.app.database.connect() as db:
+            for index in range(202):
+                stamp="2026-10-24T22:00:00Z" if index<201 else params["end"]
+                db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)",(str(uuid.uuid4()),"chat","robin",json.dumps({"text":str(index)}),10,stamp,stamp))
+            db.execute("INSERT INTO thought_events VALUES(?,?,?,?)",(str(uuid.uuid4()),"robin","2026-10-25T22:50:00Z","2026-10-26T00:00:00Z"))
+        first=self.request(path,token=token)[1]
+        self.assertEqual(first["counts"],{"chat":201,"moment":1,"farts":0})
+        self.assertEqual(first["hearts"],{"robin":1})
+        self.assertEqual(len(first["records"]),200);self.assertTrue(first["has_more"])
+        second=self.request(path+"&offset=200",token=token)[1]
+        self.assertEqual(len(second["records"]),2);self.assertFalse(second["has_more"])
+        self.assertIn(photo_id,{r["id"] for r in first["records"]+second["records"]})
+        self.request("/v1/records/"+photo_id,"DELETE",token=token)
+        self.assertNotIn("moment",self.request(path,token=token)[1]["counts"])
+        invalid="/v1/journal?"+urllib.parse.urlencode({**params,"end":"2026-11-25T23:00:00Z"})
+        self.assertEqual(self.request_error(invalid,token=token)[0],400)
+
     def test_nearby_exchange_requires_auth_and_expires(self):
         import datetime
         token = self.login()

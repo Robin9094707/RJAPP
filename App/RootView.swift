@@ -44,6 +44,7 @@ struct MainTabView:View {
 
         }
 
+        .sheet(isPresented:$state.showingEvening,onDismiss:{appState.didCloseEvening()}){NavigationStack{SharedJournalView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingEvening=false}}}}}
         .sheet(isPresented:$state.showingPartnerProfile){PartnerProfileView()}
         .sheet(isPresented:$state.showingCountdowns){NavigationStack{CountdownHubView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingCountdowns=false}}}}}
         .sheet(isPresented:$state.showingHealthUpgrade,onDismiss:{appState.health.deferExpandedAccess();appState.offerForegroundMoments()}){HealthPermissionsUpgradeView()}
@@ -61,15 +62,15 @@ struct ChangelogView:View {
     var body:some View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
-                Image(systemName:"heart.text.clipboard.fill").font(.system(size:50)).foregroundStyle(LovePalette.pink)
-                Text("Noch mehr wir.").font(.system(size:36,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.4").font(.title3.bold())
-                Label("Mehr Health-Werte, Schlafphasen und Nächte im Verlauf",systemImage:"moon.stars.fill")
-                Label("RJ-Schlafindex aus Dauer, Regelmäßigkeit und Unterbrechungen",systemImage:"chart.bar.fill")
-                Label("Nahsuche mit Kamera-Coaching und automatischem UWB-Neustart",systemImage:"viewfinder")
-                Label("IPA-Dateien aus Dateien und iCloud auswählbar",systemImage:"folder.fill")
-                Label("Euer neues Glasherz-Icon mit euren Gesichtern",systemImage:"heart.fill")
-                Text("Beide iPhones können ihre erweiterten Health-Leserechte jetzt selbst bestätigen. Eure bisherigen Freigaben bleiben bestehen. Der RJ-Schlafindex ist eine eigene Schätzung und kein ausgelesener Apple-Score. App und Server gemeinsam auf 3.4 aktualisieren.").font(.footnote).foregroundStyle(.secondary)
+                Image(systemName:"sparkles.rectangle.stack.fill").font(.system(size:50)).foregroundStyle(LovePalette.pink)
+                Text("Euer kleines Leben.\nGanz groß.").font(.system(size:36,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 3.5").font(.title3.bold())
+                Label("BeReal-Kalender mit euren markierten Fototagen",systemImage:"calendar")
+                Label("Tagesrückblick und ein gemeinsamer Neuigkeiten-Feed",systemImage:"sparkles.rectangle.stack")
+                Label("Euer Duftstudio mit mehr Ruhe und kleinen Highlights",systemImage:"cloud.fill")
+                Label("Nahsuche mit ehrlicher Verbindungsdiagnose",systemImage:"dot.radiowaves.left.and.right")
+                VStack(alignment:.leading,spacing:12){Text("Eine kleine Überraschung für euch").font(.headline);Text("Euer neues Abendritual: Drei kleine Dinge. Ein schöner Moment, ein Danke an dich und etwas, auf das ihr euch freut. Jeder schreibt seinen eigenen Beitrag – zusammen bleibt daraus eine kleine gemeinsame Erinnerung.").font(.subheadline);NavigationLink{EveningRitualView()}label:{Label("Unser Abendritual entdecken",systemImage:"moon.stars.fill")}.buttonStyle(.bordered)}.loveCard()
+                Text("Ab 19 Uhr erscheint euer Tagesrückblick beim nächsten Öffnen einmal am Tag. Im Profil abschaltbar. Bestehende Inhalte bleiben erhalten; App und Server gemeinsam aktualisieren.").font(.footnote).foregroundStyle(.secondary)
                 Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
             }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")
         }.interactiveDismissDisabled()

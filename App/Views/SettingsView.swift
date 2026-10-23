@@ -13,6 +13,7 @@ struct SettingsView: View {
     @ObservedObject private var notifications = NotificationCoordinator.shared
     @ObservedObject private var device = DeviceStatusService.shared
     @ObservedObject private var calendar = CalendarService.shared
+    @AppStorage("rjlove.evening-auto") private var eveningAuto=true
     @State private var logoutConfirmation = false
     @State private var microphone = AVAudioApplication.shared.recordPermission
 
@@ -34,7 +35,7 @@ struct SettingsView: View {
                     if partner.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").foregroundStyle(.secondary)}
                 }
             }
-            Section("Euer privater Raum · 3.4") {
+            Section("Euer privater Raum · 3.5") {
                 NavigationLink {LiveActivitySettingsView()}label:{Label("Live-Aktivität & Dynamic Island",systemImage:"livephoto")}
                 NavigationLink { DeliveryCenterView() } label: { Label("Push, Wecker & Hintergrund", systemImage: "checkmark.shield.fill") }
                 Button("Einrichtung & Berechtigungen", systemImage: "checklist") { appState.setupJourney.presented = true }
@@ -44,6 +45,11 @@ struct SettingsView: View {
                 NavigationLink { CapabilitiesView() } label: { Label("Funktionen & Signatur", systemImage: "checkmark.seal.fill") }
             }
 
+            Section("Unser Tagesrückblick") {
+                Toggle("Abends beim Öffnen anzeigen",isOn:$eveningAuto)
+                Text("Ab 19 Uhr erscheint der Tagesrückblick einmal pro Tag, wenn die App geöffnet ist. Ohne Hintergrundausführung wird kein automatischer Bericht erzeugt. Ihr könnt alle Tage jederzeit über die Wir-Seite öffnen.").font(.caption).foregroundStyle(.secondary)
+                NavigationLink{SharedJournalView()}label:{Label("Unser Journal",systemImage:"sparkles.rectangle.stack")}
+            }
             Section("Verbindung") {
                 LabeledContent("Server", value: appState.profile?.baseURL ?? "–")
                     .lineLimit(1)

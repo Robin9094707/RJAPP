@@ -39,6 +39,7 @@ struct LoveHubView: View {
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: section)
         .background(LoveBackground()).navigationTitle("Nur wir zwei").navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement:.principal){NavigationLink{EveningRitualView()}label:{Label("Unser Ritual",systemImage:"moon.stars.fill").font(.caption.bold())}}
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink { PlannerView() } label: { Image(systemName:"calendar.badge.clock") }
                     .accessibilityLabel("Gemeinsame Planung")

@@ -7,6 +7,7 @@ private enum DuftOrder: String, CaseIterable { case newest = "Neueste zuerst", o
 struct FartStudioView: View {
     @Environment(AppState.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var filtersExpanded=false
     @State private var room: DuftRoom = .sammlung
     @State private var query = ""
     @State private var owner = "all"
@@ -81,7 +82,7 @@ struct FartStudioView: View {
                         Menu {Button("Alle abspielen"){app.studio.startPlaylist(clips,api:app.api)};Button("Alle durcheinander"){app.studio.startPlaylist(clips,api:app.api,shuffle:true)};Button("Nur meine"){app.studio.startPlaylist(clips.filter{$0.ownerID==app.me?.id},api:app.api)};Button("Nur von meinem Lieblingsmenschen"){app.studio.startPlaylist(clips.filter{$0.ownerID != app.me?.id},api:app.api)}}label:{Image(systemName:"play.square.stack.fill")}.accessibilityLabel("Furz-Playlist")
                     }.font(.caption.bold())
                     if app.studio.queueCount>0{HStack{Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)");Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18))}
-                    filters
+                    DisclosureGroup("Verfeinern · \(clips.count) Werke",isExpanded:$filtersExpanded){filters.padding(.top,12)}.font(.subheadline.bold()).loveCard()
                     if app.loadingFartArchive { ProgressView("Euer vollständiges Archiv wird geladen …").font(.footnote) }
                     switch room {
                     case .sammlung:
@@ -104,7 +105,7 @@ struct FartStudioView: View {
                 }.padding(20)
             }.id(room).accessibilityIdentifier("duft-archive-scroll").refreshable { _ = await app.syncNow(showErrors: true) }
             Button { app.openFartRecorder() } label: {
-                Label(app.studio.draft == nil ? "Neues Meisterwerk aufnehmen" : "Deinen Entwurf fortsetzen", systemImage: app.studio.draft == nil ? "mic.fill" : "waveform").frame(maxWidth: .infinity)
+                Label(app.studio.draft == nil ? "Neues Meisterwerk aufnehmen" : "Deinen Entwurf fortsetzen", systemImage: app.studio.draft == nil ? "cloud.fill" : "waveform").frame(maxWidth: .infinity)
             }.buttonStyle(.borderedProminent).controlSize(.large).tint(LovePalette.violet)
                 .padding(.horizontal, 20).padding(.vertical, 10).background(.ultraThinMaterial).accessibilityIdentifier("duft-record")
         }.background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
@@ -126,19 +127,28 @@ struct FartStudioView: View {
             .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: room)
     }
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 12) {
-                LoveEyebrow(text: "Das kleine Naturkundemuseum eurer Liebe")
-                Spacer(minLength: 0)
-                Image(systemName: "heart.fill").foregroundStyle(LovePalette.pink).symbolEffect(.bounce, value: reduceMotion ? "" : room.rawValue)
+        VStack(alignment:.leading,spacing:20) {
+            HStack(alignment:.center,spacing:10) {
+                VStack(alignment:.leading,spacing:12) {
+                    LoveEyebrow(text:"Kleine Kunst. Große Liebe.")
+                    Text("Für immer.\nFürzeinander.").font(.system(size:34,weight:.medium,design:.serif)).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("duft-archive-title")
+                    Text("Ein privates Tonstudio für euren ganz eigenen Humor.").font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer(minLength:0)
+                PuffMascot(active:false).frame(width:115,height:130).clipped()
             }
-            Text("Für immer. Fürzeinander.").font(.system(size: 30, weight: .medium, design: .serif)).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("duft-archive-title")
-            Text("Sammelt die kleinen Momente, findet alte Klassiker und entdeckt eure ganz eigene Wetterkarte.").font(.subheadline).foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                Label("\(app.farts.count) Werke", systemImage: "waveform")
-                Label("\(Set(app.farts.compactMap { $0.date.map { cal.startOfDay(for: $0) } }).count) Tage", systemImage: "calendar")
-            }.font(.caption.bold()).foregroundStyle(LovePalette.violet).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing:12) {
+                studioStat(app.farts.count.formatted(),"Meisterwerke","cloud.fill")
+                studioStat(Set(app.farts.compactMap{$0.date.map{cal.startOfDay(for:$0)}}).count.formatted(),"Dufttage","calendar")
+                studioStat(app.farts.reduce(0){$0+($1.commentCount ?? 0)}.formatted(),"Kommentare","bubble.left.fill")
+            }
+            if let favorite=app.farts.filter({$0.stars != nil}).max(by:{($0.stars ?? 0)<($1.stars ?? 0)}) {
+                HStack(spacing:12){Image(systemName:"trophy.fill").foregroundStyle(LovePalette.coral);VStack(alignment:.leading,spacing:4){Text("Ein Liebling der Duftjury").font(.caption).foregroundStyle(.secondary);Text(favorite.title).font(.subheadline.bold()).lineLimit(1)};Spacer();Text("\(favorite.stars ?? 0) ★").font(.subheadline.bold()).foregroundStyle(LovePalette.coral)}.padding(14).background(LovePalette.coral.opacity(0.09),in:RoundedRectangle(cornerRadius:18))
+            }
         }.loveCard()
+    }
+    private func studioStat(_ value:String,_ title:String,_ symbol:String)->some View {
+        VStack(alignment:.leading,spacing:7){Image(systemName:symbol).foregroundStyle(LovePalette.violet);Text(value).font(.system(.title2,design:.rounded).bold());Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)}.frame(maxWidth:.infinity,alignment:.leading).padding(12).background(LovePalette.violet.opacity(0.07),in:RoundedRectangle(cornerRadius:18))
     }
     private var filters: some View {
         VStack(alignment: .leading, spacing: 12) {

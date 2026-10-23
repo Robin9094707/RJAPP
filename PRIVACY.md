@@ -1,3 +1,9 @@
+## Ergänzung 3.5
+
+Tagesrückblick und Feed verwenden ausschließlich eure bereits gespeicherten Inhalte. Der Tagesabruf sendet die UTC-Grenzen des auf dem iPhone gewählten Kalendertags an den privaten Server. Neue Bewegungs-, Aufenthalts- oder Health-Verläufe werden dafür nicht aufgezeichnet. Der Abendrückblick erscheint optional beim Öffnen ab 19 Uhr; kein dauerhafter Hintergrundprozess und keine zusätzliche tägliche Push-Mitteilung.
+
+Abendrituale speichern pro Konto und Kalendertag drei freiwillige Texte auf eurem privaten Server. Beiträge sind sofort für beide sichtbar; nur der Verfasser kann seinen Beitrag ändern oder löschen. Nicht gesendete Entwürfe liegen lokal, getrennt nach Server, Konto und Tag. Die Nahsuche-Diagnose enthält Funktionszustände, iOS-/App-Version und Systemfehler, aber keine UWB-Tokens oder Positionen. Diagnose wird nur auf ausdrückliches Teilen über das iOS-Teilen-Menü weitergegeben.
+
 ## Ergänzung 3.4
 
 Health-Leserechte werden auf jedem iPhone separat über iOS angefragt. Die bestehenden Weitergabe-Schalter bleiben beim Update erhalten. Aktivität, Schlaf und Vitalwerte sind weiterhin getrennt abschaltbar. Die Vitalwerte-Kategorie umfasst jetzt auch Körpergewicht, Blutdruck, Körper-/Handgelenktemperatur und Cardiofitness; vor dem Erweitern der Leserechte erklärt die App diese zusätzlichen Kategorien. Nur in Health tatsächlich vorhandene und freigegebene Daten können erscheinen. Die App schreibt keine Health-Daten.

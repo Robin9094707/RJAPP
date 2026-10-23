@@ -50,11 +50,11 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.4.0"
-MINIMUM_APP_VERSION = "3.4.0"
+APP_VERSION = "3.5.0"
+MINIMUM_APP_VERSION = "3.5.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
-ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request"}
+ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
 
 
@@ -882,6 +882,7 @@ class RJLoveApplication:
             },
             "calendar": {"title", "start_at", "end_at", "location", "notes", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"},
             "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id"}, "wish": {"title", "text", "completed"},
+            "ritual": {"title","text","message","notes","day","start_at"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
             "milestone": {"countdown_type", "title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
             "album": {"title", "text"}, "instant": {"latitude", "longitude", "caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
@@ -917,6 +918,15 @@ class RJLoveApplication:
             if self.user_by_id(target) is None:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_target", "Der ausgewählte Benutzer existiert nicht.")
             clean["target_id"] = target
+
+        if kind == "ritual":
+            text_field("title",120,required=True)
+            for field in ("text","message","notes"):text_field(field,1200,required=True)
+            try:
+                day=dt.date.fromisoformat(clean.get("day",""))
+                if day.isoformat()!=clean["day"]:raise ValueError()
+            except (ValueError,TypeError):raise APIError(400,"invalid_ritual_day","Tag des Abendrituals ungültig.")
+            if parse_iso(clean.get("start_at")) is None:raise APIError(400,"invalid_ritual_date","Zeitpunkt des Abendrituals fehlt.")
 
         if kind in {"chat", "wish", "milestone", "checkin", "coupon", "gratitude"}:
             text_field("text", 4000, required=kind == "gratitude" or (kind == "chat" and not clean.get("asset_ids") and not clean.get("reference_id")))
@@ -1850,6 +1860,25 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     base=("https" if self.app.config.get("tls",{}).get("enabled") else "http")+"://"+host
                 self.send_json(200,{"name":"Robin & Raphaela · RJ Love","identifier":"eu.rjuhas.rjlove.source","apps":[{"name":"RJ Love","bundleIdentifier":"eu.rjuhas.rjlove","developerName":"Robin & Raphaela","subtitle":"Unser privater Lieblingsort","localizedDescription":"Messenger, Momente und Duftstudio für uns zwei.","iconURL":base+"/updates/"+parts[1]+"/icon.png","versions":[{"version":release["version"],"buildVersion":release["build"],"date":release["created_at"],"downloadURL":base+"/updates/"+parts[1]+"/latest.ipa","size":self._asset_row(release["asset_id"])["size_bytes"],"minOSVersion":"26.1"}]}]});return True
             raise APIError(404,"not_found","Update-Datei fehlt.")
+        if path=="/v1/journal":
+            self.current_user()
+            start,end=parse_iso(query.get("start",[None])[0]),parse_iso(query.get("end",[None])[0])
+            if start is None or end is None or not 0<(end-start).total_seconds()<=26*3600:
+                raise APIError(400,"invalid_day","Bitte einen gültigen Kalendertag auswählen.")
+            offset=self._page_number(query,"offset",0,10000000)
+            stamp="CASE WHEN kind IN ('moment','instant') THEN COALESCE(json_extract(payload,'$.captured_at'),created_at) WHEN kind='ritual' THEN json_extract(payload,'$.start_at') ELSE created_at END"
+            where=f"deleted_at IS NULL AND kind NOT IN ('geofence','album','photo_request') AND julianday({stamp})>=julianday(?) AND julianday({stamp})<julianday(?)"
+            bounds=(start.isoformat(),end.isoformat())
+            with self.app.database.connect() as db:
+                rows=db.execute(f"SELECT * FROM records WHERE {where} ORDER BY {stamp},id LIMIT 201 OFFSET ?",(*bounds,offset)).fetchall()
+                counts={r["kind"]:r["n"] for r in db.execute(f"SELECT kind,count(*) n FROM records WHERE {where} GROUP BY kind",bounds)}
+                fart_where="julianday(COALESCE(recorded_at,created_at))>=julianday(?) AND julianday(COALESCE(recorded_at,created_at))<julianday(?)"
+                fart_rows=db.execute(f"SELECT id FROM fart_clips WHERE {fart_where} ORDER BY COALESCE(recorded_at,created_at),id LIMIT 201 OFFSET ?",(*bounds,offset)).fetchall()
+                counts["farts"]=db.execute(f"SELECT count(*) FROM fart_clips WHERE {fart_where}",bounds).fetchone()[0]
+                hearts={r["user_id"]:r["n"] for r in db.execute("SELECT user_id,count(*) n FROM thought_events WHERE julianday(COALESCE(occurred_at,received_at))>=julianday(?) AND julianday(COALESCE(occurred_at,received_at))<julianday(?) GROUP BY user_id",bounds)}
+                clips=[self.app.fart_clip(r["id"],db=db) for r in fart_rows[:200]]
+            self.send_json(200,{"records":[self._record_dict(r) for r in rows[:200]],"farts":clips,"counts":counts,"hearts":hearts,"has_more":len(rows)>200 or len(fart_rows)>200,"next_offset":offset+200})
+            return True
         if path=="/v1/thoughts/history":
             self.current_user()
             offset=self._page_number(query,"offset",0,10000000)
@@ -2289,6 +2318,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 )
             owner_id = str(old["owner_id"]) if old else user_id
             prior_payload=json.loads(old["payload"]) if old else {}
+            if kind=="ritual":
+                if old and (owner_id!=user_id or prior_payload.get("day")!=payload["day"]):
+                    raise APIError(403,"ritual_owner","Nur dein eigener Beitrag dieses Tages kann geändert werden.")
+                duplicate=db.execute("SELECT id FROM records WHERE kind='ritual' AND owner_id=? AND deleted_at IS NULL AND json_extract(payload,'$.day')=? AND id<>?",(user_id,payload["day"],record_id)).fetchone()
+                if duplicate:raise APIError(409,"ritual_exists","Dein Tagesbeitrag ist schon vorhanden. Bitte aktualisieren und bearbeiten.")
             for asset_id in payload.get("asset_ids",[]):
                 asset=db.execute("SELECT * FROM assets WHERE id=? AND ready=1",(asset_id,)).fetchone()
                 if not asset or (asset["owner_id"]!=user_id and asset_id not in prior_payload.get("asset_ids",[])):
@@ -2334,6 +2368,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "milestone": ("Unsere Zeit", "hat einen besonderen Tag geteilt."),
             "checkin": ("Ein Gefühl für dich", "hat ein Gefühl geteilt."),
             "coupon": ("Ein kleiner Liebesgutschein 💌", "hat einen Gutschein aktualisiert."),
+            "ritual": ("Ein Abendmoment für uns ✨", "hat euer Abendritual ergänzt."),
             "gratitude": ("Das mag ich an dir 💗", "hat dir liebe Worte dagelassen."),
             "photo_request": ("Ein Foto nur für dich 📷", "wünscht sich ein Foto von dir."),
         }
@@ -2350,7 +2385,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             row = db.execute("SELECT kind,owner_id FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()
             if row is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "record_not_found", "Der Eintrag wurde nicht gefunden.")
-            if row["kind"] in {"chat","instant"} and row["owner_id"]!=user_id:
+            if row["kind"] in {"chat","instant","ritual"} and row["owner_id"]!=user_id:
                 raise APIError(403,"not_owner","Nur eigene Nachrichten und Sofortfotos können zurückgerufen werden.")
             db.execute("UPDATE records SET deleted_at=?,updated_at=? WHERE id=?", (now, now, record_id))
         sender = self.app.user_by_id(user_id) or {"display_name": "Schatzi"}

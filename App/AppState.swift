@@ -50,6 +50,8 @@ final class AppState {
     var activity:[String:PartnerActivity] = [:]
     var showingStatus = false
     var showingHealthUpgrade = false
+    var showingEvening = false
+    private var eveningPresentedDay=Date.now
     var pendingSweet: SharedRecord?
     var pendingPhotoRequest: SharedRecord?
     var storageByUser: [String:Int] = [:]
@@ -229,6 +231,7 @@ final class AppState {
         farts = []
         studio.discard()
         showingFartRecorder = false
+        showingEvening=false
         thoughts = [:]
         UserDefaults.standard.removeObject(forKey: "rjlove.chat-draft")
         queuedPresenceTask?.cancel()
@@ -501,7 +504,7 @@ final class AppState {
         showingChangelog = false
     }
     func offerForegroundMoments() {
-        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, !showingHealthUpgrade, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
+        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, !showingHealthUpgrade, !showingEvening, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
         let defaults = UserDefaults.standard
         if defaults.string(forKey:"rjlove.changelog-seen") != RJVersion.app {showingChangelog=true;return}
         if health.needsExpandedAccess {showingHealthUpgrade=true;return}
@@ -511,7 +514,16 @@ final class AppState {
         if pendingSweet == nil, defaults.object(forKey:"rjlove.instant-enabled") == nil || defaults.bool(forKey:"rjlove.instant-enabled") {
             pendingPhotoRequest = records.first { $0.kind == .photo_request && $0.payload.targetID == me?.id && $0.payload.completed != true && !defaults.bool(forKey:"rjlove.photo-skip."+$0.id) }
         }
+        if pendingSweet==nil,pendingPhotoRequest==nil,selectedTab == .home,
+           UserDefaults.standard.object(forKey:"rjlove.evening-auto") == nil || UserDefaults.standard.bool(forKey:"rjlove.evening-auto"),
+           Calendar.current.component(.hour,from:.now)>=19,
+           UIApplication.shared.connectedScenes.compactMap({$0 as? UIWindowScene}).flatMap(\.windows).first(where:{$0.isKeyWindow})?.rootViewController?.presentedViewController == nil,
+           UserDefaults.standard.string(forKey:eveningSeenKey) != JournalDates.key(.now) {
+            eveningPresentedDay = .now;showingEvening=true
+        }
     }
+    private var eveningSeenKey:String {"rjlove.evening-seen."+(profile?.baseURL ?? "")+"."+(me?.id ?? "")}
+    func didCloseEvening(){UserDefaults.standard.set(JournalDates.key(eveningPresentedDay),forKey:eveningSeenKey);offerForegroundMoments()}
     func applyPreferences(_ value: UserPreferences) {
         homeLayout = value.dashboard; homeRevision = value.revision
         if let profile, let data = try? JSONEncoder().encode(value) {

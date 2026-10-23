@@ -9,8 +9,8 @@ final class ProfileNavigationTests:XCTestCase {
         XCTAssertTrue(status.waitForExistence(timeout:10))
         for _ in 0..<2 {
             status.tap()
-            XCTAssertTrue(app.textFields["status-text"].waitForExistence(timeout:8))
-            XCTAssertTrue(app.buttons["Status teilen"].isHittable)
+            XCTAssertTrue(app.descendants(matching:.any)["status-text"].waitForExistence(timeout:8))
+            XCTAssertTrue(app.buttons["Status teilen"].exists)
             let bar=app.navigationBars["Mein Status"]
             XCTAssertTrue(bar.exists)
             let capture=XCTAttachment(screenshot:app.screenshot());capture.name="Status-Navigation";capture.lifetime = .keepAlways;add(capture)

@@ -107,6 +107,8 @@ final class AppState {
     var partner: PartnerSnapshot? { partners.first }
     var notes: [SharedRecord] { records.filter { $0.kind == .note } }
     var reminders: [SharedRecord] { records.filter { $0.kind == .reminder } }
+    var showingPoop=false
+    var composingPoop=false
     var moments: [SharedRecord] { records.filter { $0.kind == .moment } }
     var geofences: [SharedRecord] { records.filter { $0.kind == .geofence } }
     var calendarEvents: [SharedRecord] { records.filter { $0.kind == .calendar } }
@@ -728,6 +730,7 @@ final class AppState {
     func handleDeepLink(_ url: URL) {
         guard url.scheme?.lowercased() == "rjlove" else { return }
         switch url.host?.lowercased() {
+        case "poop", "poop-log": selectedTab = .home;composingPoop=url.host?.lowercased()=="poop-log";showingPoop=true
         case "stop-nearby": nearby.stop(api: api)
         case "map": selectedTab = .map
         case "together": selectedTab = .together
@@ -821,7 +824,7 @@ final class AppState {
                 localDay: serverLocalDay,
                 me: me,
                 partners: partners,
-                records: records,
+                records: records.map{r in var r=r;if r.kind == .moment,r.payload.imageBase64 != nil{r.payload.imageBase64=nil;r.payload.legacyImage=true};return r},
                 thoughts: thoughts,
                 storageUsedBytes: storageUsedBytes,
                 features: features,
@@ -892,6 +895,12 @@ extension AppState {
             SharedRecord(id: UUID().uuidString, kind: .chat, ownerID: "robin", payload: RecordPayload(text: "Noch einen Spaziergang zusammen, bevor die Sonne untergeht?"), createdAt: now, updatedAt: now),
             SharedRecord(id: UUID().uuidString, kind: .milestone, ownerID: "robin", payload: RecordPayload(title: "Unser nächstes Wochenende", startAt: Date.now.addingTimeInterval(3 * 86400).rjISO8601), createdAt: now, updatedAt: now)
         ]
+        if !ProcessInfo.processInfo.arguments.contains("--ui-test-server") {
+            records += PreviewFixtures.moments()
+            var anniversary=RecordPayload(title:"Unser Jahrestag",startAt:(Calendar.current.date(byAdding:.month,value:-5,to:.now) ?? .now).rjISO8601);anniversary.countdownType="anniversary"
+            records.append(SharedRecord(id:UUID().uuidString,kind:.milestone,ownerID:"robin",payload:anniversary,createdAt:now,updatedAt:now))
+            for index in 0..<2{var p=RecordPayload(title:index==0 ? "Heimathafen":"Königlicher Zwischenstopp",text:"Eine kleine Legende im privaten Thronarchiv.");p.emoji=index==0 ? "💩":"👑";p.duration=7+index;p.rating=4;p.capturedAt=now;p.latitude=51.43+Double(index)*0.03;p.longitude=6.76+Double(index)*0.02;p.location="Ein stilles Örtchen";records.append(SharedRecord(id:UUID().uuidString,kind:.poop,ownerID:index==0 ? "robin":"raphaela",payload:p,createdAt:now,updatedAt:now))}
+        }
         farts = [
             FartClip(id: "3D1E7C40-93D7-4947-9C0A-BB8A00110762", ownerID: "raphaela", title: "Ein Hauch von Wochenende", caption: "Klein, aber mit Persönlichkeit.", category: "Liebeslüftchen", duration: 3.2,
                      waveform: (0..<60).map { i in max(0.03, abs(sin(Double(i) * 0.43)) * exp(-abs(Double(i) - 27) / 18)) }, sizeBytes: 32000, createdAt: now,

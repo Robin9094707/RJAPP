@@ -54,6 +54,68 @@ class RJLoveBackendTests(unittest.TestCase):
             raw = response.read()
             return response.status, json.loads(raw) if raw else None
 
+    def test_streaming_ticket_ranges_head_recall_and_logout(self):
+        import uuid
+        robin=self.login();partner=self.login("raphaela","raphaela-test-password")
+        asset=self.upload_asset(robin,b"0123456789","video/mp4")
+        self.assertEqual(self.request_error("/v1/assets/"+asset+"/playback","POST",{},partner)[0],404)
+        record=self.request("/v1/records","POST",{"id":str(uuid.uuid4()),"kind":"moment","payload":{"asset_ids":[asset],"media_kind":"video"}},robin)[1]
+        grant=self.request("/v1/assets/"+asset+"/playback","POST",{},partner)[1]
+        path=grant["path"]+"?ticket="+grant["ticket"]
+        # A native player has no app-version or login header on its range requests.
+        def media(method="GET",range_value=None):
+            req=urllib.request.Request(self.base+path,method=method,headers={"Range":range_value} if range_value else {})
+            with urllib.request.urlopen(req,timeout=5) as response:return response.status,response.read(),dict(response.headers)
+        status,data,headers=media("GET","bytes=2-5");self.assertEqual((status,data),(206,b"2345"));self.assertEqual(headers["Content-Range"],"bytes 2-5/10")
+        self.assertEqual(media("GET","bytes=-3")[:2],(206,b"789"))
+        self.assertEqual(media("GET","bytes=8-")[:2],(206,b"89"))
+        head=media("HEAD");self.assertEqual(head[:2],(200,b""));self.assertEqual(head[2]["Content-Length"],"10")
+        for invalid in ("bytes=20-","bytes=-0","bytes=0-1,3-4"):
+            with self.assertRaises(urllib.error.HTTPError) as failure:media("GET",invalid)
+            self.assertEqual(failure.exception.code,416);self.assertEqual(failure.exception.headers["Content-Range"],"bytes */10");failure.exception.close()
+        self.request("/v1/records/"+record["id"],"DELETE",token=robin)
+        with self.assertRaises(urllib.error.HTTPError) as failure:media()
+        self.assertEqual(failure.exception.code,404);failure.exception.close()
+        own=self.request("/v1/assets/"+asset+"/playback","POST",{},robin)[1]
+        path=own["path"]+"?ticket="+own["ticket"]
+        self.assertEqual(media()[:2],(200,b"0123456789"))
+        self.request("/v1/auth/logout","POST",{},robin)
+        with self.assertRaises(urllib.error.HTTPError) as failure:media()
+        self.assertEqual(failure.exception.code,404);failure.exception.close()
+
+    def test_legacy_photo_metadata_lists_preserve_original_and_allow_edits(self):
+        import uuid,base64
+        token=self.login();identifier=str(uuid.uuid4());raw=b"old-private-photo"
+        body={"id":identifier,"kind":"moment","payload":{"caption":"Ein alter Moment","image_base64":base64.b64encode(raw).decode(),"mime_type":"image/jpeg"}}
+        record=self.request("/v1/records","POST",body,token)[1]
+        self.assertTrue(record["payload"]["legacy_image"]);self.assertNotIn("image_base64",record["payload"])
+        bootstrap=self.request("/v1/bootstrap",token=token)[1]
+        self.assertNotIn("image_base64",next(r for r in bootstrap["records"] if r["id"]==identifier)["payload"])
+        archive=self.request("/v1/records/archive?kind=moment",token=token)[1]
+        self.assertNotIn("image_base64",archive["records"][0]["payload"])
+        record["payload"]["caption"]="Die Beschreibung lebt weiter"
+        changed=self.request("/v1/records","POST",{"id":identifier,"kind":"moment","payload":record["payload"]},token)[1]
+        self.assertEqual(changed["payload"]["caption"],"Die Beschreibung lebt weiter")
+        self.assertEqual(self.raw_asset_request("/v1/moments/"+identifier+"/image","GET",token)[1],raw)
+        with self.app.database.connect() as db:self.assertEqual(json.loads(db.execute("SELECT payload FROM records WHERE id=?",(identifier,)).fetchone()[0])["image_base64"],body["payload"]["image_base64"])
+
+    def test_poop_entries_validate_optional_location_and_owner_only_changes(self):
+        import uuid
+        token=self.login();partner=self.login("raphaela","raphaela-test-password")
+        body={"id":str(uuid.uuid4()),"kind":"poop","payload":{"title":"Heimathafen","text":"Ein stilles Kapitel","captured_at":SERVER.iso_now(),"duration":7,"rating":4,"emoji":"💩"}}
+        record=self.request("/v1/records","POST",body,token)[1]
+        self.assertNotIn("latitude",record["payload"])
+        body["payload"]|={"latitude":51.43,"longitude":6.76,"location":"Unser Thron"}
+        self.assertEqual(self.request("/v1/records","POST",body,token)[0],200)
+        self.assertEqual(self.request_error("/v1/records","POST",body,partner)[0],403)
+        self.assertEqual(self.request_error("/v1/records/"+body["id"],"DELETE",token=partner)[0],403)
+        for invalid in ({"duration":True},{"rating":9},{"latitude":91},{"emoji":"unknown"},{"captured_at":"2099-01-01T00:00:00Z"}):
+            self.assertEqual(self.request_error("/v1/records","POST",body|{"payload":body["payload"]|invalid},token)[0],400)
+        body["payload"].pop("latitude");body["payload"].pop("longitude")
+        self.assertNotIn("latitude",self.request("/v1/records","POST",body,token)[1]["payload"])
+        self.assertEqual(self.request("/v1/records/archive?kind=poop",token=partner)[1]["records"][0]["id"],body["id"])
+        self.assertEqual(self.request("/v1/records/"+body["id"],"DELETE",token=token)[0],204)
+
     def test_ai_summary_consent_cache_privacy_limits_and_provider_shape(self):
         import io,uuid,datetime
         from unittest.mock import patch

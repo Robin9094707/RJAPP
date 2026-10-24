@@ -73,6 +73,8 @@ struct HomeView: View {
         case .live:
             if card.size == .compact { homeLink(card, detail: "Deine Live-Aktivitäten") { DeliveryCenterView() } }
             else { liveCard }
+        case .relationship: RelationshipHomeCard()
+        case .poop: homeLink(card,detail:"Euer privates Thronarchiv & eure Kack-Karte") {DropPoopView()}
         case .delivery: homeLink(card, detail: "Push, Wecker & Hintergrund prüfen") { DeliveryCenterView() }
         }
     }

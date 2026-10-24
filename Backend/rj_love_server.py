@@ -50,11 +50,11 @@ from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.7.0"
-MINIMUM_APP_VERSION = "3.7.0"
+APP_VERSION = "3.8.0"
+MINIMUM_APP_VERSION = "3.8.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
-ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual"}
+ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
 
 
@@ -113,10 +113,17 @@ def compatibility_info() -> dict[str, Any]:
             "update_url": "https://github.com/Robin9094707/RJAPP/actions"}
 
 
-QUICK_ACTIONS={"moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary"}
+QUICK_ACTIONS={"moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap"}
 
 def default_shortcuts():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/shortcut/"+action)),"action":action,"title":title} for action,title in [("moments","Momente"),("captureMoment","Aufnehmen"),("playlist","Unser Abend"),("instant","BeReal"),("status","Mein Status"),("journal","Unser Tag")]]
+
+
+def record_payload_wire(kind,payload):
+    value=dict(payload)
+    if kind=="moment" and value.get("image_base64"):
+        value.pop("image_base64",None);value["legacy_image"]=True
+    return value
 
 
 class APIError(Exception):
@@ -354,6 +361,8 @@ class Database:
                 );
                 CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
 
+                CREATE TABLE IF NOT EXISTS media_tickets (token_hash TEXT PRIMARY KEY,asset_id TEXT NOT NULL,user_id TEXT NOT NULL,session_hash TEXT NOT NULL,expires_at TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS media_ticket_expiry ON media_tickets(expires_at);
                 CREATE TABLE IF NOT EXISTS ai_consent (user_id TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS ai_summaries (fingerprint TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS ai_usage (id TEXT PRIMARY KEY,local_day TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -905,6 +914,7 @@ class RJLoveApplication:
             "calendar": {"title", "start_at", "end_at", "location", "notes", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"},
             "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id"}, "wish": {"title", "text", "completed"},
             "ritual": {"title","text","message","notes","day","start_at"},
+            "poop": {"title","text","location","latitude","longitude","captured_at","duration","rating","emoji"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
             "milestone": {"countdown_type", "title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
             "album": {"title", "text"}, "instant": {"latitude", "longitude", "caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
@@ -940,6 +950,14 @@ class RJLoveApplication:
             if self.user_by_id(target) is None:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_target", "Der ausgewählte Benutzer existiert nicht.")
             clean["target_id"] = target
+
+        if kind == "poop":
+            text_field("title",80,required=True);text_field("text",500);text_field("location",80)
+            captured=parse_iso(clean.get("captured_at"))
+            if captured is None or captured>utc_now()+dt.timedelta(minutes=5):raise APIError(400,"invalid_date","Bitte eine gültige Sitzungszeit angeben.")
+            for key,minimum,maximum in (("duration",0,180),("rating",1,5)):
+                if type(clean.get(key)) is not int or not minimum<=clean[key]<=maximum:raise APIError(400,"invalid_poop","Dauer oder Legendenstufe ungültig.")
+            if not isinstance(clean.get("emoji"),str) or clean["emoji"] not in {"💩","🚽","🧻","👑","🌋"}:raise APIError(400,"invalid_poop","Dieses Sitzungs-Symbol ist unbekannt.")
 
         if kind == "ritual":
             text_field("title",120,required=True)
@@ -1075,7 +1093,7 @@ class RJLoveApplication:
             if start is None or end is None or end < start:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_calendar_range", "Der Terminzeitraum ist ungültig.")
 
-        if kind in {"moment","instant"} and ("latitude" in clean or "longitude" in clean):
+        if kind in {"moment","instant","poop"} and ("latitude" in clean or "longitude" in clean):
             for key,limit in (("latitude",90),("longitude",180)):
                 value=clean.get(key)
                 if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not -limit<=value<=limit:
@@ -1541,7 +1559,7 @@ class RJLoveApplication:
         records = [
             {
                 "id": row["id"], "kind": row["kind"], "owner_id": row["owner_id"],
-                "payload": json.loads(row["payload"]), "created_at": row["created_at"],
+                "payload": record_payload_wire(row["kind"],json.loads(row["payload"])), "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
             }
             for row in record_rows
@@ -1615,6 +1633,7 @@ class RJLoveApplication:
             db.execute("DELETE FROM radio_events WHERE created_at<?", ((now - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),))
             db.execute("DELETE FROM radio_floor WHERE expires_at<?", (iso_now(),))
             db.execute("DELETE FROM sessions WHERE expires_at < ?", (now.isoformat(),))
+            db.execute("DELETE FROM media_tickets WHERE expires_at<? OR session_hash NOT IN (SELECT token_hash FROM sessions)",(iso_now(),))
             db.execute("DELETE FROM nearby WHERE expires_at < ?", (iso_now(),))
             db.execute("DELETE FROM events WHERE read_at IS NOT NULL AND created_at < ?", (old_events.isoformat(),))
             db.execute("DELETE FROM commands WHERE acknowledged_at IS NOT NULL AND created_at < ?", (old_commands.isoformat(),))
@@ -1642,7 +1661,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         return self.server.app  # type: ignore[attr-defined]
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        self.app.logger.info("%s %s", self.client_address[0], fmt % args)
+        message=fmt % args
+        message=re.sub(r"([?&]ticket=)[^ &\"]+",r"\1[redacted]",message)
+        self.app.logger.info("%s %s",self.client_address[0],message)
 
     def client_key(self) -> str:
         if self.app.config["server"].get("trust_reverse_proxy"):
@@ -1657,6 +1678,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if int(status) == 426:
             self.close_connection = True
             self.send_header("Connection", "close")
+        if int(status)==416 and hasattr(self,"_range_total"):self.send_header("Content-Range",f"bytes */{self._range_total}")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
@@ -1664,7 +1686,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
-        self.wfile.write(encoded)
+        if self.command!="HEAD":self.wfile.write(encoded)
 
     def send_empty(self, status: int | HTTPStatus = HTTPStatus.NO_CONTENT) -> None:
         self.send_response(int(status))
@@ -1710,9 +1732,13 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(HTTPStatus.NO_CONTENT)
-        self.send_header("Allow", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Allow", "GET, HEAD, POST, DELETE, OPTIONS")
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def do_HEAD(self) -> None:
+        if urlparse(self.path).path.startswith("/media/assets/"):self.do_GET()
+        else:self.send_json(404,{"error":"not_found","message":"Medium nicht gefunden."})
 
     def do_GET(self) -> None:  # noqa: N802
         try:
@@ -1967,6 +1993,14 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "server_error", "message": f"Serverfehler ({request_id})."})
 
     def _media_get(self, path, parts, query):
+        if len(parts)==3 and parts[:2]==["media","assets"]:
+            token=query.get("ticket",[""])[0]
+            if not isinstance(token,str) or len(token)>200:raise APIError(404,"media_expired","Die Wiedergabefreigabe ist abgelaufen.")
+            with self.app.database.connect() as db:
+                grant=db.execute("SELECT t.user_id FROM media_tickets t JOIN sessions s ON s.token_hash=t.session_hash WHERE t.token_hash=? AND t.asset_id=? AND t.expires_at>? AND s.expires_at>?",(hashlib.sha256(token.encode()).hexdigest(),parts[2],iso_now(),iso_now())).fetchone()
+            if not grant:raise APIError(404,"media_expired","Die Wiedergabefreigabe ist abgelaufen. Medium erneut öffnen.")
+            self._asset_bytes(parts[2],user_id=grant["user_id"]);return True
+
         if path=="/v1/photo-requests":
             user_id=self.current_user()
             with self.app.database.connect() as db:
@@ -2002,7 +2036,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if start is None or end is None or not 0<(end-start).total_seconds()<=26*3600:
                 raise APIError(400,"invalid_day","Bitte einen gültigen Kalendertag auswählen.")
             offset=self._page_number(query,"offset",0,10000000)
-            stamp="CASE WHEN kind IN ('moment','instant') THEN COALESCE(json_extract(payload,'$.captured_at'),created_at) WHEN kind='ritual' THEN json_extract(payload,'$.start_at') ELSE created_at END"
+            stamp="CASE WHEN kind IN ('moment','instant','poop') THEN COALESCE(json_extract(payload,'$.captured_at'),created_at) WHEN kind='ritual' THEN json_extract(payload,'$.start_at') ELSE created_at END"
             where=f"deleted_at IS NULL AND kind NOT IN ('geofence','album','photo_request') AND julianday({stamp})>=julianday(?) AND julianday({stamp})<julianday(?)"
             bounds=(start.isoformat(),end.isoformat())
             with self.app.database.connect() as db:
@@ -2041,7 +2075,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _record_dict(row):
-        return {"id":row["id"],"kind":row["kind"],"owner_id":row["owner_id"],"payload":json.loads(row["payload"]),"created_at":row["created_at"],"updated_at":row["updated_at"]}
+        return {"id":row["id"],"kind":row["kind"],"owner_id":row["owner_id"],"payload":record_payload_wire(row["kind"],json.loads(row["payload"])),"created_at":row["created_at"],"updated_at":row["updated_at"]}
 
     @staticmethod
     def _page_number(query,key,default,maximum):
@@ -2053,34 +2087,52 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if not row: raise APIError(404,"asset_missing","Medium noch nicht verfügbar.")
         return row
 
-    def _asset_bytes(self,asset_id,user_id=None,public=False):
+    def _authorized_asset(self,asset_id,user_id=None,public=False):
         row=self._asset_row(asset_id)
         if not public and row["owner_id"]!=user_id:
             with self.app.database.connect() as db:
                 shared=db.execute("SELECT 1 FROM records,json_each(json_extract(records.payload,'$.asset_ids')) AS a WHERE records.deleted_at IS NULL AND a.value=? LIMIT 1",(asset_id,)).fetchone()
-            if not shared: raise APIError(404,"asset_missing","Medium zurückgerufen oder noch nicht geteilt.")
+            if not shared:raise APIError(404,"asset_missing","Medium zurückgerufen oder noch nicht geteilt.")
+        return row
+
+    def _asset_bytes(self,asset_id,user_id=None,public=False):
+        row=self._authorized_asset(asset_id,user_id,public)
         file=self.app.media_path(row["path"])
-        if not file.is_file(): raise APIError(404,"asset_missing","Mediendatei fehlt.")
-        total=file.stat().st_size;start=0;end=total-1;status=200
+        if not file.is_file():raise APIError(404,"asset_missing","Mediendatei fehlt.")
+        total=file.stat().st_size;self._range_total=total;start=0;end=total-1;status=200
         range_header=self.headers.get("Range")
         if range_header:
-            m=re.fullmatch(r"bytes=(\d+)-(\d*)",range_header)
-            if not m: raise APIError(416,"invalid_range","Medienbereich ungültig.")
-            start=int(m[1]);end=min(end,int(m[2])) if m[2] else end;status=206
-            if start>end: raise APIError(416,"invalid_range","Medienbereich ungültig.")
-        self.send_response(status);self.send_header("Content-Type",row["mime_type"]);self.send_header("Content-Length",str(end-start+1));self.send_header("Cache-Control","private, no-store");self.send_header("Accept-Ranges","bytes")
+            m=re.fullmatch(r"bytes=(\d*)-(\d*)",range_header)
+            if len(range_header)>100 or not m or not any(m.groups()) or total==0:raise APIError(416,"invalid_range","Medienbereich ungültig.")
+            if m[1]:start=int(m[1]);end=min(end,int(m[2])) if m[2] else end
+            else:
+                suffix=int(m[2])
+                if suffix==0:raise APIError(416,"invalid_range","Medienbereich ungültig.")
+                start=max(0,total-suffix)
+            if start>end:raise APIError(416,"invalid_range","Medienbereich ungültig.")
+            status=206
+        self.send_response(status);self.send_header("Content-Type",row["mime_type"]);self.send_header("Content-Length",str(max(0,end-start+1)));self.send_header("Cache-Control","private, no-store");self.send_header("Accept-Ranges","bytes");self.send_header("Referrer-Policy","no-referrer");self.send_header("X-Content-Type-Options","nosniff")
         if status==206:self.send_header("Content-Range",f"bytes {start}-{end}/{total}")
         self.end_headers()
+        if self.command=="HEAD":return
         try:
             with file.open("rb") as stream:
                 stream.seek(start);remaining=end-start+1
                 while remaining:
-                    chunk=stream.read(min(1024*1024,remaining))
+                    chunk=stream.read(min(256*1024,remaining))
                     if not chunk:break
                     self.wfile.write(chunk);remaining-=len(chunk)
         except (BrokenPipeError,ConnectionResetError):pass
 
     def _media_post(self,path,parts,user_id):
+        if len(parts)==4 and parts[:2]==["v1","assets"] and parts[3]=="playback":
+            self.read_json();self._authorized_asset(parts[2],user_id)
+            token=secrets.token_urlsafe(32);expires=(utc_now()+dt.timedelta(hours=6)).isoformat().replace("+00:00","Z")
+            session_hash=hashlib.sha256(self.headers.get("Authorization","").removeprefix("Bearer ").strip().encode()).hexdigest()
+            with self.app.database.connect() as db:
+                db.execute("INSERT INTO media_tickets VALUES(?,?,?,?,?)",(hashlib.sha256(token.encode()).hexdigest(),parts[2],user_id,session_hash,expires))
+            self.send_json(200,{"path":"/media/assets/"+parts[2],"ticket":token,"expires_at":expires});return True
+
         if path=="/v1/open":
             self.read_json()
             with self.app.database.connect() as db:
@@ -2241,7 +2293,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(dashboard, dict) or not {"cards","theme","title"}.issubset(dashboard) or set(dashboard)-{"cards","theme","title","shortcuts"}:
             raise APIError(400, "invalid_dashboard", "Die Startseite ist ungültig.")
         cards = dashboard["cards"]
-        allowed = {"heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"}
+        allowed = {"heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop"}
         if not isinstance(cards, list) or len(cards) > len(allowed):
             raise APIError(400, "invalid_cards", "Die Kartenliste ist ungültig.")
         seen = set()
@@ -2463,6 +2515,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         payload = body.get("payload")
         if not isinstance(payload, dict):
             raise APIError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Der Datensatzinhalt ist ungültig.")
+        if kind=="moment" and payload.pop("legacy_image",False):
+            with self.app.database.connect() as db:legacy=db.execute("SELECT payload FROM records WHERE id=? AND kind='moment' AND deleted_at IS NULL",(record_id,)).fetchone()
+            old_image=json.loads(legacy["payload"]) if legacy else {}
+            if not old_image.get("image_base64"):raise APIError(404,"image_missing","Dieses ältere Foto ist nicht verfügbar.")
+            payload["image_base64"]=old_image["image_base64"];payload["mime_type"]=old_image.get("mime_type","image/jpeg")
         payload = self.app.validate_record_payload(kind, payload)
         if kind=="photo_request":
             if payload.get("target_id") not in self.app.partner_ids(user_id):raise APIError(403,"invalid_target","Fotowünsche sind nur für dein Gegenüber bestimmt.")
@@ -2501,7 +2558,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if kind=="photo_request" and old and owner_id!=user_id:
                 if prior_payload.get("target_id")!=user_id or {k:v for k,v in payload.items() if k!="completed"}!={k:v for k,v in prior_payload.items() if k!="completed"}:
                     raise APIError(403,"not_owner","Nur der Fotowunsch darf beantwortet werden.")
-            if old and kind in {"chat", "checkin", "gratitude", "instant"} and owner_id != user_id:
+            if old and kind in {"chat", "checkin", "gratitude", "instant", "poop"} and owner_id != user_id:
                 raise APIError(403, "not_owner", "Du kannst fremde Nachrichten oder Gefühle nicht ändern.")
             if kind == "coupon":
                 if old and owner_id != user_id:
@@ -2539,6 +2596,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "checkin": ("Ein Gefühl für dich", "hat ein Gefühl geteilt."),
             "coupon": ("Ein kleiner Liebesgutschein 💌", "hat einen Gutschein aktualisiert."),
             "ritual": ("Ein Abendmoment für uns ✨", "hat euer Abendritual ergänzt."),
+            "poop": ("Drop-Poop · Nur für euch 💩", "hat ein stilles Örtchen verewigt."),
             "gratitude": ("Das mag ich an dir 💗", "hat dir liebe Worte dagelassen."),
             "photo_request": ("Ein Foto nur für dich 📷", "wünscht sich ein Foto von dir."),
         }
@@ -2546,7 +2604,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.app.broadcast_event(user_id, f"record_{kind}", title, f"{sender['display_name']} {phrase}", {"record_id": record_id})
         self.send_json(
             HTTPStatus.OK,
-            {"id": record_id, "kind": kind, "owner_id": owner_id, "payload": payload, "created_at": created_at, "updated_at": now},
+            {"id": record_id, "kind": kind, "owner_id": owner_id, "payload": record_payload_wire(kind,payload), "created_at": created_at, "updated_at": now},
         )
 
     def _delete_record(self, user_id: str, record_id: str) -> None:
@@ -2558,7 +2616,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             row = db.execute("SELECT kind,owner_id FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()
             if row is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "record_not_found", "Der Eintrag wurde nicht gefunden.")
-            if row["kind"] in {"chat","instant","ritual"} and row["owner_id"]!=user_id:
+            if row["kind"] in {"chat","instant","ritual","poop"} and row["owner_id"]!=user_id:
                 raise APIError(403,"not_owner","Nur eigene Nachrichten und Sofortfotos können zurückgerufen werden.")
             db.execute("UPDATE records SET deleted_at=?,updated_at=? WHERE id=?", (now, now, record_id))
             if row["kind"] in {"moment","instant"}:db.execute("DELETE FROM ai_summaries")
@@ -2906,7 +2964,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "private, max-age=300")
+        self.send_header("Cache-Control", "private, no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)

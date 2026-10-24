@@ -1,7 +1,7 @@
 import Foundation
 
 enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case heart, partner, quickActions, studio, messenger, history, planner, instant, milestone, health, live, delivery
+    case heart, partner, quickActions, studio, messenger, history, planner, instant, milestone, health, live, delivery, relationship, poop
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -17,6 +17,8 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .health: "Schlaf & Wohlgefühl"
         case .live: "Live-Aktivität"
         case .delivery: "Push & Wecker"
+        case .relationship: "Unsere Beziehungsmonate"
+        case .poop: "Drop-Poop"
         }
     }
     var symbol: String {
@@ -33,6 +35,8 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .health: "moon.zzz.fill"
         case .live: "livephoto"
         case .delivery: "checkmark.shield.fill"
+        case .relationship: "heart.circle.fill"
+        case .poop: "toilet.fill"
         }
     }
 }

@@ -35,6 +35,7 @@ struct EveningTrack:Identifiable {
     private var fillTask:Task<Void,Never>?
     private var sleepTask:Task<Void,Never>?
     private var observations:[NSKeyValueObservation]=[]
+    private var currentStatusObserver:NSKeyValueObservation?
     private var notifications:[NSObjectProtocol]=[]
     private var timeObserver:Any?
     private var identities:[ObjectIdentifier:Int]=[:]
@@ -78,9 +79,15 @@ struct EveningTrack:Identifiable {
                 var uncommittedFile:URL?
                 defer {if let file=uncommittedFile{try? FileManager.default.removeItem(at:file)}}
                 do {
-                    let file:URL
-                    if let asset=track.assetID {file=try await api.assetFile(id:asset,mime:"video/quicktime")}
-                    else {file=FileManager.default.temporaryDirectory.appendingPathComponent("rj-evening-"+UUID().uuidString+".m4a");let bytes=try await api.fartAudio(id:track.id);try bytes.write(to:file,options:.atomic)}
+                    if let asset=track.assetID {
+                        let url=try await api.playbackURL(assetID:asset);try Task.checkCancellation()
+                        guard self.generation==operation else{return}
+                        let item=AVPlayerItem(url:url);item.preferredForwardBufferDuration=15
+                        self.identities[ObjectIdentifier(item)]=i;queue.insert(item,after:nil);self.nextLoad=i+1
+                        if self.playing{queue.play()};self.error=nil;continue
+                    }
+                    let file=FileManager.default.temporaryDirectory.appendingPathComponent("rj-evening-"+UUID().uuidString+".m4a")
+                    let bytes=try await api.fartAudio(id:track.id);try bytes.write(to:file,options:.atomic)
                     uncommittedFile=file
                     guard !Task.isCancelled,self.generation==operation else{try? FileManager.default.removeItem(at:file);return}
                     try FileManager.default.setAttributes([.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication],ofItemAtPath:file.path)
@@ -103,6 +110,7 @@ struct EveningTrack:Identifiable {
         guard let queue=player else{return}
         if let item=queue.currentItem,let i=identities[ObjectIdentifier(item)] {
             index=i;elapsed=0;duration=0
+            currentStatusObserver=item.observe(\.status,options:[.initial,.new]){[weak self] item,_ in if item.status == .failed{Task{@MainActor in guard let self,self.player?.currentItem === item else{return};self.pause();self.error="Dieser Beitrag ist gerade nicht abspielbar. Erneut laden oder überspringen."}}}
             for key in Array(files.keys) where key<i {if let file=files.removeValue(forKey:key){try? FileManager.default.removeItem(at:file)}}
             if playing{queue.play()}
         }else if nextLoad>=tracks.count,!preparing {stop();return}
@@ -120,7 +128,7 @@ struct EveningTrack:Identifiable {
     func resume(){guard active else{return};do{try activateAudio();playing=true;player?.play();fill();updateNowPlaying()}catch{self.error=error.localizedDescription}}
     func next(){guard let queue=player else{return};if queue.currentItem != nil{queue.advanceToNextItem()}else if nextLoad<tracks.count{nextLoad += 1};error=nil;fill()}
     func previous(){guard let api else{return};let oldTracks=tracks;let i=elapsed>3 ? index:max(0,index-1);start(oldTracks,api:api,from:i)}
-    func retry(){error=nil;fill()}
+    func retry(){if player?.currentItem?.status == .failed,let api{let queue=tracks;let current=index;start(queue,api:api,from:current)}else{error=nil;fill()}}
     func seek(_ value:Double){guard duration>0 else{return};player?.seek(to:CMTime(seconds:max(0,min(duration,value)),preferredTimescale:600));updateNowPlaying()}
     func setSleep(minutes:Int) {
         sleepTask?.cancel();sleepTask=nil;sleepUntil=minutes>0 ? Date.now.addingTimeInterval(Double(minutes)*60):nil
@@ -130,7 +138,7 @@ struct EveningTrack:Identifiable {
     func stop() {
         let hadPlayer=player != nil
         generation=UUID();fillTask?.cancel();fillTask=nil;preparing=false;sleepTask?.cancel();sleepTask=nil;sleepUntil=nil
-        observations=[]
+        observations=[];currentStatusObserver=nil
         if let timeObserver{player?.removeTimeObserver(timeObserver)};timeObserver=nil
         player?.pause();player?.removeAllItems();player=nil;identities=[:]
         for file in files.values{try? FileManager.default.removeItem(at:file)};files=[:]

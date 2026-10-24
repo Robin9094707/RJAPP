@@ -59,6 +59,8 @@ struct CountdownCard:View {
                 if let next=item.nextDate(at:context.date) {Text(next.formatted(date:.long,time:item.anniversary ? .omitted:.shortened)).font(.subheadline).foregroundStyle(.secondary)}
                 if item.anniversary,let origin=item.origin {
                     let together=max(0,Calendar.current.dateComponents([.day],from:Calendar.current.startOfDay(for:origin),to:Calendar.current.startOfDay(for:context.date)).day ?? 0)
+                    let time=RelationshipMilestones(start:origin,now:context.date)
+                    Text(time.startsInFuture ? "Euer Anfang liegt noch vor euch":"\(time.completedMonths) volle Monate · im \(time.currentMonth). Beziehungsmonat").font(.subheadline.bold()).foregroundStyle(LovePalette.pink)
                     Text("Seit \(origin.formatted(date:.long,time:.omitted)) · \(together) gemeinsame Tage").font(.caption).foregroundStyle(LovePalette.pink)
                 }
             }.frame(maxWidth:.infinity,alignment:.leading).loveCard()

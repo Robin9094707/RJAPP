@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Four design previews and one focused profile/status navigation smoke check."""
+"""New gallery/map/relationship previews and three focused UI checks."""
 import json
 from pathlib import Path
 import subprocess
@@ -14,22 +14,24 @@ runtimes=json.loads(run('xcrun','simctl','list','runtimes','-j',capture=True).st
 runtime=max((r for r in runtimes if r.get('isAvailable') and 'iOS' in r['name'] and tuple(map(int,r['version'].split('.'))) >= (26,1)),key=lambda r:tuple(map(int,r['version'].split('.'))))
 types=json.loads(run('xcrun','simctl','list','devicetypes','-j',capture=True).stdout)['devicetypes']
 model=next(d for d in types if d['name']=='iPhone 15 Plus')
-device=run('xcrun','simctl','create','RJLove-Design',model['identifier'],runtime['identifier'],capture=True).stdout.strip()
+devices=json.loads(run('xcrun','simctl','list','devices','available','-j',capture=True).stdout)['devices'].get(runtime['identifier'],[])
+existing=next((d for d in devices if d['name']=='iPhone 15 Plus'),None)
+device=existing['udid'] if existing else run('xcrun','simctl','create','RJLove-Design',model['identifier'],runtime['identifier'],capture=True).stdout.strip()
 try:
-    run('xcrun','simctl','boot',device)
+    if not existing or existing.get('state')!='Booted':run('xcrun','simctl','boot',device)
     run('xcrun','simctl','bootstatus',device,'-b',timeout=720)
     run('xcrun','simctl','status_bar',device,'override','--time','9:41','--dataNetwork','wifi','--wifiMode','active','--wifiBars','3','--batteryState','charged','--batteryLevel','100')
     run('xcrun','simctl','install',device,'.sim-derived/Build/Products/Debug-iphonesimulator/RJ Love.app')
-    for title,arguments in [('Wir',[]),('Abend',['--preview-playlist']),('KI',['--preview-ai-summary'])]:
+    for title,arguments in [('Galerie',['--preview-gallery']),('Momentkarte',['--preview-moment-map']),('Drop-Poop',['--preview-poop']),('Unsere-Zeit',['--preview-relationship'])]:
         run('xcrun','simctl','launch',device,'eu.rjuhas.rjlove','--preview',*arguments)
         time.sleep(10)
         run('xcrun','simctl','io',device,'screenshot','Preview-Design-'+title+'.png')
         run('xcrun','simctl','terminate',device,'eu.rjuhas.rjlove')
     run('xcrun','simctl','ui',device,'appearance','dark')
-    run('xcrun','simctl','launch',device,'eu.rjuhas.rjlove','--preview','--preview-profile')
+    run('xcrun','simctl','launch',device,'eu.rjuhas.rjlove','--preview','--preview-gallery')
     # Appearance changes and cold launches can outlast the launch command on CI.
     time.sleep(15)
-    run('xcrun','simctl','io',device,'screenshot','Preview-Design-Profil-Dark.png')
+    run('xcrun','simctl','io',device,'screenshot','Preview-Design-Galerie-Dark.png')
     run('xcrun','simctl','terminate',device,'eu.rjuhas.rjlove')
     run('xcrun','simctl','ui',device,'appearance','light')
     backend_log=open('UI-backend.log','w')

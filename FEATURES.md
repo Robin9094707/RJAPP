@@ -29,3 +29,10 @@ Recorder mit fester Aufnahme-/Sendeaktion, Schnitt vor und nach dem Teilen und 4
 - Abendplayer für das vollständige Serverarchiv: Duftaufnahmen und Moment-Videos, eigene/Partner-/gemischte Auswahl, Shuffle, Warteschlange, Einschlaftimer, Hintergrund-Audio und Sperrbildschirm-Steuerung.
 - Bis zu zwölf kleine persönliche Schnellzugriffe mit eigenen Namen und Reihenfolge direkt oben auf der Startseite.
 - Optionaler KI-Tagesrückblick aus Momenttexten: OpenAI-Schlüssel nur am Server, beiderseitige Freigabe, formatierte Karten, Quellen-Verweise, Cache und gemeinsames Tageslimit. Einrichtung: RELEASE-3.7.md.
+# Neu in 3.8
+
+- Momentraster nach Monaten, Suche, Personen-/Albumfilter, Vollbild-Wischen und Fotozoom.
+- Video-Streaming mit Bytebereichen, Vorschauen und Originalfotos erst beim Öffnen; optional platzsparender Upload.
+- Momentkarte mit gruppierten Markern und verfügbaren Original-Aufnahmeorten.
+- Drop-Poop: privates Thronarchiv, Liste/Karte, bewusste Ortsfreigabe, Schnellzugriff, Widget, Kontrollzentrum und Kurzbefehl.
+- Optionale Startseitenkarte und Widget für volle Beziehungsmonate, laufenden Monat, Monatstag und Jahrestag.

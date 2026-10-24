@@ -1,6 +1,6 @@
-# RJ Love 3.7
+# RJ Love 3.8
 
-Aktuelles Update: [Abendplayer, Schnellzugriffe und optionaler KI-Rückblick 3.7](RELEASE-3.7.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
+Aktuelles Update: [Galerie, Streaming, Momentkarte und Drop-Poop 3.8](RELEASE-3.8.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 
 Neu: BeReal-Fotokalender, Tagesrückblick, gemeinsamer Feed, Abendritual und ein aufgeräumtes Duftstudio. Die UWB-Diagnose unterscheidet fehlenden Token, Serveraustausch und tatsächliche Freigabefehler.
 

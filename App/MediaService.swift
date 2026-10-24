@@ -196,7 +196,8 @@ struct MediaPicker: UIViewControllerRepresentable {
                         try FileManager.default.copyItem(at:file,to:destination)
                         let mime=video ? (ext=="mp4" ? "video/mp4":"video/quicktime") : ["png":"image/png","heic":"image/heic","heif":"image/heif"].first{$0.key==ext}?.value ?? "image/jpeg"
                         let poster = video ? nil : Self.poster(file: destination)
-                        self.finish(.success(SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result,fileURL: video ? nil : destination),poster:poster,latitude:Self.photoLocation(result,file:destination)?.latitude,longitude:Self.photoLocation(result,file:destination)?.longitude)))
+                        let media=SelectedMedia(files:[destination],mimeTypes:[mime],kind:video ? "video":"image",capturedAt:Self.captureDate(result,fileURL: video ? nil : destination),poster:poster,latitude:Self.photoLocation(result,file:destination)?.latitude,longitude:Self.photoLocation(result,file:destination)?.longitude)
+                        Task{self.finish(.success(await MomentPreparation.enrichVideo(media)))}
                     } catch{self.finish(.failure(error))}
                 }
             }

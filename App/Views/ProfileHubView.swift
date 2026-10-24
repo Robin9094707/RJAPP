@@ -15,6 +15,8 @@ struct SettingsView:View {
                 Divider()
                 NavigationLink{PartnerProfileView()}label:{LoveSettingsRow(title:app.partner?.displayName ?? "Dein Lieblingsmensch",subtitle:"Profil, Aktivität & Datenstände",symbol:"heart.fill",tint:LovePalette.violet)}
                 Divider()
+                NavigationLink{DropPoopView()}label:{LoveSettingsRow(title:"Drop-Poop",subtitle:"Euer privates Thronarchiv mit Karte",symbol:"toilet.fill",tint:LovePalette.coral)}
+                Divider()
                 NavigationLink{HealthDashboardView()}label:{LoveSettingsRow(title:"Health & Schlaf",subtitle:"Wohlgefühl und geteilte Werte",symbol:"heart.text.square.fill",tint:LovePalette.coral)}
                 Divider()
                 NavigationLink{LiveActivitySettingsView()}label:{LoveSettingsRow(title:"Live-Aktivität",subtitle:"Euer Platz auf dem Sperrbildschirm",symbol:"livephoto",tint:LovePalette.cyan)}

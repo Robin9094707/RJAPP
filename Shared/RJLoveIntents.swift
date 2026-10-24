@@ -20,6 +20,7 @@ struct SendThoughtIntent: AppIntent {
 struct RJLoveShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent:EmergencyFartIntent(),phrases:["Notfallfurz mit \(.applicationName)"],shortTitle:"Notfallfurz",systemImageName:"cloud.fill")
+        AppShortcut(intent:LogPoopIntent(),phrases:["Drop-Poop mit \(.applicationName)"],shortTitle:"Drop setzen",systemImageName:"toilet.fill")
         AppShortcut(intent:OpenMomentsIntent(),phrases:["Momente in \(.applicationName) öffnen"],shortTitle:"Unsere Momente",systemImageName:"photo.stack.fill")
         AppShortcut(intent:OpenPartnerMapIntent(),phrases:["Schatzi in \(.applicationName) finden"],shortTitle:"Partnerkarte",systemImageName:"location.fill")
         AppShortcut(intent:SetLoveStatusIntent(),phrases:["Status in \(.applicationName) setzen"],shortTitle:"Status setzen",systemImageName:"face.smiling")
@@ -68,4 +69,11 @@ struct SetLoveStatusIntent:AppIntent {
         NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
         return .result()
     }
+}
+
+struct LogPoopIntent:AppIntent {
+    static var title:LocalizedStringResource="Drop-Poop eintragen"
+    static var description=IntentDescription("Öffnet euren privaten Thronbericht. Erst nach deiner Bestätigung wird etwas geteilt.")
+    static var openAppWhenRun=true
+    @MainActor func perform() async throws -> some IntentResult {requestLoveRoute("rjlove://poop-log");return .result()}
 }

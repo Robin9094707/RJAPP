@@ -310,7 +310,7 @@ struct RJLoveWidgetBundle: WidgetBundle {
         RJLovePersonalCountdownWidget()
         RJLoveLockWidget()
         RJLoveFartQuickWidget()
-        EmergencyFartControl()
+        CoupleExtrasWidgets().body
         FartRecordingLiveWidget()
         RJLoveLiveWidgets().body
     }

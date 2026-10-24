@@ -20,6 +20,19 @@ final class ProfileNavigationTests:XCTestCase {
         XCTAssertTrue(app.descendants(matching:.any)["evening-current-title"].waitForExistence(timeout:10))
         app.buttons["Beenden"].tap()
     }
+    func testGalleryAndPrivatePoopEntry() {
+        let app=XCUIApplication();app.launchArguments=["--preview","--preview-gallery"];app.launch()
+        let photo=app.buttons.matching(NSPredicate(format:"label BEGINSWITH 'Foto: '")).firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout:15));photo.tap()
+        let done=app.buttons["Fertig"].firstMatch;XCTAssertTrue(done.waitForExistence(timeout:10));done.tap()
+        XCTAssertTrue(app.segmentedControls["moments-mode"].waitForExistence(timeout:10));app.segmentedControls["moments-mode"].buttons["Karte"].tap()
+        let gallery=XCTAttachment(screenshot:app.screenshot());gallery.name="Momentkarte";gallery.lifetime = .keepAlways;add(gallery)
+        app.launchArguments=["--preview","--preview-poop","--ui-test-server"];app.launch()
+        let add=app.buttons["poop-add"];XCTAssertTrue(add.waitForExistence(timeout:15));add.tap()
+        let title=app.textFields["poop-title"];XCTAssertTrue(title.waitForExistence(timeout:10));title.tap();title.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:80));title.typeText("UI-Thronbericht")
+        app.buttons["poop-save"].tap()
+        XCTAssertTrue(app.staticTexts["UI-Thronbericht"].waitForExistence(timeout:12))
+    }
     func testProfileStatusCanOpenAndReturnTwice() {
         let app=XCUIApplication();app.launchArguments=["--preview"];app.launch()
         let profile=app.buttons["home-profile"]

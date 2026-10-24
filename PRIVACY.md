@@ -1,3 +1,9 @@
+## Ergänzung 3.8
+
+Momentvideos werden über zeitlich begrenzte, auf Datei und aktuelle Anmeldung gebundene Wiedergabelinks in Bytebereichen geladen. Die App legt dabei keine dauerhaften Videodateien an; iOS kann puffern. Die Linkschlüssel stehen nicht in den normalen Serverlogs. Abmeldung, Ablauf oder eine aufgehobene Medienfreigabe verhindern weitere Abrufe. Die Serverdatenbank speichert nur Hashes der Linkschlüssel. Vollständige Momentfotos werden erst beim Öffnen geladen; temporäre Originaldateien werden beim Verlassen entfernt. Vorschaubilder bleiben begrenzt im Arbeitsspeicher. Alte eingebettete Originalfotos werden nicht mehr in lokalen Offline-Snapshots gespeichert und bleiben auf dem Server erhalten.
+
+Optionale Komprimierung verändert nur die hochgeladene Kopie, nicht die Originale in Apple Fotos. Der Karten-Schalter entfernt die separat geteilten Koordinaten, bereinigt unveränderte Originaldateien jedoch nicht von allen eingebetteten Metadaten. Karten verwenden Apple MapKit. Drop-Poop speichert freiwillige Texte, Zeit, Minuten, Spaßbewertung und optional einen bewusst übernommenen Standort im gemeinsamen privaten Datenbestand. Keine automatische Erfassung und kein Toilettenhintergrundtracking. Kontrollzentrum, Widget und Kurzbefehl öffnen einen zu bestätigenden Eintrag. Diese Daten werden nicht für den KI-Rückblick verwendet. Beziehungsmonate werden aus dem bereits hinterlegten Beziehungsbeginn berechnet.
+
 ## Ergänzung 3.6
 
 Es kann pro Konto nur ein unbeantworteter ausgehender Fotowunsch gespeichert werden. Zurückrufen markiert diesen Wunsch serverseitig als gelöscht und beendet seine weitere Beantwortbarkeit. Alte überzählige offene Wünsche werden beim Upgrade auf den neuesten je Absender begrenzt; fertige Fotos bleiben erhalten. Vor einer Kameraaufnahme prüft die App den noch offenen Auftrag. Die Oberfläche ändert keine vorhandenen Freigaben und erfasst keine zusätzlichen Daten.

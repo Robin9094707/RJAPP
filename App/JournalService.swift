@@ -34,7 +34,7 @@ enum JournalDates {
         return String(format:"%04d-%02d-%02d",c.year ?? 2000,c.month ?? 1,c.day ?? 1)
     }
     static func date(_ record:SharedRecord)->Date? {
-        if record.kind == .moment || record.kind == .instant{return (record.payload.capturedAt ?? record.createdAt).rjDate}
+        if record.kind == .moment || record.kind == .instant || record.kind == .poop{return (record.payload.capturedAt ?? record.createdAt).rjDate}
         if record.kind == .ritual{return record.payload.startAt?.rjDate ?? record.createdAt.rjDate}
         return record.createdAt.rjDate
     }
@@ -50,7 +50,7 @@ struct SharedActivityItem:Identifiable {
     var clip:FartClip?
     static func make(records:[SharedRecord],farts:[FartClip])->[Self] {
         let words:[RecordKind:(String,String)]=[
-            .instant:("Ein echtes Jetzt","camera.on.rectangle.fill"),.moment:("Ein Moment für euch","photo.fill"),
+            .poop:("Ein stilles Kapitel","toilet.fill"),.instant:("Ein echtes Jetzt","camera.on.rectangle.fill"),.moment:("Ein Moment für euch","photo.fill"),
             .chat:("Ein paar Worte","bubble.left.fill"),.wish:("Ein Wunsch für uns","sparkles"),
             .checkin:("So geht es mir","face.smiling.fill"),.gratitude:("Das mag ich an dir","heart.text.square.fill"),
             .coupon:("Ein Liebesgutschein","gift.fill"),.milestone:("Unsere gemeinsame Zeit","calendar.badge.heart"),

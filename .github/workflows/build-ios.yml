@@ -47,6 +47,8 @@ jobs:
           python3 -m unittest -v Tests/test_backend.py
           swiftc Shared/SleepModels.swift Tests/SleepAnalysisChecks.swift -o /tmp/rjlove-sleep-check
           /tmp/rjlove-sleep-check
+          swiftc Shared/RelationshipMilestones.swift Tests/RelationshipChecks.swift -o /tmp/rjlove-relationship-check
+          /tmp/rjlove-relationship-check
 
       - name: Install XcodeGen
         shell: bash
@@ -106,9 +108,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-3.7-Komplettpaket
+          name: RJ-Love-3.8-Komplettpaket
           path: |
-            RJ-Love-3.7-Komplettpaket.zip
+            RJ-Love-3.8-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30

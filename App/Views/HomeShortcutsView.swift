@@ -25,6 +25,9 @@ struct HomeShortcutsView:View {
 struct QuickActionDestination:View {
     let action:HomeQuickAction
     var body:some View {switch action {
+    case .poop:DropPoopView()
+    case .logPoop:DropPoopView(openComposer:true)
+    case .momentMap:MomentsView(mapOnOpen:true)
     case .moments:MomentsView()
     case .captureMoment:MomentsView(captureOnOpen:true)
     case .instant:InstantGalleryView()

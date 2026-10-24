@@ -62,6 +62,8 @@ struct MediaComposer:View {
     @State private var assets:[String]?
     @State private var saved=false
     @State private var sharePlace=true
+    @State private var compact=false
+    @State private var prepared:SelectedMedia?
     @State private var uploadError:String?
     var body:some View {NavigationStack{Form{
         if let data=media.poster,let image=UIImage(data:data){Image(uiImage:image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius:20))}
@@ -75,15 +77,16 @@ struct MediaComposer:View {
             else { Label("Kein Aufnahmeort in diesem Medium verfügbar",systemImage:"location.slash").font(.caption).foregroundStyle(.secondary) }
         }
         if saving{ProgressView(value:MediaTransfer.shared.progress);Text("\(Int(MediaTransfer.shared.progress*100)) % · \(MediaTransfer.shared.stage)")}
-        Text("Originaldateien bleiben auf eurem Server. Standardlimit: 256 MB pro Datei. Ein Live Photo wird mit beiden Originalbestandteilen gespeichert.").font(.footnote).foregroundStyle(.secondary)
+        if media.kind != "live" {Toggle("Platzsparend teilen",isOn:$compact).disabled(saving || assets != nil);Text("Optional: Fotos bis 3200 Pixel mit hoher JPEG-Qualität, Videos bis 1080p. Nur wenn die neue Datei kleiner ist. Aufnahmezeit und freigegebener Ort bleiben im Moment erhalten; die Datei in Apple Fotos bleibt unverändert.").font(.caption).foregroundStyle(.secondary)}
+        Text("Standardmäßig bleiben die Originaldateien auf eurem Server. Sie können eigene Metadaten enthalten. Standardlimit: 256 MB pro Datei. Ein Live Photo wird mit beiden Originalbestandteilen gespeichert.").font(.footnote).foregroundStyle(.secondary)
     }.navigationTitle(kind == .chat ? "In unserem Gespräch":"Unser Moment").toolbar{
         ToolbarItem(placement:.cancellationAction){Button("Abbrechen"){dismiss()}.disabled(saving)}
         ToolbarItem(placement:.confirmationAction){Button("Teilen"){Task{await save()}}.disabled(saving)}
-    }.onAppear{capturedAt=media.capturedAt;sharePlace=LocationService.shared.photoLocationEnabled}.onDisappear{if !saving{for file in media.files{try? FileManager.default.removeItem(at:file)}}}.interactiveDismissDisabled(saving)}}
+    }.onAppear{capturedAt=media.capturedAt;sharePlace=LocationService.shared.photoLocationEnabled}.onDisappear{if !saving{for file in Set(media.files+(prepared?.files ?? [])){try? FileManager.default.removeItem(at:file)}}}.interactiveDismissDisabled(saving)}}
     private func save() async {
         saving=true;uploadError=nil;defer{saving=false}
         do {
-            if assets==nil{assets=try await MediaTransfer.shared.upload(media,api:app.api)}
+            if assets==nil{if prepared==nil{prepared=compact ? try await MomentPreparation.compact(media):media};assets=try await MediaTransfer.shared.upload(prepared ?? media,api:app.api)}
             var payload=RecordPayload();payload.assetIDs=assets;payload.mediaKind=media.kind;payload.posterBase64=media.poster?.base64EncodedString()
             if kind == .moment{if sharePlace{payload.latitude=media.latitude;payload.longitude=media.longitude};payload.caption=caption;payload.capturedAt=capturedAt.rjISO8601;payload.albumID=albumID.isEmpty ? nil:albumID;payload.comments=[];payload.reactions=[]}else{payload.text=caption}
             if await app.saveRecord(kind:kind,payload:payload) != nil{saved=true;dismiss()}else{uploadError=app.alert?.message ?? "Der Moment konnte nicht gespeichert werden."}
@@ -94,13 +97,15 @@ struct MediaAttachmentView:View {
     @Environment(AppState.self) private var app
     let record:SharedRecord
     @State private var files:[URL]=[]
+    @State private var streaming=false
     @State private var showing=false
     @State private var loading=false
     var body:some View {Button{Task{await open()}}label:{VStack(spacing:9){
         if let data=record.payload.posterBase64.flatMap({Data(base64Encoded:$0)}),let image=UIImage(data:data){Image(uiImage:image).resizable().scaledToFit().frame(maxHeight:240).clipShape(RoundedRectangle(cornerRadius:16))}
         if loading{ProgressView()}else{Label(record.payload.mediaKind=="audio" ? "Sprachnachricht anhören":record.payload.mediaKind=="video" ? "Video öffnen":record.payload.mediaKind=="live" ? "Live Photo öffnen":"Foto öffnen",systemImage:record.payload.mediaKind=="audio" ? "play.circle.fill":record.payload.mediaKind=="video" ? "play.rectangle.fill":"photo.fill").font(.subheadline.bold())}
-    }}.buttonStyle(.plain).sheet(isPresented:$showing,onDismiss:{for url in files{try? FileManager.default.removeItem(at:url)};files=[]}){MediaViewer(files:files,kind:record.payload.mediaKind ?? "image")}}
+    }}.buttonStyle(.plain).fullScreenCover(isPresented:$streaming){MomentGalleryViewer(records:[record],initialID:record.id)}.sheet(isPresented:$showing,onDismiss:{for url in files{try? FileManager.default.removeItem(at:url)};files=[]}){MediaViewer(files:files,kind:record.payload.mediaKind ?? "image")}}
     private func open() async {
+        if !["audio","live"].contains(record.payload.mediaKind ?? "image"){streaming=true;return}
         loading=true;defer{loading=false}
         do {var loaded:[URL]=[];for (index,id) in (record.payload.assetIDs ?? []).enumerated(){loaded.append(try await app.api.assetFile(id:id,mime:index>0 || record.payload.mediaKind=="video" ? "video/quicktime":record.payload.mediaKind=="audio" ? "audio/mp4":"image/jpeg"))};files=loaded;showing=true;await app.markOpened(record)}catch{app.alert=AppAlert(title:"Medium",message:error.localizedDescription)}
     }

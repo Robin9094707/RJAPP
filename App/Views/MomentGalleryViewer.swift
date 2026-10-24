@@ -59,7 +59,13 @@ struct MomentGalleryViewer:View {
             .toolbar{
                 ToolbarItem(placement:.cancellationAction){Button("Fertig"){dismiss()}}
                 ToolbarItem(placement:.topBarTrailing){if current?.kind == .moment {Button("Infos",systemImage:"info.circle"){detail=current}}}
-                ToolbarItem(placement:.topBarTrailing){Menu{Button("Original teilen",systemImage:"square.and.arrow.up"){Task{await export(save:false)}};Button("In Apple Fotos sichern",systemImage:"square.and.arrow.down"){Task{await export(save:true)}}label:{Image(systemName:"ellipsis.circle")}.disabled(exporting)}
+                ToolbarItem(placement:.topBarTrailing){
+                    Menu {
+                        Button("Original teilen",systemImage:"square.and.arrow.up"){Task{await export(save:false)}}
+                        Button("In Apple Fotos sichern",systemImage:"square.and.arrow.down"){Task{await export(save:true)}}
+                    }label:{Image(systemName:"ellipsis.circle")}
+                    .disabled(exporting)
+                }
             }
             .sheet(item:$detail){MomentDetailView(initialMoment:$0)}
             .sheet(isPresented:$sharing,onDismiss:clearExports){FileShareView(urls:exportFiles)}

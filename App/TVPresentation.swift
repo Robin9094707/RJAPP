@@ -45,7 +45,7 @@ enum TVMode: String, CaseIterable, Identifiable {
             do {
                 let file = try await app.api.momentImageFile(record)
                 defer { try? FileManager.default.removeItem(at: file) }
-                let decoded = await Task.detached(priority: .userInitiated) { MediaPicker.Coordinator.displayImage(file: file) }.value
+                let decoded = MediaPicker.Coordinator.displayImage(file: file)
                 guard let self, !Task.isCancelled, self.generation == operation else { return }
                 self.image = decoded
             } catch { if !Task.isCancelled { self?.error = error.localizedDescription } }

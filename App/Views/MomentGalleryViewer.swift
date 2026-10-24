@@ -113,11 +113,15 @@ struct MomentGalleryViewer:View {
 
 private struct MomentGalleryPage:View {
     @Environment(AppState.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
     let record:SharedRecord
     let active:Bool
     @State private var image:UIImage?
     @State private var file:URL?
     @State private var player:AVPlayer?
+    @State private var audioOwner=UUID()
+    @State private var playbackObserver:NSKeyValueObservation?
+    @State private var loadGeneration=UUID()
     @State private var error:String?
     @State private var loading=false
     @State private var retry=0
@@ -131,25 +135,32 @@ private struct MomentGalleryPage:View {
             if loading{ProgressView().tint(.white).padding(20).background(.black.opacity(0.35),in:Circle())}
             if let error{VStack(spacing:14){Text(error).foregroundStyle(.white);Button("Erneut laden"){retry += 1}.buttonStyle(.borderedProminent)}.padding(24).background(.black.opacity(0.7),in:RoundedRectangle(cornerRadius:20))}
         }.task(id:"\(active)-\(retry)-\(record.updatedAt)"){await load()}.onDisappear{clear()}
+        .onChange(of:scenePhase){_,phase in if phase == .background{player?.pause()}else if phase == .active,let player,active{do{try MomentVideoAudio.shared.activate(player,owner:audioOwner)}catch{self.error=error.localizedDescription}}}
     }
-    private func clear(){statusObserver=nil;player?.pause();player?.replaceCurrentItem(with:nil);player=nil;image=nil;if let file{try? FileManager.default.removeItem(at:file)};file=nil}
+    private func clear(){loadGeneration=UUID();statusObserver=nil;playbackObserver=nil;player?.pause();MomentVideoAudio.shared.release(owner:audioOwner);player?.replaceCurrentItem(with:nil);player=nil;image=nil;if let file{try? FileManager.default.removeItem(at:file)};file=nil}
     private func load() async {
-        clear();error=nil;guard active else{return};loading=true;defer{loading=false}
+        clear();let generation=loadGeneration;error=nil;guard active else{return};loading=true;defer{if loadGeneration==generation{loading=false}}
         do{
             if record.payload.mediaKind=="video",let id=record.payload.assetIDs?.first {
-                let url=try await app.api.playbackURL(assetID:id);try Task.checkCancellation()
+                let url=try await app.api.playbackURL(assetID:id);try Task.checkCancellation();guard generation==loadGeneration,active else{return}
                 let item=AVPlayerItem(url:url);item.preferredForwardBufferDuration=15
-                EveningPlaylistService.shared.stop();AudioStudioService.shared.stopPlayback()
-                let p=AVPlayer(playerItem:item);player=p
+                let p=AVPlayer(playerItem:item)
+                try MomentVideoAudio.shared.activate(p,owner:audioOwner);player=p
+                playbackObserver=p.observe(\.timeControlStatus,options:[.new]){p,_ in
+                    Task{@MainActor in
+                        guard player === p,active,p.timeControlStatus != .paused else{return}
+                        do{try MomentVideoAudio.shared.activate(p,owner:audioOwner)}catch{p.pause();self.error=error.localizedDescription}
+                    }
+                }
                 statusObserver=item.observe(\.status,options:[.new]){item,_ in if item.status == .failed{Task{@MainActor in if player?.currentItem === item{error="Das Video konnte nicht abgespielt werden. Bitte erneut laden."}}}}
                 p.play()
             }else{
                 let loaded=try await app.api.momentImageFile(record)
-                guard !Task.isCancelled else{try? FileManager.default.removeItem(at:loaded);return}
+                guard !Task.isCancelled,generation==loadGeneration,active else{try? FileManager.default.removeItem(at:loaded);return}
                 guard let photo=UIImage(contentsOfFile:loaded.path) else{try? FileManager.default.removeItem(at:loaded);throw MediaError.unreadable}
                 file=loaded;image=photo
             };await app.markOpened(record)
-        }catch{if !Task.isCancelled{self.error=error.localizedDescription}}
+        }catch{if !Task.isCancelled,generation==loadGeneration{self.error=error.localizedDescription}}
     }
 }
 private struct MomentZoomImage:UIViewRepresentable {

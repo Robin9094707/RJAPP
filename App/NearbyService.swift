@@ -28,12 +28,22 @@ final class NearbyService:NSObject,NISessionDelegate {
     var supportsCamera:Bool {NISession.deviceCapabilities.supportsCameraAssistance}
     // Newer UWB devices may need camera-assisted horizontalAngle instead of a 3D vector.
     var cameraAssistance=NISession.deviceCapabilities.supportsCameraAssistance
-    var backgroundSearch=false
+    var automaticSearch = UserDefaults.standard.object(forKey:"rjlove.nearby-auto") as? Bool ?? true {
+        didSet {UserDefaults.standard.set(automaticSearch,forKey:"rjlove.nearby-auto");if automaticSearch{automaticBlocked=false;retryAfter=nil}}
+    }
+    var backgroundSearch = UserDefaults.standard.object(forKey:"rjlove.nearby-background") as? Bool ?? true {
+        didSet {UserDefaults.standard.set(backgroundSearch,forKey:"rjlove.nearby-background");if !backgroundSearch{endBackgroundActivity()}}
+    }
+    private var automaticBlocked=false
+    private var retryAfter:Date?
+    private var suspended=false
+    private var cameraPermissionPending=false
+    private var preparingBackground=false
     var backgroundActive:Bool {searchActivity?.activityState == .active || searchActivity?.activityState == .stale}
     var cameraRequested:Bool {configuration?.isCameraAssistanceEnabled == true}
     var diagnostics:String {
         ["RJ Love "+RJVersion.app,"iOS "+UIDevice.current.systemVersion,
-         "Suche aktiv: \(running)","UWB-Distanz: \(supported)","Direkte UWB-Richtung: \(supportsDirectDirection)",
+         "Suche aktiv: \(running)","Automatischer Start: \(automaticSearch)","Hintergrund gewünscht: \(backgroundSearch)","Live-Aktivität aktiv: \(backgroundActive)","Von iOS pausiert: \(suspended)","UWB-Distanz: \(supported)","Direkte UWB-Richtung: \(supportsDirectDirection)",
          "Kamera-Unterstützung verfügbar: \(supportsCamera)","Kamera freigegeben: \(AVCaptureDevice.authorizationStatus(for:.video) == .authorized)",
          "Kamera-Modus: iOS-verwaltete AR-Sitzung", "Kamera für diese Suche gesperrt: \(cameraFailedForSearch)",
          "Lokaler Token: \(localTokenReady)","Server erreichbar: \(serverReached)","Partner-Token: \(peerDiscovered)",
@@ -50,6 +60,7 @@ final class NearbyService:NSObject,NISessionDelegate {
     private var task:Task<Void,Never>?
     private var peerToken:String?
     private var publishedToken:String?
+    private var lastPublication:Date?
     private var lastMeasurement:Date?
     private var configurationAt:Date?
     private var tokenAttemptAt=Date.now
@@ -60,31 +71,55 @@ final class NearbyService:NSObject,NISessionDelegate {
     private var cameraFailedForSearch=false
     private var shouldUseCamera:Bool {permitCamera && !cameraFailedForSearch && visible && UIApplication.shared.applicationState == .active}
 
+    func reconcile(api:APIClient,partnerAvailable:Bool) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview"){return}
+        #endif
+        guard partnerAvailable else{if running{stop(api:api)};return}
+        guard UIApplication.shared.applicationState == .active else{return}
+        if running{resumeForeground();return}
+        guard NearbySearchPolicy.shouldStart(enabled:automaticSearch,foreground:true,partnerAvailable:partnerAvailable,running:running,permissionBlocked:automaticBlocked,retryAfter:retryAfter) else{return}
+        await start(api:api)
+    }
+    func setCameraAssistance(_ enabled:Bool){
+        cameraAssistance=enabled
+        if enabled{Task{await requestCameraIfVisible();resumeForeground()}}
+        else{permitCamera=false;applyCameraMode()}
+    }
+    func pauseAutomaticSearch(api:APIClient){automaticSearch=false;stop(api:api)}
     func setVisible(_ value:Bool) {
         visible=value
-        if value {resumeForeground()}
-        else if !backgroundSearch,let api=sessionAPI {stop(api:api)}
-        else if cameraRequested {rebuildSession()}
+        if value {Task{await requestCameraIfVisible();resumeForeground()}}
+        else {applyCameraMode()}
+    }
+    private func requestCameraIfVisible() async {
+        guard visible,cameraAssistance,supportsCamera,!cameraPermissionPending else{return}
+        cameraPermissionPending=true;defer{cameraPermissionPending=false}
+        permitCamera=await AVCaptureDevice.requestAccess(for:.video)
     }
     func start(api:APIClient) async {
         guard supported else{message="Dieses iPhone unterstützt keine präzise UWB-Messung.";return}
         guard !running,UIApplication.shared.applicationState == .active else{return}
+        automaticBlocked=false;preparingBackground=false
         generation=UUID();let attempt=generation;running=true;sessionAPI=api;deadline = .now.addingTimeInterval(900);retries=0
         message="Nahsuche wird vorbereitet …";coaching="";lastError="";localTokenReady=false;serverReached=false;stage="UWB-System wird initialisiert";tokenRestarts=0
         cameraFailedForSearch=false;permitCamera=false
-        if cameraAssistance,supportsCamera {
-            permitCamera=await AVCaptureDevice.requestAccess(for:.video)
-        }
+        await requestCameraIfVisible()
         guard running,generation==attempt,!Task.isCancelled else{return}
-        if !supportsDirectDirection,!permitCamera {
-            coaching=supportsCamera ? "Für einen Richtungspfeil auf diesem iPhone die Kamera-Unterstützung und Kamerafreigabe einschalten. Ohne sie ist nur die Entfernung verfügbar.":"Dieses Gerät meldet nur Entfernungsmessung, keine Richtung und keine Kamera-Unterstützung."
-        }
         createSession();startExchange(api:api,attempt:attempt)
+    }
+    private func applyCameraMode(){
+        guard running,!suspended,let config=configuration else{return}
+        let camera=shouldUseCamera && !preparingBackground
+        guard config.isCameraAssistanceEnabled != camera else{return}
+        session?.pause();config.isCameraAssistanceEnabled=camera
+        clearMeasurement();sessionStarted=false;cameraActive=false;configurationAt = .now
+        session?.run(config)
     }
     private func createSession() {
         let old=session;session=nil;old?.invalidate()
         let next=NISession();next.delegate=self;next.delegateQueue = .main
-        session=next;tokenAttemptAt = .now;localTokenReady=false;sessionStarted=false;cameraActive=false
+        lastPublication=nil;suspended=false;session=next;tokenAttemptAt = .now;localTokenReady=false;sessionStarted=false;cameraActive=false
         peerToken=nil;configuration=nil;configurationAt=nil;lastMeasurement=nil;peerDiscovered=false;clearMeasurement()
         // Do not attach a custom ARSession. NI creates and configures exactly one
         // internal AR session when run() receives isCameraAssistanceEnabled=true.
@@ -100,15 +135,22 @@ final class NearbyService:NSObject,NISessionDelegate {
         task=Task { [weak self] in
             while !Task.isCancelled {
                 guard let self,self.running,self.generation==attempt else{return}
-                guard let deadline=self.deadline,deadline > .now else{self.stop(api:api);self.stage="Suche beendet";self.message="Suche nach 15 Minuten beendet. Du kannst sie neu starten.";return}
+                guard let deadline=self.deadline,NearbySearchPolicy.sessionAllowed(deadline:deadline,foreground:UIApplication.shared.applicationState == .active,automatic:self.automaticSearch) else{self.stop(api:api);self.stage="Suche beendet";self.message="Suche nach 15 Minuten beendet. Du kannst sie neu starten.";return}
                 if let activity=self.searchActivity,activity.activityState == .dismissed || activity.activityState == .ended {self.stop(api:api);return}
                 guard UIApplication.shared.applicationState == .active || self.backgroundActive else{try? await Task.sleep(for:.seconds(1));continue}
+                if self.suspended{try? await Task.sleep(for:.seconds(2));continue}
+                // The established NI connection does not require a polling socket.
+                // A Live Activity permits NI ranging, not arbitrary server work.
+                if UIApplication.shared.applicationState != .active{try? await Task.sleep(for:.seconds(10));continue}
                 guard let current=self.session else{return}
                 do {
                     if let token=current.discoveryToken {
                         let data=try NSKeyedArchiver.archivedData(withRootObject:token,requiringSecureCoding:true)
                         let encoded=data.base64EncodedString();self.localTokenReady=true
-                        try await api.publishNearbyToken(encoded,lifetime:self.backgroundActive ? max(20,Int(deadline.timeIntervalSinceNow)):20)
+                        if encoded != self.publishedToken || (self.lastPublication.map({Date.now.timeIntervalSince($0)>=10}) ?? true) {
+                            try await api.publishNearbyToken(encoded,lifetime:NearbySearchPolicy.tokenLifetime(backgroundEnabled:self.backgroundSearch,foreground:UIApplication.shared.applicationState == .active,deadline:deadline))
+                            self.lastPublication = .now
+                        }
                         guard self.running,self.generation==attempt,!Task.isCancelled else{return}
                         guard self.session === current else{continue}
                         self.publishedToken=encoded;self.serverReached=true
@@ -125,13 +167,13 @@ final class NearbyService:NSObject,NISessionDelegate {
                             if self.configuration != nil{current.pause()}
                             self.peerToken=peer;self.sessionStarted=false;self.cameraActive=false
                             let config=NINearbyPeerConfiguration(peerToken:discovery)
-                            config.isCameraAssistanceEnabled=self.shouldUseCamera
+                            config.isCameraAssistanceEnabled=self.shouldUseCamera && !self.preparingBackground
                             self.configuration=config;self.configurationAt = .now
                             current.run(config)
                             self.stage="Partner verbunden · UWB wird gestartet"
-                            self.message="Gegenüber gefunden. Rückkameras zueinander ausrichten."
+                            self.message=self.shouldUseCamera ? "Gegenüber gefunden. Rückkameras zueinander ausrichten.":"Gegenüber verbunden. UWB-Entfernung wird gesucht."
                             if self.shouldUseCamera {self.coaching="Ein iPhone ruhig halten. Das suchende iPhone langsam seitlich und auf/ab bewegen. iOS kalibriert den Pfeil."}
-                            if self.backgroundSearch,self.searchActivity==nil {self.startBackgroundActivity()}
+
                         }
                         let stale=self.lastMeasurement.map{Date.now.timeIntervalSince($0)>8} ?? true
                         if stale,let since=self.configurationAt {
@@ -148,14 +190,14 @@ final class NearbyService:NSObject,NISessionDelegate {
                         if self.peerToken != nil {current.pause();self.sessionStarted=false;self.cameraActive=false}
                         self.peerToken=nil;self.configuration=nil;self.peerDiscovered=false;self.clearMeasurement()
                         self.stage=self.localTokenReady ? "Eigener Token übertragen · warte auf Partner":"iOS liefert noch keinen lokalen UWB-Token"
-                        self.message=self.localTokenReady ? "Bereit. Starte die Nahsuche auch auf dem anderen iPhone.":"iOS initialisiert UWB. Kein Freigabefehler gemeldet."
+                        self.message=self.localTokenReady ? "Bereit. Öffne RJ Love auch auf dem anderen iPhone; dort startet die automatische Nahsuche.":"iOS initialisiert UWB. Kein Freigabefehler gemeldet."
                     }
                     if !self.localTokenReady,Date.now.timeIntervalSince(self.tokenAttemptAt)>8 {
                         if self.tokenRestarts<2 {
                             self.tokenRestarts+=1;self.rebuildSession();self.stage="UWB wird neu initialisiert (\(self.tokenRestarts)/2)"
                         }else{
                             self.lastError="Kein lokaler Discovery-Token nach drei Sitzungsstarts."
-                            self.stop(api:api);self.stage="UWB derzeit nicht bereit";self.message="iOS stellt keinen UWB-Token bereit. Bluetooth und Flugmodus prüfen; Details unter Diagnose.";return
+                            self.stop(api:api);self.retryAfter = .now.addingTimeInterval(60);self.stage="UWB derzeit nicht bereit";self.message="iOS stellt keinen UWB-Token bereit. Bluetooth und Flugmodus prüfen; Details unter Diagnose.";return
                         }
                     }
                 }catch{
@@ -170,31 +212,46 @@ final class NearbyService:NSObject,NISessionDelegate {
         }
     }
     private func startBackgroundActivity() {
+        guard searchActivity==nil else{return}
         do {
             guard ActivityAuthorizationInfo().areActivitiesEnabled,let deadline else{throw LiveActivityError.disabled}
-            searchActivity=try Activity.request(attributes:NearbySearchAttributes(until:deadline),content:ActivityContent(state:NearbySearchAttributes.ContentState(active:true),staleDate:deadline,relevanceScore:150))
-        }catch{coaching="Live-Aktivität nicht verfügbar. Beide Apps für die Suche geöffnet lassen."}
+            searchActivity=try Activity.request(attributes:NearbySearchAttributes(until:deadline),content:ActivityContent(state:NearbySearchAttributes.ContentState(active:true),staleDate:deadline,relevanceScore:100))
+        }catch{coaching="Live-Aktivität nicht verfügbar. Für UWB beide Apps geöffnet lassen."}
+    }
+    private func endBackgroundActivity(){
+        if let activity=searchActivity{searchActivity=nil;Task{await activity.end(nil,dismissalPolicy:.immediate)}}
     }
     private func clearMeasurement(){distance=nil;angle=nil;elevation=nil;heightHint="";directionSource="Kein Winkel empfangen"}
     func resumeForeground() {
-        guard running,visible,UIApplication.shared.applicationState == .active else{return}
-        if let config=configuration {
-            if config.isCameraAssistanceEnabled != shouldUseCamera {rebuildSession()}
-            else {session?.run(config);configurationAt = .now}
-        }
+        guard running,UIApplication.shared.applicationState == .active else{return}
+        preparingBackground=false
+        if let activity=searchActivity,activity.attributes.until <= .now || activity.activityState == .dismissed || activity.activityState == .ended {endBackgroundActivity()}
+        guard !suspended else{return}
+        applyCameraMode()
+        if let config=configuration,!sessionStarted {session?.run(config);configurationAt = .now}
+    }
+    // Called while leaving the foreground, before iOS can suspend the process.
+    // Keep the NI session and both discovery tokens; rebuilding here would need
+    // another server exchange at a time when background networking is not assured.
+    func prepareForBackground(){
+        guard running,backgroundSearch,configuration != nil else{return}
+        preparingBackground=true
+        if let activity=searchActivity,activity.attributes.until <= .now || activity.activityState == .ended || activity.activityState == .dismissed {endBackgroundActivity()}
+        if searchActivity==nil{deadline = .now.addingTimeInterval(900);startBackgroundActivity()}
+        else{deadline=searchActivity?.attributes.until}
+        applyCameraMode()
     }
     func enterBackground(api:APIClient) {
         guard running else{return}
-        guard backgroundActive,let deadline,deadline > .now else{stop(api:api);return}
-        // Invalidation releases NI's internal camera before continuing distance-only.
-        if cameraRequested {rebuildSession()}
-        message="Suche mit Live-Aktivität aktiv. Für Kamera und Pfeil die Suchansicht wieder öffnen."
+        guard backgroundSearch,backgroundActive,let deadline,deadline > .now,configuration != nil else{stop(api:api);return}
+        preparingBackground=true;applyCameraMode()
+        message="Bestehende UWB-Verbindung mit Live-Aktivität. Kamera und Pfeil pausieren im Hintergrund."
     }
     func stop(api:APIClient) {
         let oldToken=publishedToken
         generation=UUID();task?.cancel();task=nil;lastMeasurement=nil;deadline=nil;configuration=nil;sessionAPI=nil
         let old=session;session=nil;old?.invalidate()
-        if let activity=searchActivity{searchActivity=nil;Task{await activity.end(nil,dismissalPolicy:.immediate)}}
+        endBackgroundActivity();preparingBackground=false;suspended=false
         running=false;cameraActive=false;sessionStarted=false;peerDiscovered=false;peerToken=nil;publishedToken=nil;clearMeasurement();stage="Suche beendet"
         Task{try? await api.publishNearbyToken("",expectedToken:oldToken ?? "")}
     }
@@ -230,19 +287,19 @@ final class NearbyService:NSObject,NISessionDelegate {
                 return
             }
             let canRetry:Bool
-            switch error {case NIError.userDidNotAllow:canRetry=false;default:canRetry=self.retries<2}
+            switch error {case NIError.userDidNotAllow:self.automaticBlocked=true;canRetry=false;default:canRetry=self.retries<2}
             if canRetry {
                 self.retries+=1;self.rebuildSession();self.stage="Nahsuche wird neu aufgebaut"
                 self.message="Die Verbindung wird erneut hergestellt …"
             }else{
-                self.stop(api:api);self.message="Nahsuche beendet: "+error.localizedDescription
+                self.stop(api:api);self.retryAfter = .now.addingTimeInterval(60);self.message="Nahsuche beendet: "+error.localizedDescription
                 self.stage="Systemfehler · Details unter Diagnose";self.coaching="Prüft die Diagnose auf beiden iPhones. Bei einer verweigerten Freigabe die App-Einstellungen öffnen."
             }
         }
     }
     nonisolated func sessionDidStartRunning(_ session:NISession){Task{@MainActor [weak self] in guard let self,self.running,self.session === session else{return};self.sessionStarted=true;self.cameraActive=self.cameraRequested;self.stage=self.cameraRequested ? "iOS-Kamerakalibrierung läuft":"UWB-Sitzung läuft · warte auf Messsignal"}}
-    nonisolated func sessionWasSuspended(_ session:NISession){Task{@MainActor [weak self] in guard let self,self.session === session else{return};self.sessionStarted=false;self.cameraActive=false;self.clearMeasurement();self.stage="Von iOS pausiert";self.message="iOS pausiert die Nahsuche. Beide Apps wieder öffnen."}}
-    nonisolated func sessionSuspensionEnded(_ session:NISession){Task{@MainActor [weak self] in guard let self,self.session === session else{return};self.resumeForeground()}}
+    nonisolated func sessionWasSuspended(_ session:NISession){Task{@MainActor [weak self] in guard let self,self.session === session else{return};self.suspended=true;self.sessionStarted=false;self.cameraActive=false;self.clearMeasurement();self.stage="Von iOS pausiert";self.message="iOS pausiert die Nahsuche. Beide Apps wieder öffnen."}}
+    nonisolated func sessionSuspensionEnded(_ session:NISession){Task{@MainActor [weak self] in guard let self,self.session === session else{return};self.suspended=false;if UIApplication.shared.applicationState == .active{self.resumeForeground()}else if self.backgroundActive,let config=self.configuration{session.run(config)}}}
     nonisolated func session(_ session:NISession,didRemove nearbyObjects:[NINearbyObject],reason:NINearbyObject.RemovalReason){Task{@MainActor [weak self] in guard let self,self.session === session else{return};self.clearMeasurement();self.peerToken=nil;self.configuration=nil;self.sessionStarted=false;self.cameraActive=false;session.pause();self.message="Signal verloren. Verbindung wird erneuert …"}}
     nonisolated func session(_ session:NISession,didUpdateAlgorithmConvergence convergence:NIAlgorithmConvergence,for object:NINearbyObject?){
         let hint:String
@@ -254,3 +311,4 @@ final class NearbyService:NSObject,NISessionDelegate {
         Task{@MainActor [weak self] in guard let self,self.running,self.session === session,self.cameraRequested else{return};self.coaching=hint.isEmpty ? "Bewege das suchende iPhone langsam seitlich und auf/ab.":hint}
     }
 }
+

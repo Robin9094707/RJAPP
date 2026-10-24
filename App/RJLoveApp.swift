@@ -22,6 +22,8 @@ struct RJLoveApp: App {
             switch phase {
             case .active:
                 Task { await appState.activate() }
+            case .inactive:
+                appState.prepareToLeaveForeground()
             case .background:
                 appState.deactivateForeground()
             default:
@@ -30,3 +32,4 @@ struct RJLoveApp: App {
         }
     }
 }
+

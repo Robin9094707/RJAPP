@@ -12,7 +12,8 @@ struct RootView:View {
             case .restoring:ProgressView(appState.connectionMessage).padding(30)
             case .authenticated:
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--preview-instant-gallery") {NavigationStack{InstantGalleryView()}.fullScreenCover(item:Binding(get:{appState.pendingPhotoRequest},set:{appState.pendingPhotoRequest=$0})){InstantCameraView(request:$0)}}
+                if ProcessInfo.processInfo.arguments.contains("--verify-video-audio") {VideoAudioVerificationView()}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-instant-gallery") {NavigationStack{InstantGalleryView()}.fullScreenCover(item:Binding(get:{appState.pendingPhotoRequest},set:{appState.pendingPhotoRequest=$0})){InstantCameraView(request:$0)}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-gallery") {NavigationStack{MomentsView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-moment-map") {NavigationStack{MomentsView(mapOnOpen:true)}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-poop") {NavigationStack{DropPoopView()}}

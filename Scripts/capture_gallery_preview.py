@@ -26,7 +26,7 @@ try:
     time.sleep(8)
     run('xcrun','simctl','io',device,'screenshot','Gallery-Preview.png')
     run('xcrun','simctl','terminate',device,'eu.rjuhas.rjlove')
-    run('xcodebuild','-project','RJLove.xcodeproj','-scheme','RJLove','-configuration','Debug','-destination',f'id={device}','-derivedDataPath','.sim-derived','-resultBundlePath','Gallery-Layout.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-only-testing:RJLoveUITests/GalleryLayoutTests','test',timeout=900)
+    run('xcodebuild','-project','RJLove.xcodeproj','-scheme','RJLove','-configuration','Debug','-destination',f'id={device}','-derivedDataPath','.sim-derived','-resultBundlePath','Gallery-Layout.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-only-testing:RJLoveUITests/GalleryLayoutTests','-only-testing:RJLoveUITests/VideoAudioSessionTests','test',timeout=900)
 finally:
     if Path('Gallery-Layout.xcresult').exists():subprocess.run(['xcrun','xcresulttool','export','attachments','--path','Gallery-Layout.xcresult','--output-path','Gallery-Attachments'],timeout=60)
     subprocess.run(['xcrun','simctl','shutdown',device],timeout=60)

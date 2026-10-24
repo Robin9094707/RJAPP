@@ -32,12 +32,13 @@ struct NearbyView: View {
                 if appState.nearby.running,appState.nearby.angle == nil {Text("Noch kein Richtungswert von iOS. Ein Pfeil erscheint erst bei einem echten Signal.").font(.caption).foregroundStyle(.secondary)}
                 Text(appState.nearby.stage).font(.caption.bold()).foregroundStyle(LovePalette.violet)
                 Text(appState.nearby.message).multilineTextAlignment(.center).font(.headline).frame(minHeight: 60)
-                Toggle("Mit Live-Aktivität im Hintergrund weitersuchen", isOn: Binding(get: { appState.nearby.backgroundSearch }, set: { appState.nearby.backgroundSearch = $0 })).disabled(appState.nearby.running)
-                Text("Startet die Suche einmal auf beiden iPhones. Danach kann die bereits aktive Suche bis zu 15 Minuten mit sichtbarer Live-Aktivität beim Sperren oder App-Wechsel weiterlaufen. Bei beendeter App oder beendetem Signal bitte beide wieder öffnen.").font(.caption).foregroundStyle(.secondary)
-                Toggle("Kamera-Unterstützung für den Richtungspfeil",isOn:Binding(get:{appState.nearby.cameraAssistance},set:{appState.nearby.cameraAssistance=$0})).disabled(appState.nearby.running || !appState.nearby.supportsCamera)
+                Toggle("Automatisch bereit, wenn RJ Love geöffnet ist",isOn:Binding(get:{appState.nearby.automaticSearch},set:{value in appState.nearby.automaticSearch=value;if value{Task{await appState.refreshNearbySearch()}}else{appState.nearby.stop(api:appState.api)}}))
+                Toggle("Mit Live-Aktivität im Hintergrund weitersuchen", isOn: Binding(get: { appState.nearby.backgroundSearch }, set: { appState.nearby.backgroundSearch = $0 }))
+                Text("Öffnet RJ Love auf beiden iPhones: Die automatische Nahsuche ist auch außerhalb dieser Ansicht bereit. Eine bestehende Verbindung kann beim Sperren oder App-Wechsel bis zu 15 Minuten mit sichtbarer Live-Aktivität weiterlaufen. Nach vollständigem Beenden der App beide Apps wieder öffnen.").font(.caption).foregroundStyle(.secondary)
+                Toggle("Kamera-Unterstützung für den Richtungspfeil",isOn:Binding(get:{appState.nearby.cameraAssistance},set:{appState.nearby.setCameraAssistance($0)})).disabled(!appState.nearby.supportsCamera)
                 Text("iOS übernimmt die Kamerakalibrierung direkt. Ein iPhone bleibt ruhig, das suchende Gerät langsam seitlich und auf/ab bewegen. Bei Kamerafehlern wird nur die Entfernung weitergesucht; es werden keine Bilder gespeichert oder geteilt.").font(.caption).foregroundStyle(.secondary)
                 Button(appState.nearby.running ? "Suche beenden" : "Nahbereichssuche starten", systemImage: "dot.radiowaves.left.and.right") {
-                    if appState.nearby.running { appState.nearby.stop(api: appState.api) }
+                    if appState.nearby.running { appState.nearby.pauseAutomaticSearch(api: appState.api) }
                     else { Task {await appState.nearby.start(api: appState.api)} }
                 }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!appState.nearby.supported)
                 DisclosureGroup("Verbindung prüfen & Diagnose") {
@@ -50,13 +51,14 @@ struct NearbyView: View {
                     }.padding(.top,10)
                 }.loveCard()
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Öffnet beide diese Ansicht und startet die Suche.", systemImage: "person.2.fill")
+                    Label("Öffnet beide RJ Love. Bei aktivierter Automatik müsst ihr diese Ansicht nicht extra öffnen.", systemImage: "person.2.fill")
                     Label("Die Suche nutzt Ultra-Breitband im Nahbereich. Haltet beide iPhones aufrecht und richtet ihre Rückseiten zueinander.", systemImage: "iphone.radiowaves.left.and.right")
-                    Label("Ohne Hintergrundoption endet die Suche beim Verlassen der Ansicht. Mit Live-Aktivität enden Suche und Suchfreigabe spätestens nach 15 Minuten.", systemImage: "hand.raised.fill")
+                    Label("Ohne Hintergrundoption pausiert die Suche beim App-Wechsel. Hintergrundsuche und Token-Freigabe sind auf ein kurzes Suchfenster ausgelegt. Die automatische Bereitschaft lässt sich jederzeit ausschalten.", systemImage: "hand.raised.fill")
                 }.font(.footnote).foregroundStyle(.secondary).loveCard()
             }.padding(24)
         }.background(LoveBackground()).navigationTitle("Dich finden").navigationBarTitleDisplayMode(.inline)
-        .onAppear{appState.nearby.setVisible(true)}
+        .onAppear{appState.nearby.setVisible(true);Task{await appState.refreshNearbySearch()}}
         .onDisappear{appState.nearby.setVisible(false)}
     }
 }
+

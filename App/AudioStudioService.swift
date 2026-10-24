@@ -111,7 +111,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
             errorMessage = "Bitte erlaube RJ Love den Mikrofonzugriff in den iPhone-Einstellungen."; return
         }
         guard operationID == operation, !Task.isCancelled else { return }
-        stopPlayback()
+        MomentVideoAudio.shared.stop();stopPlayback()
         do {
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
@@ -272,7 +272,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         }catch{if !Task.isCancelled{self?.errorMessage=error.localizedDescription;self?.stopPlayback()}};if self?.loadingID==clip.id{self?.loadingID=nil}}
     }
     private func play(data:Data,id:String)throws {
-        EveningPlaylistService.shared.stop()
+        MomentVideoAudio.shared.stop();EveningPlaylistService.shared.stop()
         funny.stop();playerTask?.cancel()
         let session=AVAudioSession.sharedInstance();try session.setCategory(.playback,mode:.default);try session.setActive(true)
         funny.rate=playbackRate;funny.effect=soundEffect
@@ -286,7 +286,7 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         if clearQueue{playlist=[];playlistAPI=nil;queueIndex=0;queueCount=0}
         if !hasRecording{deactivateSession()}
     }
-    private func deactivateSession() { if !EveningPlaylistService.shared.active {try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)} }
+    private func deactivateSession() { if !EveningPlaylistService.shared.active && !MomentVideoAudio.shared.active {try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)} }
     private func startRecordingActivity() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let state = FartRecordingAttributes.ContentState(startedAt: .now, elapsed: 0, paused: false)
@@ -316,3 +316,4 @@ private enum StudioError: LocalizedError {
     case recordingFailed, playbackFailed
     var errorDescription: String? { self == .recordingFailed ? "Die Aufnahme konnte nicht gestartet werden." : "Die Aufnahme konnte nicht abgespielt werden." }
 }
+

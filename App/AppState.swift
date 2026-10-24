@@ -139,6 +139,7 @@ final class AppState {
         activating = true; defer { activating = false }
         acceptQuickCaptureRequest()
         nearby.resumeForeground()
+        Task{await refreshNearbySearch()}
         if phase == .authenticated { try? await api.recordAppOpen() }
         if health.sharingEnabled { await health.refresh(force:true); lastHealthRefresh = .now }
 
@@ -172,6 +173,11 @@ final class AppState {
         await syncNow(showErrors: false)
         offerForegroundMoments()
     }
+
+    func refreshNearbySearch() async {
+        await nearby.reconcile(api:api,partnerAvailable:phase == .authenticated && partner != nil)
+    }
+    func prepareToLeaveForeground(){nearby.prepareForBackground()}
 
     func deactivateForeground() {
         if phase == .authenticated {Task {try? await api.reportActivity(mode:"inactive")}}
@@ -269,6 +275,7 @@ final class AppState {
             if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
+            Task{await refreshNearbySearch()}
             activity = snapshot.activity ?? [:]
             myStatus = snapshot.myPresence
             if let preferences = snapshot.preferences { applyPreferences(preferences) }
@@ -776,7 +783,7 @@ final class AppState {
         if url.host?.lowercased() == "open" { return }
         switch url.host?.lowercased() {
         case "poop", "poop-log": selectedTab = .home;composingPoop=url.host?.lowercased()=="poop-log";showingPoop=true
-        case "stop-nearby": nearby.stop(api: api)
+        case "stop-nearby": nearby.pauseAutomaticSearch(api: api)
         case "map": selectedTab = .map
         case "together": selectedTab = .together
         case "moments": selectedTab = .moments; experienceSection = .moments

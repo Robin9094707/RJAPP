@@ -66,7 +66,7 @@
 	<key>NSMotionUsageDescription</key>
 	<string>Bewegung &amp; Fitness erkennt energiesparend, ob du läufst, Fahrrad oder Auto fährst, und zeigt diesen freiwillig geteilten Status deinem Partner.</string>
 	<key>NSNearbyInteractionUsageDescription</key>
-	<string>Wenn ihr beide die Nahbereichssuche öffnet, misst RJ Love per Ultra-Breitband eure Entfernung und Richtung.</string>
+	<string>Wenn die automatische Nahsuche aktiv ist und ihr beide RJ Love geöffnet habt, misst die App eure Entfernung per Ultra-Breitband. Eine bestehende Verbindung kann mit sichtbarer Live-Aktivität kurzzeitig im Hintergrund weiterlaufen. Richtung mit Kamera-Unterstützung wird nur in der sichtbaren Suchansicht verwendet.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Speichere ausgewählte gemeinsame Fotos und Videos zurück in deiner Mediathek.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

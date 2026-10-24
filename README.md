@@ -1,6 +1,6 @@
-Aktuelles Update: [Quadratische Galerie, dringende Nachrichten und Widgets 3.9.2](RELEASE-3.9.2.md). Vorhandene Daten und Bark-/ntfy-Kopplungen behalten.
+Aktuelles Update: [Automatische UWB-Nahsuche und Video-Ton 3.9.3](RELEASE-3.9.3.md). Server 3.9.2 bleibt gültig. Vorhandene Daten und Bark-/ntfy-Kopplungen behalten.
 
-# RJ Love 3.9.2
+# RJ Love 3.9.3
 
 Aktuelles Update: [Direkte Bark-Links, versteckte Fotowünsche und Tastatursteuerung 3.9.1](RELEASE-3.9.1.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 
@@ -62,12 +62,12 @@ reload
 
 Die IPA wird **unsigniert** gebaut. ArcticSign/Feather muss die Haupt-App **und** die eingebettete Widget-Extension passend signieren. Ein vorhandener Zahlungsbeleg allein beschreibt nicht, welche Apple-Capabilities das Provisioningprofil freigibt.
 
-- App Group: `group.eu.rjuhas.rjlove` für App und Extension identisch erhalten.
+- App Group: `group.dfbc88d056a46f1b.1` für App und Extension identisch erhalten.
 - HealthKit: passendes Entitlement/Profil, danach Zustimmung in Apple Health. Die Weitergabe-Schalter starten bei einer frischen Installation eingeschaltet; iOS fragt die jeweiligen Zugriffsrechte ausdrücklich ab.
 - APNs: Profil mit Push plus eigener APNs-Schlüssel/Team-ID/Key-ID auf dem Server. Die App liest Sandbox/Production aus dem installierten Provisioningprofil. APNs-Schlüssel niemals committen.
 - Live-Aktivitäten: lokal möglich, Server-Aktualisierungen brauchen ActivityKit-Push-Token und APNs. iOS kann Aktualisierungen beschränken. Veraltete Zustände werden markiert.
 - Widgets: iOS bestimmt Aktualisierungszeitpunkte. Der Herzknopf merkt Gedanken vor; die App sendet sie beim nächsten Sync. Keine falsche Sofort-Zustellung.
-- UWB: beide suchen aktiv in der geöffneten App; der Server vermittelt kurzlebige Discovery-Tokens. Es werden keine Entfernungen erfunden. Das Feature ersetzt keine Fernortung. Generationenübergreifende Funktionsprüfung muss auf den beiden realen iPhones erfolgen.
+- UWB: Bei aktivierter Automatik sind beide Apps im Vordergrund ohne Öffnen der Suchansicht bereit. Bestehende Sitzungen können mit Live-Aktivität im Hintergrund fortgesetzt werden; nach vollständigem Beenden beide Apps wieder öffnen. Der Server vermittelt kurzlebige Discovery-Tokens. Es werden keine Entfernungen erfunden. Das Feature ersetzt keine Fernortung. Generationenübergreifende Funktionsprüfung muss auf den beiden realen iPhones erfolgen.
 - Apple Health gibt keinen beliebigen Zugriff auf alle Daten frei. Nicht vorhandene/abgelehnte Messwerte bleiben leer. Der RJ-Schlafbalance-Wert ist ein eigener Vergleich der erfassten Schlafdauer mit acht Stunden, **kein offizieller Apple-Schlafscore**.
 - Kritische Mitteilungen werden nicht angefordert. Kein künstlicher Dauerbetrieb im Hintergrund.
 

@@ -55,7 +55,7 @@ struct EveningTrack:Identifiable {
     }
     func start(_ tracks:[EveningTrack],api:APIClient,from:Int=0) {
         guard !AudioStudioService.shared.hasRecording,!VoiceNoteService.shared.recording else{error="Bitte zuerst deine Aufnahme beenden.";return}
-        stop();AudioStudioService.shared.stopPlayback();VoiceNoteService.shared.stop()
+        MomentVideoAudio.shared.stop();stop();AudioStudioService.shared.stopPlayback();VoiceNoteService.shared.stop()
         guard tracks.indices.contains(from) else{return}
         self.tracks=tracks;self.api=api.sessionCopy();index=from;nextLoad=from;playing=true
         let queue=AVQueuePlayer();queue.actionAtItemEnd = .advance;queue.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
@@ -144,7 +144,7 @@ struct EveningTrack:Identifiable {
         for file in files.values{try? FileManager.default.removeItem(at:file)};files=[:]
         for (command,target) in remoteTargets{command.removeTarget(target)};remoteTargets=[]
         tracks=[];index=0;nextLoad=0;elapsed=0;duration=0;playing=false;api=nil;error=nil
-        if hadPlayer{MPNowPlayingInfoCenter.default().nowPlayingInfo=nil;try? AVAudioSession.sharedInstance().setActive(false,options:.notifyOthersOnDeactivation)}
+        if hadPlayer && !MomentVideoAudio.shared.active{MPNowPlayingInfoCenter.default().nowPlayingInfo=nil;try? AVAudioSession.sharedInstance().setActive(false,options:.notifyOthersOnDeactivation)}
     }
     private func installRemoteControls() {
         let c=MPRemoteCommandCenter.shared()
@@ -156,3 +156,4 @@ struct EveningTrack:Identifiable {
         MPNowPlayingInfoCenter.default().nowPlayingInfo=[MPMediaItemPropertyTitle:current.title,MPMediaItemPropertyArtist:"RJ Love · Euer Abend",MPMediaItemPropertyAlbumTitle:"\(index+1) von \(tracks.count)",MPMediaItemPropertyPlaybackDuration:duration,MPNowPlayingInfoPropertyElapsedPlaybackTime:elapsed,MPNowPlayingInfoPropertyPlaybackRate:player?.rate ?? 0]
     }
 }
+

@@ -174,7 +174,7 @@ struct CinemaYouTubeBrowser: View {
         VStack(alignment: .leading,spacing: 6) {
             Link("YouTube-Nutzungsbedingungen",destination: URL(string: "https://www.youtube.com/t/terms")!)
             Link("Google-Datenschutz",destination: URL(string: "https://policies.google.com/privacy")!)
-            Link("RJ-Love-Datenschutz",destination: URL(string: "https://github.com/Robin9094707/RJAPP/blob/main/PRIVACY.md")!)
+            Link("RJ-Love-Datenschutz",destination: URL(string: "https://github.com/Robin9094707/RJAPP/blob/codex/cinema-4.0.0/PRIVACY.md")!)
         }.font(.caption)
     }
     private func video(_ item: YouTubeResult) -> some View {
@@ -243,6 +243,10 @@ struct CinemaTVRemote: View {
             Text("Für den eigenen TV-Bildschirm: Im iOS-Kontrollzentrum Bildschirm­synchronisierung wählen und Apple TV oder AirPlay-TV verbinden. RJ Love liefert dann eine eigene Vollbildansicht. Für reine Videowiedergabe die AirPlay-Taste am Player verwenden.").font(.footnote).foregroundStyle(.secondary)
             Picker("TV-Ansicht",selection: $tv.mode) { ForEach(TVMode.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
                 .onChange(of: tv.mode) { _, mode in if mode == .moments { Task { await tv.loadMoments() } } }
+            if tv.mode == .cinema {
+                Toggle("Uhr & Schatzi-Infos neben dem Video",isOn: $tv.showInfo)
+                Text("Die Infos stehen neben dem Player und verdecken das Video nicht. Ausgeschaltet nutzt der Film die gesamte TV-Fläche.").font(.caption).foregroundStyle(.secondary)
+            }
             if tv.mode == .moments {
                 if let image = tv.image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240).clipShape(RoundedRectangle(cornerRadius: 15)) }
                 HStack { Button("Zurück",systemImage: "backward.end.fill") { tv.advance(-1) }; Spacer(); Button(tv.slideshow ? "Diashow stoppen" : "Diashow starten") { tv.toggleSlideshow() }; Spacer(); Button("Weiter",systemImage: "forward.end.fill") { tv.advance(1) } }.font(.caption)

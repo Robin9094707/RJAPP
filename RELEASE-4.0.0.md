@@ -21,7 +21,7 @@ Der bisherige Server enthielt einen eingebetteten privaten Bark/APNs-Schlüssel.
 - **Direkte Medienwiedergabe:** Die AirPlay-Taste im Kino verwendet die iOS-Geräteauswahl. Bei Plex übernimmt AVPlayer die Videowiedergabe. Dieser Medienweg transportiert keine frei gestalteten Widgets.
 - **Unser Wir:** Uhr, Datum, Namen, freiwillig bereits freigegebener Partnerstatus und Akkustand.
 - **Momente:** Vollständiges Fotoarchiv abrufen, vor/zurück und Diashow. Live Photos werden als Standbilder gezeigt; Videos bleiben im bisherigen Abendprogramm verfügbar.
-- **Kino:** Sichtbarer YouTube-Player bzw. native Plex-Wiedergabe auf dem externen Bildschirm.
+- **Kino:** Sichtbarer YouTube-Player bzw. native Plex-Wiedergabe auf dem externen Bildschirm. Optional zeigt eine separate Seitenleiste Uhr, Partnerstatus und Timer neben dem Video; sie überdeckt den YouTube-Player nicht.
 - **Nacht:** Sehr dunkle, leicht wandernde Uhr. Der Nachtmodus verdunkelt keine YouTube-Videos und versteckt keinen laufenden YouTube-Player.
 
 Das Layout passt sich dem externen Bildschirm an. Fotos und Videos behalten ihr Seitenverhältnis und können Balken haben. Für die eigene TV-Oberfläche muss die App im Vordergrund und das iPhone entsperrt bleiben; bei verbundener externer Szene wird der automatische Ruhezustand verhindert. AirPlay muss von euch über die iOS-Systemoberfläche verbunden werden. Eine IPA kann die Auswahl nicht selbst erzwingen.

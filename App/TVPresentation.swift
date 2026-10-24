@@ -11,6 +11,7 @@ enum TVMode: String, CaseIterable, Identifiable {
     static let shared = TVPresentation()
     var connected = false
     var mode: TVMode = .ambient
+    var showInfo = false
     var app: AppState?
     var moments: [SharedRecord] = []
     var index = 0
@@ -115,7 +116,13 @@ struct LoveTVScreen: View {
             ZStack {
                 Color.black
                 if tv.mode == .cinema, cinema.active {
-                    CinemaPlaybackSurface(external: true).frame(width: geometry.size.width, height: geometry.size.height)
+                    HStack(spacing: 0) {
+                        CinemaPlaybackSurface(external: true)
+                            .frame(width: tv.showInfo ? geometry.size.width * 0.75 : geometry.size.width, height: geometry.size.height)
+                        if tv.showInfo {
+                            TVInfoPanel().frame(width: geometry.size.width * 0.25, height: geometry.size.height)
+                        }
+                    }
                 } else if tv.mode == .moments, let image = tv.image {
                     Image(uiImage: image).resizable().scaledToFit().frame(width: geometry.size.width, height: geometry.size.height)
                 } else {
@@ -163,5 +170,28 @@ struct CinemaMiniPlayer: View {
                 }.padding(10)
             }.background(.ultraThinMaterial)
         }
+    }
+}
+
+struct TVInfoPanel: View {
+    @State private var tv = TVPresentation.shared
+    @State private var cinema = CinemaCoordinator.shared
+    var body: some View {
+        GeometryReader { geometry in
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                VStack(alignment: .leading, spacing: geometry.size.height * 0.04) {
+                    Image(systemName: "heart.fill").foregroundStyle(LovePalette.pink)
+                    Text(context.date, style: .time).font(.system(size: geometry.size.width * 0.17,weight: .ultraLight,design: .rounded)).monospacedDigit()
+                    Text(tv.app?.partner?.displayName ?? "Schatzi").font(.system(size: geometry.size.width * 0.1,weight: .medium,design: .serif))
+                    Text(tv.app?.partner?.presence?.statusMessage ?? "Ein Abend. Nur für uns.").foregroundStyle(.secondary).lineLimit(4)
+                    Spacer()
+                    if let end = cinema.sleepUntil {
+                        Label("Bis " + end.formatted(date: .omitted,time: .shortened),systemImage: "moon.zzz.fill").foregroundStyle(.secondary)
+                    }
+                    Text(cinema.title).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                }.font(.system(size: geometry.size.width * 0.06)).padding(geometry.size.width * 0.1)
+                    .frame(maxWidth: .infinity,maxHeight: .infinity,alignment: .leading)
+            }
+        }.background(Color(white: 0.025))
     }
 }

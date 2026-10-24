@@ -8,6 +8,7 @@ struct MessengerView:View {
     @FocusState private var messageFocused: Bool
     @AppStorage("rjlove.keyboard-dismiss-after-send") private var closeKeyboardAfterSend = false
     @State private var positioned = false
+    @State private var urgent=false
     @Environment(AppState.self) private var app
     @AppStorage("rjlove.chat-draft") private var text=""
     @State private var queuedMedia:SelectedMedia?
@@ -28,8 +29,9 @@ struct MessengerView:View {
                 .task(id:messages.map(\.id)){if !positioned,let id=initialMessageID,messages.contains(where:{$0.id==id}){await Task.yield();proxy.scrollTo(id,anchor:.center);positioned=true}}
                 .onChange(of:messages.count){_,_ in if initialMessageID == nil || positioned,let last=messages.last{withAnimation{proxy.scrollTo(last.id,anchor:.bottom)}}}}
             if MediaTransfer.shared.busy{VStack{ProgressView(value:MediaTransfer.shared.progress);Text("\(MediaTransfer.shared.stage) · \(Int(MediaTransfer.shared.progress*100)) %").font(.caption)}.padding(12)}
+            if urgent{HStack{Label("Dringend · kurzer Hinweis, kein Weckruf",systemImage:"exclamationmark.bubble.fill").font(.caption).foregroundStyle(.orange);Spacer();Button("Normal"){urgent=false}}.padding(.horizontal,16)}
             HStack(alignment:.bottom,spacing:10){
-                Menu{Toggle("Tastatur nach dem Senden schließen",isOn:$closeKeyboardAfterSend);Divider();Button("Foto, Video oder Live Photo",systemImage:"photo"){picker=true};Button("Sprachnachricht",systemImage:"mic.fill"){voice=true};Button("Termin mit optionalem Wecker",systemImage:"alarm.fill"){planning=true}}label:{Image(systemName:"plus.circle.fill").font(.title2)}.accessibilityLabel("Nachricht hinzufügen")
+                Menu{Toggle("Als dringende Nachricht senden",isOn:$urgent);Divider();Toggle("Tastatur nach dem Senden schließen",isOn:$closeKeyboardAfterSend);Divider();Button("Foto, Video oder Live Photo",systemImage:"photo"){picker=true};Button("Sprachnachricht",systemImage:"mic.fill"){voice=true};Button("Termin mit optionalem Wecker",systemImage:"alarm.fill"){planning=true}}label:{Image(systemName:"plus.circle.fill").font(.title2)}.accessibilityLabel("Nachricht hinzufügen")
                 TextField("Eine Nachricht nur für dich …",text:$text,axis:.vertical).focused($messageFocused).accessibilityIdentifier("chat-message-input").lineLimit(1...5).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22))
                 Button{messageFocused=false}label:{Image(systemName:"keyboard.chevron.compact.down").font(.title3)}.accessibilityLabel("Tastatur schließen").accessibilityIdentifier("chat-dismiss-keyboard").disabled(!messageFocused)
                 Button{Task{await sendText()}}label:{Image(systemName:"arrow.up.circle.fill").font(.system(size:34)).foregroundStyle(LovePalette.pink)}.disabled(sending || text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || text.count>4000).accessibilityLabel("Nachricht senden")
@@ -47,6 +49,7 @@ struct MessengerView:View {
         return HStack{if mine{Spacer(minLength:35)};VStack(alignment:mine ? .trailing:.leading,spacing:6){
             VStack(alignment:.leading,spacing:10){
                 if record.payload.assetIDs?.isEmpty==false{MediaAttachmentView(record:record)}
+                if record.payload.notificationPriority=="urgent"{Label("Dringend",systemImage:"exclamationmark.bubble.fill").font(.caption.bold())}
                 if let text=record.payload.text,!text.isEmpty{Text(text).textSelection(.enabled)}
                 if record.payload.referenceID != nil{NavigationLink{PlannerView()}label:{Label("Gemeinsamen Plan öffnen",systemImage:"alarm.fill")}.tint(mine ? .white:LovePalette.pink)}
                 if record.payload.autoplay==true{Label("Süße Nachricht · beim Öffnen",systemImage:"heart.fill").font(.caption2)}
@@ -55,7 +58,7 @@ struct MessengerView:View {
             if mine,let opened=app.openedRecords.first(where:{$0.recordID==record.id && $0.userID != app.me?.id})?.openedAt.rjDate{Text("Geöffnet "+opened.formatted(.dateTime.day().month().hour().minute().second())).font(.system(size:10)).foregroundStyle(.secondary)}
         };if !mine{Spacer(minLength:35)}}.contextMenu{if mine{Button("Zurückrufen",systemImage:"trash",role:.destructive){deleting=record}}}.task{if !mine,!UserDefaults.standard.bool(forKey:"rjlove.opened."+record.id){await app.markOpened(record)}}
     }
-    private func sendText() async {let submitted=text;sending=true;defer{sending=false};if await app.saveRecord(kind:.chat,payload:RecordPayload(text:submitted.trimmingCharacters(in:.whitespacesAndNewlines))) != nil{if text==submitted{text=""};if closeKeyboardAfterSend{messageFocused=false}}}
+    private func sendText() async {let submitted=text;sending=true;defer{sending=false};var payload=RecordPayload(text:submitted.trimmingCharacters(in:.whitespacesAndNewlines));payload.notificationPriority=urgent ? "urgent":"normal";if await app.saveRecord(kind:.chat,payload:payload) != nil{if text==submitted{text="";urgent=false};if closeKeyboardAfterSend{messageFocused=false}}}
 }
 struct MediaComposer:View {
     @Environment(AppState.self) private var app

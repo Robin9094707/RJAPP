@@ -51,6 +51,8 @@ jobs:
           /tmp/rjlove-relationship-check
           swiftc Shared/NotificationRoute.swift Tests/NotificationRouteChecks.swift -o /tmp/rjlove-route-check
           /tmp/rjlove-route-check
+          swiftc Shared/GalleryMetrics.swift Tests/GalleryChecks.swift -o /tmp/rjlove-gallery-check
+          /tmp/rjlove-gallery-check
 
       - name: Install XcodeGen
         shell: bash
@@ -110,9 +112,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-3.9.1-Komplettpaket
+          name: RJ-Love-3.9.2-Komplettpaket
           path: |
-            RJ-Love-3.9.1-Komplettpaket.zip
+            RJ-Love-3.9.2-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -169,3 +171,29 @@ jobs:
             UIAttachments-*
           if-no-files-found: warn
 
+
+  gallery:
+    name: Verify three square gallery columns
+    runs-on: macos-26
+    timeout-minutes: 35
+    if: contains(github.event.head_commit.message, '[gallery]')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build simulator app
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          set -o pipefail
+          xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Gallery-Build.log
+      - name: Capture and verify square gallery
+        run: python3 Scripts/capture_gallery_preview.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RJ-Love-Gallery-Preview
+          path: |
+            Gallery-Preview.png
+            Gallery-Attachments
+            Gallery-Build.log
+            Gallery-Layout.xcresult
+          if-no-files-found: warn

@@ -19,6 +19,8 @@ final class LiveActivityService {
     var showQuickAction = UserDefaults.standard.object(forKey:"rjlove.live-action") as? Bool ?? true {didSet{UserDefaults.standard.set(showQuickAction,forKey:"rjlove.live-action")}}
     private(set) var enabled = UserDefaults.standard.bool(forKey:"rjlove.live-enabled")
     var onPushToken: ((String, String) async -> Void)?
+    private var previousState:ConnectionActivityAttributes.ContentState?
+    private var previousUpdate=Date.distantPast
     private var tokenTasks: [Task<Void, Never>] = []
 
     private init() {
@@ -59,6 +61,9 @@ final class LiveActivityService {
     }
 
     func update(battery: Int?, motion: String, mine: Int, partner: Int, updatedAt: Date? = nil, status:String?=nil, quietUntil:Date?=nil) async {
+        if let old=previousState,old.battery==battery,old.motion==motion,old.myThoughts==mine,old.partnerThoughts==partner,old.status==status,old.quietUntil==quietUntil,Date.now.timeIntervalSince(previousUpdate)<30{return}
+        previousState=ConnectionActivityAttributes.ContentState(battery:battery,motion:motion,lastUpdate:updatedAt ?? .distantPast,myThoughts:mine,partnerThoughts:partner,status:status,quietUntil:quietUntil)
+        previousUpdate = .now
         let content = ActivityContent(
             state: ConnectionActivityAttributes.ContentState(
                 battery: battery,

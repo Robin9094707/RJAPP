@@ -52,8 +52,8 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.9.1"
-MINIMUM_APP_VERSION = "3.9.1"
+APP_VERSION = "3.9.2"
+MINIMUM_APP_VERSION = "3.9.2"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -442,6 +442,8 @@ class Database:
                 CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
                 """
             )
+
+            db.execute("CREATE INDEX IF NOT EXISTS gallery_date ON records(kind,deleted_at,julianday(COALESCE(json_extract(payload,'$.captured_at'),created_at)) DESC,id DESC)")
 
             # Keep the newest pending request per sender when upgrading a spammed queue.
             # Existing photos and completed requests are never changed.
@@ -928,15 +930,18 @@ class NotificationHub:
         self.wake.set()
         return self.status(user_id)
 
-    def enqueue(self, user_id, event, *, due=None, repeat_seconds=0):
+    def enqueue(self, user_id, event, *, due=None, repeat_seconds=0, db=None):
         now = utc_now()
         due = due or now
         alarm = event["kind"] in {"wake_request", "reminder_due", "wake", "love_alarm"}
-        limit = self.settings(user_id)["repeat_limit_minutes"]
+        limit = self.settings(user_id)["repeat_limit_minutes"] if repeat_seconds else 0
         expires = (due + dt.timedelta(minutes=limit) if limit else dt.datetime.max.replace(tzinfo=dt.timezone.utc)) if repeat_seconds else due + dt.timedelta(minutes=5 if alarm else 60)
         event = dict(event) | {"payload": dict(event.get("payload", {})) | {"_push_due_at": due.isoformat()}}
-        with self.app.database.connect() as db:
-            db.execute("INSERT OR IGNORE INTO push_jobs(id,user_id,event,next_at,expires_at,repeat_seconds) VALUES(?,?,?,?,?,?)", (event["id"], user_id, json.dumps(event, ensure_ascii=False), due.isoformat(), expires.isoformat(), repeat_seconds))
+        connection = db or self.app.database.connect()
+        try:
+            connection.execute("INSERT OR IGNORE INTO push_jobs(id,user_id,event,next_at,expires_at,repeat_seconds) VALUES(?,?,?,?,?,?)", (event["id"], user_id, json.dumps(event, ensure_ascii=False), due.isoformat(), expires.isoformat(), repeat_seconds))
+        finally:
+            if db is None: connection.close()
         self.wake.set()
 
     @staticmethod
@@ -1004,7 +1009,7 @@ class NotificationHub:
         settings = settings or self.settings(user_id)
         ok = True
         for part in self.chunks(event["body"], 3500):
-            body = {"topic": settings["ntfy_topic"], "title": event["title"], "message": part, "priority": 3, "tags": ["heart"], "click": self.navigation_url(event, user_id, web=True)}
+            body = {"topic": settings["ntfy_topic"], "title": event["title"], "message": part, "priority": 4 if event.get("payload", {}).get("notification_priority") == "urgent" else 3, "tags": ["heart"], "click": self.navigation_url(event, user_id, web=True)}
             headers = {"Content-Type": "application/json"}
             if settings["ntfy_access_token"]:
                 headers["Authorization"] = "Bearer " + settings["ntfy_access_token"]
@@ -1042,7 +1047,7 @@ class NotificationHub:
             return "failed"
         category = "alarm" if alarm else ("chat" if "chat" in event["kind"] or "comment" in event["kind"] else "poop" if "poop" in event["kind"] else "fart" if "fart" in event["kind"] else "photo" if "moment" in event["kind"] or "photo" in event["kind"] or "instant" in event["kind"] else "heart")
         params = {"title": event["title"], "group": "RJ Love · " + category, "icon": self.public_url() + "/push-icons/" + category + ".png", "isArchive": "1",
-                  "level": "passive" if quiet["active"] else ("critical" if alarm and settings["allow_critical"] else "active"),
+                  "level": "passive" if quiet["active"] else ("critical" if alarm and settings["allow_critical"] else "timeSensitive" if event.get("payload", {}).get("notification_priority") == "urgent" else "active"),
                   "sound": settings["sound"] if alarm else "minuet", "volume": str(settings["volume"])}
         if alarm and settings["allow_critical"]:
             params["call"] = "1"
@@ -1443,7 +1448,7 @@ class RJLoveApplication:
                 "notify_on_enter", "notify_on_exit",
             },
             "calendar": {"title", "start_at", "end_at", "location", "notes", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"},
-            "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id"}, "wish": {"title", "text", "completed"},
+            "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id", "notification_priority"}, "wish": {"title", "text", "completed"},
             "ritual": {"title","text","message","notes","day","start_at"},
             "poop": {"title","text","location","latitude","longitude","captured_at","duration","rating","emoji"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
@@ -1643,6 +1648,7 @@ class RJLoveApplication:
             if key in clean: text_field(key,80)
         if "recurrence" in clean and clean["recurrence"] not in {"none","yearly"}: raise APIError(400,"invalid_recurrence","Wiederholung ungültig.")
         if clean.get("captured_at") and parse_iso(clean["captured_at"]) is None: raise APIError(400,"invalid_date","Aufnahmedatum ungültig.")
+        if "notification_priority" in clean and (not isinstance(clean["notification_priority"],str) or clean["notification_priority"] not in {"normal", "urgent"}): raise APIError(400,"invalid_priority","Nachrichtenpriorität ungültig.")
         if "urgency" in clean and (isinstance(clean["urgency"],bool) or not isinstance(clean["urgency"],(float,int)) or not 0<=clean["urgency"]<=1): raise APIError(400,"invalid_urgency","Dringlichkeit ungültig.")
         if "poster_base64" in clean:
             text_field("poster_base64",450000)
@@ -1858,7 +1864,7 @@ class RJLoveApplication:
                 connection.close()
         # Exactly one primary external provider; no second RJ alert on polling.
         if kind not in {"wake_request", "record_photo_request"}:
-            self.notification_hub.enqueue(target_id, event)
+            self.notification_hub.enqueue(target_id, event, db=db)
         return event
 
     def broadcast_event(
@@ -2038,7 +2044,7 @@ class RJLoveApplication:
         cards = ["heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
         return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts()}, "revision": 0}
 
-    def bootstrap(self, user_id: str) -> dict[str, Any]:
+    def bootstrap(self, user_id: str, compact_media=False) -> dict[str, Any]:
         day = self.local_day()
         with self.database.connect() as db:
             presences = {row["user_id"]: json.loads(row["payload"]) | {"updated_at": row["updated_at"]}
@@ -2074,6 +2080,9 @@ class RJLoveApplication:
             }
             for row in record_rows
         ]
+        if compact_media:
+            for record in records:
+                if record["kind"] in {"moment", "instant"}: record["payload"].pop("poster_base64",None)
         commands = [
             {
                 "id": row["id"], "owner_id": row["owner_id"], "target_id": row["target_id"],
@@ -2491,7 +2500,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(200, {"ready": not issues and devices > 0, "issues": issues, "bundle_id": self.app.config["apns"].get("bundle_id", ""), "registered_devices": devices, "attempts": attempts, "automatic_setup": self.app.push_setup_status})
                 return
             if path == "/v1/bootstrap":
-                self.send_json(HTTPStatus.OK, self.app.bootstrap(self.current_user()))
+                self.send_json(HTTPStatus.OK, self.app.bootstrap(self.current_user(), compact_media=version_tuple(self.headers.get("X-RJ-App-Version","")) >= (3,9,2)))
                 return
             if len(parts)==4 and parts[:2]==["v1","farts"] and parts[3]=="comments":
                 self.current_user()
@@ -2791,6 +2800,46 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.current_user()
             offset=self._page_number(query,"offset",0,10000000)
             self.send_json(200,{"events":self.app.thought_history(200,offset)});return True
+        if path=="/v1/gallery":
+            self.current_user()
+            limit=self._page_number(query,"limit",60,100)
+            limit=max(1,limit)
+            where=["kind='moment'", "deleted_at IS NULL"]; args=[]
+            stamp="COALESCE(json_extract(payload,'$.captured_at'),created_at)"
+            owner=query.get("owner",[""])[0]
+            if owner:
+                if not self.app.user_by_id(owner): raise APIError(400,"invalid_owner","Galeriekonto unbekannt.")
+                where.append("owner_id=?");args.append(owner)
+            album=query.get("album",[""])[0]
+            if album: where.append("json_extract(payload,'$.album_id')=?");args.append(album)
+            search=query.get("query",[""])[0][:500]
+            if search: where.append("instr(lower(COALESCE(json_extract(payload,'$.caption'),'')),lower(?))>0");args.append(search)
+            cursor=query.get("cursor",[""])[0]
+            if cursor:
+                try:
+                    anchor=json.loads(base64.urlsafe_b64decode(cursor+"="*((-len(cursor))%4)))
+                    if not parse_iso(anchor["at"]): raise ValueError()
+                    uuid.UUID(anchor["id"])
+                except (ValueError,TypeError,KeyError,binascii.Error): raise APIError(400,"invalid_cursor","Galerieseite ungültig.")
+                where.append(f"(julianday({stamp})<julianday(?) OR (julianday({stamp})=julianday(?) AND id<?))")
+                args += [anchor["at"],anchor["at"],anchor["id"]]
+            with self.app.database.connect() as db:
+                rows=db.execute(f"SELECT *,{stamp} AS gallery_at FROM records WHERE {' AND '.join(where)} ORDER BY julianday({stamp}) DESC,id DESC LIMIT ?",(*args,limit+1)).fetchall()
+            shown=rows[:limit];records=[self._record_dict(r) for r in shown]
+            for record in records: record["payload"].pop("poster_base64",None)
+            next_cursor=b64url(json_bytes({"at":shown[-1]["gallery_at"],"id":shown[-1]["id"]})) if len(rows)>limit else None
+            self.send_json(200,{"records":records,"next_cursor":next_cursor,"has_more":len(rows)>limit});return True
+        if len(parts)==4 and parts[:2]==["v1","moments"] and parts[3]=="thumbnail":
+            self.current_user()
+            with self.app.database.connect() as db: row=db.execute("SELECT payload FROM records WHERE id=? AND kind IN ('moment','instant') AND deleted_at IS NULL",(parts[2],)).fetchone()
+            if not row: raise APIError(404,"not_found","Moment wurde zurückgerufen.")
+            payload=json.loads(row[0]);encoded=payload.get("poster_base64") or payload.get("image_base64")
+            if encoded:
+                raw=base64.b64decode(encoded);mime="image/png" if raw.startswith(b"\x89PNG") else payload.get("mime_type","image/jpeg")
+                self.push_bytes(raw,mime);return True
+            if payload.get("asset_ids") and payload.get("media_kind","image") != "video":
+                self._asset_bytes(payload["asset_ids"][0],user_id=self.current_user());return True
+            raise APIError(404,"no_preview","Keine Vorschau vorhanden.")
         if path=="/v1/records/archive":
             self.current_user();kind=query.get("kind",["chat"])[0]
             if kind not in ALLOWED_RECORD_KINDS: raise APIError(400,"invalid_kind","Archiv unbekannt.")
@@ -2946,6 +2995,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 self.app.enforce_quota(user_id,len(raw.encode()),db=db)
                 db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)",(record_id,"instant",user_id,raw,len(raw.encode()),now,now))
                 prior["completed"]=True;db.execute("UPDATE records SET payload=?,updated_at=? WHERE id=?",(json.dumps(prior),now,parts[2]))
+                sender=self.app.user_by_id(user_id)["display_name"]
+                self.app.create_event(request["owner_id"],"photo_request_completed",f"{sender} hat deinen Fotowunsch erfüllt 📸","Dein Foto ist da."+("\n"+caption if caption else ""),{"record_id":record_id,"request_id":parts[2]},db=db)
             self.send_json(200,{"id":record_id,"kind":"instant","owner_id":user_id,"payload":payload,"created_at":now,"updated_at":now});return True
         return False
 
@@ -3282,6 +3333,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 )
             owner_id = str(old["owner_id"]) if old else user_id
             prior_payload=json.loads(old["payload"]) if old else {}
+            if old and kind in {"moment","instant"} and "poster_base64" not in payload and prior_payload.get("poster_base64"):
+                payload["poster_base64"]=prior_payload["poster_base64"];raw_payload=json.dumps(payload,ensure_ascii=False);size=len(raw_payload.encode())
             if kind=="ritual":
                 if old and (owner_id!=user_id or prior_payload.get("day")!=payload["day"]):
                     raise APIError(403,"ritual_owner","Nur dein eigener Beitrag dieses Tages kann geändert werden.")
@@ -3341,9 +3394,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         title, phrase = labels.get(kind,("Ein Moment für uns","hat etwas Neues für dich geteilt."))
         content = "\n".join(str(payload[k]) for k in ("title", "text", "message", "caption", "notes", "location") if isinstance(payload.get(k), str) and payload[k])
         if kind == "chat":
-            title = f"{sender['display_name']} hat dir geschrieben 💌"
+            title = (f"Dringende Nachricht von {sender['display_name']} ❗" if payload.get("notification_priority") == "urgent" else f"{sender['display_name']} hat dir geschrieben 💌")
         preview = f"{sender['display_name']} {phrase}" + ("\n" + content if content else "")
-        self.app.broadcast_event(user_id, f"record_{kind}", title, preview, {"record_id": record_id})
+        self.app.broadcast_event(user_id, f"record_{kind}", title, preview, {"record_id": record_id, **({"notification_priority": "urgent"} if kind == "chat" and payload.get("notification_priority") == "urgent" else {})})
         self.send_json(
             HTTPStatus.OK,
             {"id": record_id, "kind": kind, "owner_id": owner_id, "payload": record_payload_wire(kind,payload), "created_at": created_at, "updated_at": now},

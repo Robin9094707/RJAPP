@@ -1,4 +1,6 @@
-# RJ Love 3.9.1
+Aktuelles Update: [Quadratische Galerie, dringende Nachrichten und Widgets 3.9.2](RELEASE-3.9.2.md). Vorhandene Daten und Bark-/ntfy-Kopplungen behalten.
+
+# RJ Love 3.9.2
 
 Aktuelles Update: [Direkte Bark-Links, versteckte Fotowünsche und Tastatursteuerung 3.9.1](RELEASE-3.9.1.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 

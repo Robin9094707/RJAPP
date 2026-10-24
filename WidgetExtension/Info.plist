@@ -25,5 +25,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>RJAppGroupIdentifier</key>
+	<string>group.dfbc88d056a46f1b.1</string>
 </dict>
 </plist>

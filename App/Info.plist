@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>eu.rjuhas.rjlove.refresh</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>de</string>
 	<key>CFBundleDisplayName</key>
@@ -18,58 +22,6 @@
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>UILaunchScreen</key>
-	<dict/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
-	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
-	<true/>
-	<key>NSAlarmKitUsageDescription</key>
-	<string>RJ Love verwendet AlarmKit für ausdrücklich bestätigte Weckrufe und gemeinsame Erinnerungen, damit sie zuverlässig als iOS-Systemalarm erscheinen.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>RJ Love zeigt deinen Standort ausschließlich deinem verbundenen Partner auf der privaten Karte.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Die „Immer“-Freigabe ermöglicht partnerbezogene Standortupdates und freiwillig eingerichtete Ortsbenachrichtigungen auch im Hintergrund.</string>
-	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
-	<dict>
-		<key>PartnerMapPrecision</key>
-		<string>Ein genauer Standort verbessert die Partnerkarte, Distanzanzeige und Geofence-Zuverlässigkeit.</string>
-	</dict>
-	<key>NSMotionUsageDescription</key>
-	<string>Bewegung &amp; Fitness erkennt energiesparend, ob du läufst, Fahrrad oder Auto fährst, und zeigt diesen freiwillig geteilten Status deinem Partner.</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>RJ Love liest nach deiner Auswahl Aktivität, Schlafphasen, Vitalwerte und Körpermessungen wie Gewicht, Temperatur und Blutdruck. Welche Zusammenfassungen Raphaela oder Robin sehen darf, legst du getrennt in der App fest.</string>
-	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>RJ Love greift nur nach Bestätigung auf deinen Kalender zu, wenn du einen ausgewählten gemeinsamen Termin in deinen iOS-Kalender übernehmen möchtest.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>RJ Love verbindet sich auf Wunsch direkt mit deinem privaten Python-Server im lokalen Netzwerk.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>audio</string>
-		<string>location</string>
-		<string>fetch</string>
-		<string>remote-notification</string>
-		<string>nearby-interaction</string>
-	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>eu.rjuhas.rjlove.refresh</string>
-	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -81,6 +33,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>RJ Love verwendet AlarmKit für ausdrücklich bestätigte Weckrufe und gemeinsame Erinnerungen, damit sie zuverlässig als iOS-Systemalarm erscheinen.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -88,17 +44,63 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSNearbyInteractionUsageDescription</key>
-	<string>Wenn ihr beide die Nahbereichssuche öffnet, misst RJ Love per Ultra-Breitband eure Entfernung und Richtung.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>RJ Love nimmt deine Duftpost und Sprachnachrichten nur im sichtbaren Recorder auf. Du kannst sie vor dem Teilen anhören.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>RJ Love greift nur nach Bestätigung auf deinen Kalender zu, wenn du einen ausgewählten gemeinsamen Termin in deinen iOS-Kalender übernehmen möchtest.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Für Fotowünsche öffnet RJ Love sichtbar die Kamera und nimmt ohne Countdown ein Foto auf. Bei aktiver Nahsuche verwendet iOS die Kamera optional zur Kalibrierung des Richtungspfeils; dabei werden keine Bilder gespeichert oder geteilt.</string>
-	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>RJ Love synchronisiert ausschließlich eure ausgewählten gemeinsamen Aufgaben mit Apple Erinnerungen.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>RJ Love liest nach deiner Auswahl Aktivität, Schlafphasen, Vitalwerte und Körpermessungen wie Gewicht, Temperatur und Blutdruck. Welche Zusammenfassungen Raphaela oder Robin sehen darf, legst du getrennt in der App fest.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>RJ Love verbindet sich auf Wunsch direkt mit deinem privaten Python-Server im lokalen Netzwerk.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Die „Immer“-Freigabe ermöglicht partnerbezogene Standortupdates und freiwillig eingerichtete Ortsbenachrichtigungen auch im Hintergrund.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>PartnerMapPrecision</key>
+		<string>Ein genauer Standort verbessert die Partnerkarte, Distanzanzeige und Geofence-Zuverlässigkeit.</string>
+	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RJ Love zeigt deinen Standort ausschließlich deinem verbundenen Partner auf der privaten Karte.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>RJ Love nimmt deine Duftpost und Sprachnachrichten nur im sichtbaren Recorder auf. Du kannst sie vor dem Teilen anhören.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Bewegung &amp; Fitness erkennt energiesparend, ob du läufst, Fahrrad oder Auto fährst, und zeigt diesen freiwillig geteilten Status deinem Partner.</string>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>Wenn ihr beide die Nahbereichssuche öffnet, misst RJ Love per Ultra-Breitband eure Entfernung und Richtung.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Speichere ausgewählte gemeinsame Fotos und Videos zurück in deiner Mediathek.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>RJ Love verwendet nur von dir ausgewählte Fotos, Videos und Live Photos zum Teilen und liest verfügbare Aufnahmedaten.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>RJ Love synchronisiert ausschließlich eure ausgewählten gemeinsamen Aufgaben mit Apple Erinnerungen.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>RJAppGroupIdentifier</key>
+	<string>group.dfbc88d056a46f1b.1</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+		<string>nearby-interaction</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>

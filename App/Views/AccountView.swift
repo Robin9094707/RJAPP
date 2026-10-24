@@ -53,9 +53,12 @@ struct CapabilitiesView: View {
                 row("Präzise Nahbereichssuche", appState.nearby.supported ? "UWB-Hardware verfügbar" : "Auf diesem Gerät nicht verfügbar", "dot.radiowaves.left.and.right", appState.nearby.supported)
                 row("Live-Aktivität", appState.liveActivity.isRunning ? "Aktiv" : "Bereit zum Start auf der Wir-Seite", "livephoto", appState.liveActivity.isRunning)
             }
+            Section("Widget-Verbindung im Detail") {
+                NavigationLink("App Group & Erweiterung prüfen"){WidgetDiagnosticsView()}
+            }
             Section("Signieren mit ArcticSign / Feather") {
-                Text("Signiere die Haupt-App und die eingebettete Widget-Extension zusammen. Behalte deren zusammengehörige Bundle-IDs und dieselbe App Group bei. HealthKit, Push to Talk und APNs brauchen passende Berechtigungen im Provisioningprofil. Ein Signaturdienst kann diese Apple-Berechtigungen nicht allein durch Hinzufügen von Text freischalten.")
-                Text("Ohne APNs kann der Server optional allgemeine Hinweise über ntfy senden. Dafür installiert ihr zusätzlich die ntfy-App und abonniert den jeweils eigenen privaten Topic. Die RJ-Love-App selbst wird dadurch nicht dauerhaft im Hintergrund ausgeführt.")
+                Text("Signiere die Haupt-App und die eingebettete Widget-Extension zusammen. Behalte deren zusammengehörige Bundle-IDs und dieselbe App Group bei. HealthKit und eigene APNs brauchen passende Berechtigungen im Provisioningprofil. Ein Signaturdienst kann diese Apple-Berechtigungen nicht allein durch Hinzufügen von Text freischalten.")
+                Text("Bark oder ntfy senden eure vollständigen Hinweise unabhängig von den eigenen RJ-APNs. Dafür installiert ihr zusätzlich die ntfy-App und abonniert den jeweils eigenen privaten Topic. Die RJ-Love-App selbst wird dadurch nicht dauerhaft im Hintergrund ausgeführt.")
                 Text("Widgets werden nach iOS-Zeitplan aktualisiert. Live-Aktivitäten zeigen den letzten empfangenen Stand; eine veraltete Anzeige wird als solche markiert. Kritische Hinweise werden nicht angefordert.")
             }.font(.footnote)
         }.navigationTitle("Funktionen & Signatur")
@@ -66,3 +69,4 @@ struct CapabilitiesView: View {
         } icon: { Image(systemName: symbol).foregroundStyle(available ? Color.green : Color.orange) }
     }
 }
+

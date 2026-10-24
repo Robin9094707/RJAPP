@@ -99,6 +99,7 @@ final class AppState {
         statusMessage = UserDefaults.standard.string(forKey: "rjlove.status-message") ?? "Bin für dich da 💗"
         shareWiFiName = UserDefaults.standard.bool(forKey: "rjlove.share-wifi-name")
         profile = Self.loadProfile()
+        WidgetSharedStore.migrateLegacyAppData()
         configureCallbacks()
         restoreSession()
         #if DEBUG
@@ -602,8 +603,9 @@ final class AppState {
             do { try await self.api.registerLiveActivity(id: id, token: token, environment: SigningProfile.current.pushEnvironment) }
             catch { DebugLogger.shared.log("Live-Push: \(error.localizedDescription)", category: "Push") }
         }
+        location.onSharingChanged = { [weak self] in Task { @MainActor in self?.updateWidgetSnapshot();self?.queuePresenceUpload(force:true) } }
         location.onLocation = { [weak self] _ in
-            Task { @MainActor in self?.queuePresenceUpload() }
+            Task { @MainActor in self?.queuePresenceUpload();self?.updateWidgetSnapshot() }
         }
         location.onGeofenceEvent = { [weak self] id, name, event in
             Task { @MainActor in
@@ -638,15 +640,15 @@ final class AppState {
 
     func acceptQuickCaptureRequest(){
         guard phase == .authenticated else {return}
-        if let route=WidgetSharedStore.defaults.string(forKey:"rjlove.route-requested"),let url=URL(string:route) {
-            WidgetSharedStore.defaults.removeObject(forKey:"rjlove.route-requested");handleDeepLink(url)
+        if let route=WidgetSharedStore.defaults?.string(forKey:"rjlove.route-requested"),let url=URL(string:route) {
+            WidgetSharedStore.defaults?.removeObject(forKey:"rjlove.route-requested");handleDeepLink(url)
         }
-        if let values=WidgetSharedStore.defaults.dictionary(forKey:"rjlove.status-requested"),let text=values["text"] as? String {
-            WidgetSharedStore.defaults.removeObject(forKey:"rjlove.status-requested")
+        if let values=WidgetSharedStore.defaults?.dictionary(forKey:"rjlove.status-requested"),let text=values["text"] as? String {
+            WidgetSharedStore.defaults?.removeObject(forKey:"rjlove.status-requested")
             Task { _ = await setStatus(text:text,hours:values["hours"] as? Int ?? 2,quiet:values["quiet"] as? Bool ?? false) }
         }
-        if phase == .authenticated,WidgetSharedStore.defaults.bool(forKey:"rjlove.quick-fart-requested") {
-            WidgetSharedStore.defaults.set(false,forKey:"rjlove.quick-fart-requested")
+        if phase == .authenticated,WidgetSharedStore.defaults?.bool(forKey:"rjlove.quick-fart-requested") == true {
+            WidgetSharedStore.defaults?.set(false,forKey:"rjlove.quick-fart-requested")
             handleDeepLink(URL(string:"rjlove://record-fart")!)
         }
     }
@@ -721,6 +723,16 @@ final class AppState {
             partnerThoughts: partnerThoughtCount,
             lastSync: lastSync?.rjISO8601
         )
+        let presence=partner?.presence
+        value.locationSharing=presence?.locationSharing==true
+        if presence?.locationSharing==true {value.locationUpdatedAt=presence?.locationTimestamp}
+        if location.sharingEnabled,(location.authorizationStatus == .authorizedAlways || location.authorizationStatus == .authorizedWhenInUse),presence?.locationSharing==true,
+           let stamp=presence?.locationTimestamp?.rjDate,abs(stamp.timeIntervalSinceNow)<1800,
+           let mine=location.lastLocation,mine.horizontalAccuracy>=0,abs(mine.timestamp.timeIntervalSinceNow)<1800,
+           let lat=presence?.latitude,let lon=presence?.longitude,lat.isFinite,lon.isFinite,abs(lat)<=90,abs(lon)<=180 {
+            value.distanceMeters=Int(mine.distance(from:CLLocation(latitude:lat,longitude:lon)))
+            value.distanceValidUntil=min(stamp,mine.timestamp).addingTimeInterval(1800).rjISO8601
+        }
         value.partnerSteps = partner?.presence?.steps
         value.partnerSleepMinutes = partner?.presence?.sleepMinutes
         let countdowns=records.compactMap{LoveCountdown(record:$0)}.sorted{($0.nextDate() ?? .distantFuture)<($1.nextDate() ?? .distantFuture)}

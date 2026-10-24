@@ -122,6 +122,7 @@ struct MomentReaction: Codable, Identifiable, Hashable, Sendable {
 }
 
 struct RecordPayload: Codable, Hashable, Sendable {
+    var notificationPriority:String? = nil
     var title: String?
     var text: String?
     var message: String?
@@ -164,6 +165,7 @@ struct RecordPayload: Codable, Hashable, Sendable {
     var emoji:String? = nil
 
     enum CodingKeys: String, CodingKey {
+        case notificationPriority="notification_priority"
         case title, text, message, completed, caption, comments, reactions, name
         case latitude, longitude, radius, notes, location
         case dueAt = "due_at"

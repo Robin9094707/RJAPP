@@ -18,7 +18,7 @@ struct RJLoveHealthWidget: Widget {
                     }
                 }
                 if let date = entry.snapshot.lastSync?.rjDate { Text("App-Abgleich \(date, style: .relative)").font(.caption2).foregroundStyle(.secondary) }
-            }.containerBackground(.fill.tertiary, for: .widget).widgetURL(URL(string: "rjlove://health"))
+            }.modifier(WidgetConnectionStatus()).containerBackground(.fill.tertiary, for: .widget).widgetURL(URL(string: "rjlove://health"))
         }.configurationDisplayName("Euer Wohlgefühl").description("Bewusst geteilte Schritte und Schlafdauer. Zeigt den letzten App-Abgleich.").supportedFamilies([.systemMedium])
     }
 }
@@ -29,7 +29,7 @@ struct RJLoveCountdownWidget: Widget {
             let items=entry.snapshot.countdowns ?? []
             let item=items.first{$0.anniversary} ?? items.first
             CountdownWidgetFace(item:item,now:entry.date)
-                .containerBackground(.fill.tertiary,for:.widget).widgetURL(URL(string:"rjlove://countdowns"))
+                .modifier(WidgetConnectionStatus()).containerBackground(.fill.tertiary,for:.widget).widgetURL(URL(string:"rjlove://countdowns"))
         }.configurationDisplayName("Unsere Zeit").description("Euer besonderer Tag als Countdown oder gemeinsame Tage.").supportedFamilies([.systemSmall])
     }
 }
@@ -37,7 +37,7 @@ struct RJLoveCountdownWidget: Widget {
 struct RJLoveLockWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "RJLoveLockWidget", provider: LoveTimelineProvider()) { entry in
-            LockLoveView(entry: entry).containerBackground(.fill.tertiary, for: .widget).widgetURL(URL(string: "rjlove://home"))
+            LockLoveView(entry: entry).modifier(WidgetConnectionStatus()).containerBackground(.fill.tertiary, for: .widget).widgetURL(URL(string: "rjlove://home"))
         }.configurationDisplayName("Ein Stück Wir").description("Herzgedanken auf eurem Sperrbildschirm.").supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
 }

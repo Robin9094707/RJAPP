@@ -5,7 +5,7 @@ import WidgetKit
 struct RJLoveFartQuickWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "RJLoveFartQuickWidget", provider: LoveTimelineProvider()) { entry in
-            FartQuickWidgetView().containerBackground(for: .widget) {
+            FartQuickWidgetView().modifier(WidgetConnectionStatus()).containerBackground(for: .widget) {
                 LinearGradient(colors: [Color(red: 0.20, green: 0.12, blue: 0.32), Color(red: 0.43, green: 0.24, blue: 0.53)], startPoint: .topLeading, endPoint: .bottomTrailing)
             }.widgetURL(URL(string: "rjlove://record-fart"))
         }.configurationDisplayName("Duftpost · Sofortaufnahme")

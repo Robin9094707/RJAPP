@@ -50,7 +50,7 @@ struct RJLovePersonalCountdownWidget:Widget {
     var body:some WidgetConfiguration {
         AppIntentConfiguration(kind:"RJLovePersonalCountdownWidget",intent:ChooseCountdownIntent.self,provider:CountdownProvider()) {entry in
             CountdownWidgetFace(item:entry.item,now:entry.date)
-                .containerBackground(.fill.tertiary,for:.widget).widgetURL(URL(string:"rjlove://countdowns"))
+                .modifier(WidgetConnectionStatus()).containerBackground(.fill.tertiary,for:.widget).widgetURL(URL(string:"rjlove://countdowns"))
         }.configurationDisplayName("Mein Countdown").description("Wähle euren Jahrestag oder einen eigenen Countdown. Jedes Widget kann einen anderen zeigen.").supportedFamilies([.systemSmall,.systemMedium,.accessoryRectangular])
     }
 }
@@ -85,3 +85,4 @@ struct CountdownWidgetFace:View {
         return days==0 ? "Heute ist euer Tag":days<0 ? "Seit \(abs(days)) Tagen":"Noch \(days) Tage"
     }
 }
+

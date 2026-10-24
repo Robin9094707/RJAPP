@@ -1,5 +1,6 @@
 import AVKit
 import Photos
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -8,20 +9,34 @@ struct MomentPreview:View {
     let record:SharedRecord
     @State private var image:UIImage?
     var body:some View {
+        GeometryReader { proxy in
         ZStack(alignment:.bottomTrailing){
             Color(.secondarySystemGroupedBackground)
-            if let image{Image(uiImage:image).resizable().scaledToFill()}
+            if let image{Image(uiImage:image).resizable().scaledToFill().frame(width:proxy.size.width,height:proxy.size.height).clipped()}
             else{Image(systemName:record.payload.mediaKind=="video" ? "video.fill":"photo").font(.title2).foregroundStyle(.secondary).frame(maxWidth:.infinity,maxHeight:.infinity)}
             if record.payload.mediaKind=="video"{Image(systemName:"play.fill").font(.caption.bold()).foregroundStyle(.white).padding(8).background(.black.opacity(0.4),in:Circle()).padding(7)}
             else if record.payload.mediaKind=="live"{Image(systemName:"livephoto").foregroundStyle(.white).padding(8)}
-        }.clipped().task(id:record.id+record.updatedAt){await load()}
+        }.frame(width:proxy.size.width,height:proxy.size.height).clipped()
+        }.clipped().task(id:record.id+record.updatedAt){await load()}.onDisappear{image=nil}
     }
     private func load() async {
         let key=record.id+record.updatedAt
         if let cached=MomentPreviewCache.shared.image(for:key){image=cached;return}
         if let encoded=record.payload.posterBase64 ?? record.payload.imageBase64 {image=await MomentPreviewCache.shared.decode(encoded,key:key);return}
-        guard record.payload.mediaKind=="video",let id=record.payload.assetIDs?.first else{return}
         await MomentVideoPreviewGate.shared.enter();defer{Task{await MomentVideoPreviewGate.shared.leave()}}
+        guard !Task.isCancelled else{return}
+        if record.payload.mediaKind != "video" {
+            do {
+                let file=try await app.api.momentThumbnail(record.id);defer{try? FileManager.default.removeItem(at:file)}
+                let photo=await Task.detached(priority:.utility){()->UIImage? in
+                    guard let source=CGImageSourceCreateWithURL(file as CFURL,nil),let thumb=CGImageSourceCreateThumbnailAtIndex(source,0,[kCGImageSourceCreateThumbnailFromImageAlways:true,kCGImageSourceCreateThumbnailWithTransform:true,kCGImageSourceThumbnailMaxPixelSize:500] as CFDictionary)else{return nil}
+                    return UIImage(cgImage:thumb)
+                }.value
+                guard !Task.isCancelled else{return};if let photo{MomentPreviewCache.shared.save(photo,key:key);image=photo}
+            }catch{}
+            return
+        }
+        guard let id=record.payload.assetIDs?.first else{return}
         guard !Task.isCancelled else{return}
         do{
             let url=try await app.api.playbackURL(assetID:id),generator=AVAssetImageGenerator(asset:AVURLAsset(url:url))
@@ -148,3 +163,4 @@ private struct MomentZoomImage:UIViewRepresentable {
     func updateUIView(_ scroll:UIScrollView,context:Context){if let view=context.coordinator.imageView{view.image=image;if scroll.zoomScale==1{view.frame=scroll.bounds}}}
     final class Coordinator:NSObject,UIScrollViewDelegate {var imageView:UIImageView?;func viewForZooming(in scrollView:UIScrollView)->UIView?{imageView}}
 }
+

@@ -20,10 +20,12 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     @Published private(set) var accuracyAuthorization: CLAccuracyAuthorization
     @Published private(set) var lastLocation: CLLocation?
     @Published private(set) var lastError: String?
+    var onSharingChanged:(()->Void)?
     @Published var sharingEnabled: Bool {
         didSet {
             UserDefaults.standard.set(sharingEnabled, forKey: "rjlove.location-sharing")
             sharingEnabled ? start() : stop()
+            onSharingChanged?()
         }
     }
 

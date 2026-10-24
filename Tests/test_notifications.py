@@ -14,6 +14,7 @@ class ExternalPushTests(TestCase):
     request = backend.RJLoveBackendTests.request
     request_error = backend.RJLoveBackendTests.request_error
     login = backend.RJLoveBackendTests.login
+    raw_asset_request = backend.RJLoveBackendTests.raw_asset_request
     upload_asset = backend.RJLoveBackendTests.upload_asset
     upload_clip = backend.RJLoveBackendTests.upload_clip
 
@@ -271,3 +272,57 @@ class ExternalPushTests(TestCase):
         self.assertIn(ids[400],[c['id'] for c in result['comments']])
         self.assertEqual(len(result['comments']),70)
         self.assertEqual(result['comments'][20]['id'],ids[400])
+
+    def test_gallery_pages_are_compact_stable_and_legacy_data_survives(self):
+        import base64
+        hub=self.pause_worker();token=self.login();poster=base64.b64encode(b'preview-bytes').decode()
+        ids=[]
+        with self.app.database.connect() as db:
+            for index in range(135):
+                identifier=str(uuid.uuid4());ids.append(identifier)
+                stamp=(SERVER.utc_now()-dt.timedelta(minutes=index)).isoformat()
+                payload={'caption':'Galerie '+str(index),'image_base64':base64.b64encode(b'old-original').decode(),'mime_type':'image/jpeg','poster_base64':poster,'captured_at':stamp}
+                db.execute('INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)',(identifier,'moment','robin',json.dumps(payload),100,stamp,stamp))
+        page=self.request('/v1/gallery?limit=60',token=token)[1]
+        self.assertEqual(len(page['records']),60);self.assertTrue(page['has_more'])
+        self.assertTrue(all('poster_base64' not in r['payload'] and 'image_base64' not in r['payload'] for r in page['records']))
+        second=self.request('/v1/gallery?cursor='+page['next_cursor'],token=token)[1]
+        third=self.request('/v1/gallery?cursor='+second['next_cursor'],token=token)[1]
+        self.assertEqual([r['id'] for r in page['records']+second['records']+third['records']],ids)
+        self.assertFalse(third['has_more'])
+        self.assertEqual(len(self.request('/v1/gallery?query=Galerie%20134',token=token)[1]['records']),1)
+        self.assertEqual(self.request_error('/v1/gallery?cursor=invalid',token=token)[0],400)
+        original=self.app.bootstrap('robin')['records'][0]['payload']
+        self.assertEqual(original['poster_base64'],poster)
+        compact=self.app.bootstrap('robin',compact_media=True)['records'][0]['payload']
+        self.assertNotIn('poster_base64',compact)
+        with SERVER.urllib.request.urlopen(SERVER.urllib.request.Request(self.base+'/v1/moments/'+ids[0]+'/thumbnail',headers={'Authorization':'Bearer '+token,'X-RJ-App-Version':SERVER.APP_VERSION,'X-RJ-Protocol':str(SERVER.PROTOCOL_VERSION)})) as response:self.assertEqual(response.read(),b'preview-bytes')
+        record=page['records'][0];record['payload']['caption']='Bearbeitet'
+        self.request('/v1/records','POST',{'id':record['id'],'kind':'moment','payload':record['payload']},token)
+        with self.app.database.connect() as db:
+            stored=json.loads(db.execute('SELECT payload FROM records WHERE id=?',(record['id'],)).fetchone()[0])
+        self.assertEqual(stored['poster_base64'],poster);self.assertEqual(stored['image_base64'],base64.b64encode(b'old-original').decode())
+
+    def test_urgent_message_is_time_sensitive_without_alarm_or_repetition(self):
+        hub=self.pause_worker();token=self.login();partner=self.login('raphaela','raphaela-test-password');self.register(partner)
+        self.request('/v1/records','POST',{'id':str(uuid.uuid4()),'kind':'chat','payload':{'text':'Bitte schau kurz aufs Handy','notification_priority':'urgent'}},token)
+        with self.app.database.connect() as db:
+            row=db.execute("SELECT * FROM events WHERE kind='record_chat'").fetchone();event=dict(row);event['payload']=json.loads(row['payload'])
+            self.assertEqual(db.execute('SELECT repeat_seconds FROM push_jobs WHERE id=?',(event['id'],)).fetchone()[0],0)
+        captured=[];hub.bark.push=lambda key,p,user:(captured.append(p) or True,'ok')
+        self.assertEqual(hub.send('raphaela',event),'sent');self.assertEqual(captured[0]['level'],'timeSensitive');self.assertNotIn('call',captured[0]);self.assertIn('Dringende Nachricht',captured[0]['title'])
+        self.request('/v1/notifications/settings','POST',{'quiet_schedules':[self.schedule(start='00:00',end='00:00',days=list(range(7)))]},partner)
+        hub.send('raphaela',event);self.assertEqual(captured[-1]['level'],'passive');self.assertNotIn('call',captured[-1])
+
+    def test_photo_success_notifies_requester_once_and_opens_the_photo(self):
+        hub=self.pause_worker();token=self.login();partner=self.login('raphaela','raphaela-test-password')
+        request=self.request('/v1/photo-requests','POST',{'id':str(uuid.uuid4()),'title':'Bitte lächeln'},token)[1]
+        asset=self.upload_asset(partner,b'photo')
+        path='/v1/photo-requests/'+request['id']+'/reply'
+        photo=self.request(path,'POST',{'asset_id':asset,'caption':'Hier ist dein Foto'},partner)[1]
+        self.request(path,'POST',{'asset_id':asset},partner)
+        with self.app.database.connect() as db:
+            events=db.execute("SELECT * FROM events WHERE kind='photo_request_completed'").fetchall()
+            self.assertEqual(len(events),1);event=dict(events[0]);event['payload']=json.loads(event['payload'])
+            self.assertTrue(db.execute('SELECT 1 FROM push_jobs WHERE id=?',(event['id'],)).fetchone())
+        self.assertEqual(event['target_id'],'robin');self.assertEqual(hub.navigation(event)['id'],photo['id']);self.assertIn('erfüllt',event['title'])

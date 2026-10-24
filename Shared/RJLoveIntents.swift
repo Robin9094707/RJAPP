@@ -10,6 +10,7 @@ struct SendThoughtIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let pending = WidgetSharedStore.addPendingThought()
         WidgetCenter.shared.reloadTimelines(ofKind: "RJLoveThoughtWidget")
+        if pending==0 {return .result(dialog:"Widget nicht verbunden. Bitte App-Group-Signierung prüfen und RJ Love öffnen.")}
         let message = pending == 1
             ? "Dein Gedanke ist vorgemerkt."
             : "\(pending) Gedanken warten auf den nächsten Sync."
@@ -37,14 +38,14 @@ struct EmergencyFartIntent: AppIntent {
     static var title: LocalizedStringResource = "Notfallfurz aufnehmen"
     static var openAppWhenRun = true
     @MainActor func perform() async throws -> some IntentResult {
-        WidgetSharedStore.defaults.set(true,forKey:"rjlove.quick-fart-requested")
+        WidgetSharedStore.defaults?.set(true,forKey:"rjlove.quick-fart-requested")
         NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
         return .result()
     }
 }
 
 private func requestLoveRoute(_ route:String) {
-    WidgetSharedStore.defaults.set(route,forKey:"rjlove.route-requested")
+    WidgetSharedStore.defaults?.set(route,forKey:"rjlove.route-requested")
     NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
 }
 struct OpenMomentsIntent:AppIntent {
@@ -65,7 +66,7 @@ struct SetLoveStatusIntent:AppIntent {
     @Parameter(title:"Stunden (0 = bis zur Änderung)",default:2) var hours:Int
     @Parameter(title:"Bitte nicht stören",default:false) var quiet:Bool
     @MainActor func perform() async throws -> some IntentResult {
-        WidgetSharedStore.defaults.set(["text":String(text.prefix(120)),"hours":min(8,max(0,hours)),"quiet":quiet],forKey:"rjlove.status-requested")
+        WidgetSharedStore.defaults?.set(["text":String(text.prefix(120)),"hours":min(8,max(0,hours)),"quiet":quiet],forKey:"rjlove.status-requested")
         NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
         return .result()
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ExperienceSection: String, CaseIterable, Identifiable {
-    case farts = "Duftpost", love = "Liebe", moments = "Momente"
+    case farts = "Duftpost", love = "Liebe", moments = "Momente", cinema = "Kino"
     var id: String { rawValue }
 }
 struct ExperienceView: View {
@@ -20,6 +20,7 @@ struct ExperienceView: View {
             case .farts: FartStudioView()
             case .love: LovePlayView()
             case .moments: MomentsView()
+            case .cinema: CinemaView()
             }
             }.id(state.experienceSection).transition(.opacity)
         }.animation(reduceMotion ? nil : .smooth(duration: 0.25), value: state.experienceSection)

@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Backend/rj_love_server.py
           python3 Scripts/validate_project.py
-          python3 -m unittest -v Tests/test_backend.py Tests/test_notifications.py
+          python3 -m unittest -v Tests/test_backend.py Tests/test_notifications.py Tests/test_cinema.py
           swiftc Shared/SleepModels.swift Tests/SleepAnalysisChecks.swift -o /tmp/rjlove-sleep-check
           /tmp/rjlove-sleep-check
           swiftc Shared/RelationshipMilestones.swift Tests/RelationshipChecks.swift -o /tmp/rjlove-relationship-check
@@ -114,9 +114,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-3.9.3-Komplettpaket
+          name: RJ-Love-4.0.0-Komplettpaket
           path: |
-            RJ-Love-3.9.3-Komplettpaket.zip
+            RJ-Love-4.0.0-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -198,4 +198,30 @@ jobs:
             Gallery-Attachments
             Gallery-Build.log
             Gallery-Layout.xcresult
+          if-no-files-found: warn
+
+  cinema:
+    name: Verify cinema interface
+    runs-on: macos-26
+    timeout-minutes: 35
+    if: contains(github.event.head_commit.message, '[cinema]')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build simulator app
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          set -o pipefail
+          xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Cinema-Build.log
+      - name: Verify media navigation
+        run: python3 Scripts/capture_cinema_preview.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RJ-Love-Cinema-Preview
+          path: |
+            Preview-Design-Kino*.png
+            UIAttachments-Cinema
+            Cinema-Build.log
+            Layout-Cinema.xcresult
           if-no-files-found: warn

@@ -22,12 +22,14 @@ struct RJLoveApp: App {
             switch phase {
             case .active:
                 // Resume independently of a still-finishing health/server sync.
+                CinemaCoordinator.shared.setForeground(true)
                 appState.nearby.resumeForeground()
                 Task { await appState.refreshNearbySearch() }
                 Task { await appState.activate() }
             case .inactive:
                 appState.prepareToLeaveForeground()
             case .background:
+                CinemaCoordinator.shared.setForeground(false)
                 appState.deactivateForeground()
             default:
                 break

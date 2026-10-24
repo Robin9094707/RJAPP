@@ -11,6 +11,8 @@ struct SettingsView:View {
             profileHero
             VStack(alignment:.leading,spacing:16){
                 LoveSectionTitle("Dein Alltag",subtitle:"Alles Wichtige für euer kleines Wir")
+                NavigationLink{CinemaView()}label:{LoveSettingsRow(title:"Unser Kino & AirPlay",subtitle:"YouTube, Plex und euer Fernsehabend",symbol:"play.tv.fill",tint:LovePalette.violet)}
+                Divider()
                 NavigationLink{StatusEditorView()}label:{LoveSettingsRow(title:"Mein Status",subtitle:app.myStatus?.visibleStatus ?? "Wie geht es dir gerade?",symbol:"person.crop.circle.badge.clock",tint:LovePalette.pink)}.accessibilityIdentifier("settings-status")
                 Divider()
                 NavigationLink{PartnerProfileView()}label:{LoveSettingsRow(title:app.partner?.displayName ?? "Dein Lieblingsmensch",subtitle:"Profil, Aktivität & Datenstände",symbol:"heart.fill",tint:LovePalette.violet)}

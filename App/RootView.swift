@@ -12,7 +12,8 @@ struct RootView:View {
             case .restoring:ProgressView(appState.connectionMessage).padding(30)
             case .authenticated:
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--verify-video-audio") {VideoAudioVerificationView()}
+                if ProcessInfo.processInfo.arguments.contains("--preview-cinema") {NavigationStack{CinemaView()}}
+                else if ProcessInfo.processInfo.arguments.contains("--verify-video-audio") {VideoAudioVerificationView()}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-instant-gallery") {NavigationStack{InstantGalleryView()}.fullScreenCover(item:Binding(get:{appState.pendingPhotoRequest},set:{appState.pendingPhotoRequest=$0})){InstantCameraView(request:$0)}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-gallery") {NavigationStack{MomentsView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-moment-map") {NavigationStack{MomentsView(mapOnOpen:true)}}
@@ -54,6 +55,9 @@ struct MainTabView:View {
         }
 
         .tint(LovePalette.pink)
+        .safeAreaInset(edge: .bottom, spacing: 0) { CinemaMiniPlayer() }
+        .task { CinemaCoordinator.shared.configure(app: appState) }
+        .onChange(of: appState.me?.id) { _, _ in CinemaCoordinator.shared.configure(app: appState) }
         .sheet(item:$state.notificationDestination,onDismiss:{appState.offerForegroundMoments()}) { route in NotificationDestinationView(route:route).id(route.id) }
         .sheet(isPresented:$state.showingEvening,onDismiss:{appState.didCloseEvening()}){NavigationStack{SharedJournalView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingEvening=false}}}}}
         .sheet(isPresented:$state.showingPartnerProfile){NavigationStack{PartnerProfileView()}.presentationDragIndicator(.visible)}
@@ -75,8 +79,10 @@ struct ChangelogView:View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
-                Text("Deine Nachricht.\nAuch wenn die App ruht.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.9.1").font(.title3.bold())
+                Text("Ein Film.\nEin Abend mit dir.").font(.system(size:38,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 4.0.0").font(.title3.bold())
+                Label("Unser Kino: YouTube, Plex und eine eigene AirPlay-TV-Ansicht",systemImage:"play.tv.fill")
+                Label("Gemeinsam steuern, Schlaftimer und getrennte Medienkonten",systemImage:"person.2.fill")
                 Label("Bark bringt dich direkt zur Nachricht oder zum Kommentar",systemImage:"bell.badge.fill")
                 Label("Kritische Bark-Weckrufe und Wiederholung bis zur Bestätigung",systemImage:"alarm.fill")
                 Label("Eigene Ruhezeiten mit Wochentagen und Nachtstatus",systemImage:"moon.zzz.fill")

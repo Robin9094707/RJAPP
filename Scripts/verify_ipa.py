@@ -26,6 +26,10 @@ with zipfile.ZipFile(root/'RJ-Love-unsigned.ipa') as archive:
     assert extension['CFBundleIdentifier']=='eu.rjuhas.rjlove.widgets'
     assert extension['CFBundleShortVersionString']==version
     assert extension['CFBundleVersion']==build
+    scenes = info['UIApplicationSceneManifest']['UISceneConfigurations']
+    external = scenes['UIWindowSceneSessionRoleExternalDisplayNonInteractive'][0]
+    assert external['UISceneDelegateClassName'].endswith('.LoveExternalSceneDelegate'), 'AirPlay scene missing'
+    assert 'audio' in info.get('UIBackgroundModes', []), 'Native Plex background playback mode missing'
     assert 'push-to-talk' not in info.get('UIBackgroundModes', []), 'Obsolete PTT mode still present'
     assert 'NSFaceIDUsageDescription' not in info, 'In-app Face ID lock still declared'
     assert info.get('NSCameraUsageDescription') and info.get('NSRemindersFullAccessUsageDescription')

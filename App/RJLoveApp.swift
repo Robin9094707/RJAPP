@@ -21,6 +21,9 @@ struct RJLoveApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
+                // Resume independently of a still-finishing health/server sync.
+                appState.nearby.resumeForeground()
+                Task { await appState.refreshNearbySearch() }
                 Task { await appState.activate() }
             case .inactive:
                 appState.prepareToLeaveForeground()

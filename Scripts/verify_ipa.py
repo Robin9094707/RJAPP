@@ -3,14 +3,18 @@
 from pathlib import Path
 import plistlib
 import zipfile
+import re
 
 root=Path(__file__).resolve().parents[1]
 with zipfile.ZipFile(root/'RJ-Love-unsigned.ipa') as archive:
     names=archive.namelist()
     app='Payload/RJ Love.app/'
     info=plistlib.loads(archive.read(app+'Info.plist'))
-    assert info['CFBundleShortVersionString']=='3.8.0'
-    assert info['CFBundleVersion']=='380'
+    project=(root/'project.yml').read_text()
+    version=re.search(r'MARKETING_VERSION: "([^"]+)"',project).group(1)
+    build=re.search(r'CURRENT_PROJECT_VERSION: "([^"]+)"',project).group(1)
+    assert info['CFBundleShortVersionString']==version
+    assert info['CFBundleVersion']==build
     import json
     quips=json.loads(archive.read(app+'Duftsprueche.json'))
     assert len(quips)==400 and len({q['id'] for q in quips})==400, 'Offline quips missing'
@@ -20,9 +24,12 @@ with zipfile.ZipFile(root/'RJ-Love-unsigned.ipa') as archive:
     assert app+'PrivacyInfo.xcprivacy' in names, 'Privacy manifest missing'
     extension=plistlib.loads(archive.read(app+'PlugIns/RJLoveWidgets.appex/Info.plist'))
     assert extension['CFBundleIdentifier']=='eu.rjuhas.rjlove.widgets'
+    assert extension['CFBundleShortVersionString']==version
+    assert extension['CFBundleVersion']==build
     assert 'push-to-talk' not in info.get('UIBackgroundModes', []), 'Obsolete PTT mode still present'
     assert 'NSFaceIDUsageDescription' not in info, 'In-app Face ID lock still declared'
     assert info.get('NSCameraUsageDescription') and info.get('NSRemindersFullAccessUsageDescription')
     assert info.get('NSPhotoLibraryUsageDescription'), 'Photo-library privacy purpose missing'
     assert info.get('NSMicrophoneUsageDescription'), 'Microphone purpose missing'
-print('IPA verified: version 3.8.0 (380), compiled app icon, resources, microphone purpose and widget extension.')
+print(f'IPA verified: version {version} ({build}), compiled app icon, resources, microphone purpose and widget extension.')
+

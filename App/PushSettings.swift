@@ -20,11 +20,13 @@ struct ExternalPushSettings: Codable, Equatable {
     var allowCritical = true
     var sound = "alarm"
     var volume = 10
+    var repeatLimitMinutes = 0
     var quietSchedules: [QuietSchedule] = []
     enum CodingKeys: String, CodingKey {
         case provider, sound, volume
         case barkDeviceKey = "bark_device_key", ntfyServerURL = "ntfy_server_url"
         case ntfyTopic = "ntfy_topic", ntfyAccessToken = "ntfy_access_token"
+        case repeatLimitMinutes = "repeat_limit_minutes"
         case fallbackNtfy = "fallback_ntfy", allowCritical = "allow_critical", quietSchedules = "quiet_schedules"
     }
 }

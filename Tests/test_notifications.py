@@ -144,11 +144,12 @@ class ExternalPushTests(TestCase):
         self.assertEqual(self.request(path,'POST',{'title':'Guten Morgen','body':'Kompletter Inhalt','alarm':True,'repeat_until_ack':True})[0],202)
         self.assertEqual(self.request_error(path+'bad','POST',{'body':'x'})[0],401)
         text='Meine vollständige Nachricht 💗\n' * 60
-        self.request('/v1/records','POST',{'id':str(uuid.uuid4()),'kind':'chat','payload':{'text':text}},partner)
+        self.request('/v1/records','POST',{'id':str(uuid.uuid4()),'kind':'chat','payload':{'text':text,'urgency':1}},partner)
         with self.app.database.connect() as db:
-            event=db.execute("SELECT title,body FROM events WHERE kind='record_chat' AND target_id='robin' ORDER BY created_at DESC LIMIT 1").fetchone()
+            event=db.execute("SELECT title,body,payload FROM events WHERE kind='record_chat' AND target_id='robin' ORDER BY created_at DESC LIMIT 1").fetchone()
         self.assertIn('Raphaela',event['title']); self.assertIn(text.strip(),event['body'])
         self.assertGreater(len(event['body']),500)
+        self.assertNotIn('critical',json.loads(event['payload'])) # Audio playback volume is not alarm urgency.
 
     def test_ntfy_never_repeats_and_fallback_not_double_send(self):
         hub=self.pause_worker(); token=self.login(); self.register(token)
@@ -171,3 +172,39 @@ class ExternalPushTests(TestCase):
         self.request('/v1/records/'+record['id'],'DELETE',token=token)
         with self.assertRaises(SERVER.urllib.error.HTTPError):SERVER.urllib.request.urlopen(url)
         with SERVER.urllib.request.urlopen(self.base+'/push-icons/poop.png') as response:self.assertEqual(response.headers['Content-Type'],'image/png')
+
+    def test_reminder_runs_without_app_and_is_deduplicated_across_restart(self):
+        hub=self.pause_worker(); token=self.login(); self.register(token)
+        due=SERVER.utc_now()+dt.timedelta(seconds=20)
+        self.request('/v1/records','POST',{'id':str(uuid.uuid4()),'kind':'reminder','payload':{'title':'Wasser trinken','message':'Jetzt ein Glas 💧','due_at':due.isoformat(),'target_id':'robin','alarm_enabled':True}},token)
+        with self.app.database.connect() as db:db.execute('DELETE FROM push_jobs')
+        captured=[];hub.bark.push=lambda key,p,user:(captured.append(p) or True,'ok')
+        hub.tick(due-dt.timedelta(seconds=1));self.assertEqual(captured,[])
+        hub.tick(due+dt.timedelta(seconds=1));self.assertEqual(len(captured),1)
+        self.assertEqual(captured[0]['title'],'Wasser trinken');self.assertEqual(captured[0]['body'],'Jetzt ein Glas 💧')
+        hub.tick(due+dt.timedelta(seconds=4));self.assertEqual(len(captured),1)
+        restarted=SERVER.RJLoveApplication(self.config,self.config_path)
+        try:
+            restarted.notification_hub.stop.set();restarted.notification_hub.wake.set();restarted.notification_hub.thread.join(timeout=3);restarted.notification_hub.stop.clear()
+            restarted.notification_hub.bark.push=lambda *args:self.fail('completed reminder must survive restart')
+            restarted.notification_hub.tick(due+dt.timedelta(seconds=8))
+        finally:restarted.close()
+
+    def test_recipient_repeat_limit_and_pending_legacy_alarm_migration(self):
+        hub=self.pause_worker(); token=self.login(); self.register(token)
+        self.request('/v1/notifications/settings','POST',{'repeat_limit_minutes':15},token)
+        now=SERVER.utc_now();event={'id':str(uuid.uuid4()),'kind':'wake_request','title':'Hallo','body':'Aufwachen','payload':{}}
+        sent=[];hub.bark.push=lambda key,p,user:(sent.append(p) or True,'ok')
+        hub.enqueue('robin',event,due=now,repeat_seconds=45);hub.tick(now);self.assertEqual(len(sent),1)
+        hub.tick(now+dt.timedelta(minutes=16));self.assertEqual(len(sent),1)
+        command_id=str(uuid.uuid4());due=now+dt.timedelta(hours=8)
+        with self.app.database.connect() as db:
+            db.execute('INSERT INTO commands(id,owner_id,target_id,kind,payload,due_at,created_at) VALUES(?,?,?,?,?,?,?)',(command_id,'raphaela','robin','wake',json.dumps({'message':'Alter geplanter Weckruf'}),due.isoformat(),now.isoformat()))
+        hub.migrate_commands()
+        with self.app.database.connect() as db:
+            command=json.loads(db.execute('SELECT payload FROM commands WHERE id=?',(command_id,)).fetchone()[0])
+            rows=[json.loads(r[0]) for r in db.execute('SELECT event FROM push_jobs')]
+        self.assertEqual(command['transport'],'bark')
+        self.assertEqual(sum(r['payload'].get('command_id')==command_id for r in rows),1)
+        hub.migrate_commands()
+        with self.app.database.connect() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM push_jobs').fetchone()[0],2)

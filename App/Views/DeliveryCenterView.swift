@@ -82,6 +82,15 @@ struct DeliveryCenterView: View {
                 Toggle("Kritische Weckrufe erlauben", isOn: $settings.allowCritical)
                 TextField("Bark-Sound (z. B. alarm)", text: $settings.sound).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder)
                 Stepper("Wecklautstärke: \(settings.volume)/10", value: $settings.volume, in: 0...10)
+                Picker("Wiederholungen beenden", selection: $settings.repeatLimitMinutes) {
+                    Text("Erst wenn ich bestätige").tag(0)
+                    Text("Nach 15 Minuten").tag(15)
+                    Text("Nach 30 Minuten").tag(30)
+                    Text("Nach einer Stunde").tag(60)
+                    Text("Nach drei Stunden").tag(180)
+                    Text("Nach acht Stunden").tag(480)
+                }
+                Text("Ruhezeiten stoppen Wiederholungen immer, auch ohne Zeitlimit.").font(.caption).foregroundStyle(.secondary)
                 Text("Eigene Töne zuerst in Bark importieren: CAF, höchstens 30 Sekunden. Hier den Namen eintragen.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Bei Bark-Sendefehler über ntfy versuchen", isOn: $settings.fallbackNtfy)
                 Text("Der Ersatzversand erfolgt nur bei einem erkannten Sendefehler. Eine von Apple angenommene Nachricht bestätigt den Empfang noch nicht.").font(.caption).foregroundStyle(.secondary)
@@ -145,7 +154,7 @@ struct DeliveryCenterView: View {
                 Label("Deine Weckrufe", systemImage: "alarm.waves.left.and.right.fill").font(.headline)
                 ForEach(status.activeAlarms) { alarm in
                     Text(alarm.message).font(.subheadline)
-                    Text("Alle 45 Sekunden · endet nach Bestätigung, bei Ruhezeit oder spätestens nach einer Stunde.").font(.caption).foregroundStyle(.secondary)
+                    Text("Alle 45 Sekunden · endet nach Bestätigung, bei Ruhezeit oder deiner gewählten Zeitgrenze.").font(.caption).foregroundStyle(.secondary)
                     Button("Bin wach · beenden", systemImage: "checkmark.circle.fill") {
                         Task { do { try await app.api.acknowledgePushAlarm(id: alarm.id); await refreshStatus() } catch { self.error = error.localizedDescription } }
                     }.buttonStyle(.borderedProminent)

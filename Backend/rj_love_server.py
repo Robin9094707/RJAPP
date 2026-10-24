@@ -792,7 +792,7 @@ class NotificationHub:
         default = {"provider": "bark", "bark_device_key": "", "ntfy_server_url": legacy.get("server_url", "https://ntfy.sh"),
                    "ntfy_topic": legacy.get("topics", {}).get(user_id) or "rjlove_" + secrets.token_urlsafe(24),
                    "ntfy_access_token": legacy.get("access_token", ""), "fallback_ntfy": False, "allow_critical": True,
-                   "sound": "alarm", "volume": 10, "quiet_schedules": [], "integration_secret": secrets.token_urlsafe(24)}
+                   "sound": "alarm", "volume": 10, "repeat_limit_minutes": 0, "quiet_schedules": [], "integration_secret": secrets.token_urlsafe(24)}
         # Serialize creation so a generated private ntfy topic remains stable.
         with self.lock, self.app.database.connect() as db:
             row = db.execute("SELECT payload FROM notification_settings WHERE user_id=?", (user_id,)).fetchone()
@@ -891,6 +891,8 @@ class NotificationHub:
             raise APIError(400, "invalid_ntfy_url", "ntfy benötigt eine HTTPS-Serveradresse ohne Pfad oder Zugangsdaten.")
         if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", value["ntfy_topic"]):
             raise APIError(400, "invalid_ntfy_topic", "Privates ntfy-Topic mit mindestens 16 Zeichen nötig.")
+        if type(value["repeat_limit_minutes"]) is not int or value["repeat_limit_minutes"] not in {0, 15, 30, 60, 180, 480}:
+            raise APIError(400, "invalid_repeat_limit", "Ungültige Wiederholungsgrenze.")
         if type(value["volume"]) is not int or not 0 <= value["volume"] <= 10:
             raise APIError(400, "invalid_volume", "Lautstärke muss zwischen 0 und 10 liegen.")
         if not re.fullmatch(r"[A-Za-z0-9_. -]{1,100}", value["sound"]):
@@ -927,7 +929,9 @@ class NotificationHub:
         now = utc_now()
         due = due or now
         alarm = event["kind"] in {"wake_request", "reminder_due", "wake", "love_alarm"}
-        expires = due + dt.timedelta(hours=1 if repeat_seconds else 0, minutes=0 if repeat_seconds else (5 if alarm else 60))
+        limit = self.settings(user_id)["repeat_limit_minutes"]
+        expires = (due + dt.timedelta(minutes=limit) if limit else dt.datetime.max.replace(tzinfo=dt.timezone.utc)) if repeat_seconds else due + dt.timedelta(minutes=5 if alarm else 60)
+        event = dict(event) | {"payload": dict(event.get("payload", {})) | {"_push_due_at": due.isoformat()}}
         with self.app.database.connect() as db:
             db.execute("INSERT OR IGNORE INTO push_jobs(id,user_id,event,next_at,expires_at,repeat_seconds) VALUES(?,?,?,?,?,?)", (event["id"], user_id, json.dumps(event, ensure_ascii=False), due.isoformat(), expires.isoformat(), repeat_seconds))
         self.wake.set()
@@ -1057,7 +1061,14 @@ class NotificationHub:
             for row in rows:
                 if self.stop.is_set():
                     return
+                event = json.loads(row["event"])
+                started = parse_iso(event.get("payload", {}).get("_push_due_at"))
                 expired = (parse_iso(row["expires_at"]) or now) < now
+                if row["repeat_seconds"] and started:
+                    limit = self.settings(row["user_id"])["repeat_limit_minutes"]
+                    expired = bool(limit and now > started + dt.timedelta(minutes=limit))
+                    # Do not wake someone with a stale, never-delivered alarm on restart.
+                    expired = expired or (row["attempts"] == 0 and now > started + dt.timedelta(minutes=5))
                 if expired:
                     result = "expired"
                 else:
@@ -1109,10 +1120,8 @@ class NotificationHub:
             targets = [p["target_id"]] if p.get("target_id") else [u["id"] for u in self.app.config["users"]]
             for target in targets:
                 occurrence = row["id"] + ":" + target + ":" + due.isoformat()
-                with self.app.database.connect() as db:
-                    inserted = db.execute("INSERT OR IGNORE INTO reminder_pushes VALUES(?,?)", (occurrence, iso_now())).rowcount
-                if not inserted:
-                    continue
+                # The deterministic job ID is the deduplication record itself:
+                # one SQLite insert survives a crash without an enqueue gap.
                 event = {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, occurrence)), "kind": "reminder_due" if p.get("alarm_enabled") else "reminder_notice", "title": p.get("title") or "Erinnerung", "body": p.get("message") or p.get("text") or p.get("notes") or p.get("title") or "Es ist Zeit 💗", "payload": {"record_id": row["id"]}}
                 self.enqueue(target, event, due=due)
 
@@ -3247,7 +3256,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if kind == "chat":
             title = f"{sender['display_name']} hat dir geschrieben 💌"
         preview = f"{sender['display_name']} {phrase}" + ("\n" + content if content else "")
-        self.app.broadcast_event(user_id, f"record_{kind}", title, preview, {"record_id": record_id, "critical": kind == "chat" and payload.get("urgency", 0) >= 0.8})
+        self.app.broadcast_event(user_id, f"record_{kind}", title, preview, {"record_id": record_id})
         self.send_json(
             HTTPStatus.OK,
             {"id": record_id, "kind": kind, "owner_id": owner_id, "payload": record_payload_wire(kind,payload), "created_at": created_at, "updated_at": now},

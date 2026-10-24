@@ -296,7 +296,7 @@ private struct WakeComposerView: View {
                     }
                     Toggle("Wiederholen, bis Schatzi bestätigt", isOn: $repeatUntilAck)
                         .disabled(partnerPush?.provider == "ntfy")
-                    Label("Bark klingelt bis zu 30 Sekunden. Optional alle 45 Sekunden erneut, bis zur Bestätigung, Ruhezeit oder spätestens einer Stunde. ntfy versendet nur normale Hinweise.", systemImage: "info.circle.fill")
+                    Label("Bark klingelt bis zu 30 Sekunden. Optional alle 45 Sekunden erneut, bis zur Bestätigung, Ruhezeit oder der gewählten Zeitgrenze. ntfy versendet nur normale Hinweise.", systemImage: "info.circle.fill")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

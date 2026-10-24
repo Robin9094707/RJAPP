@@ -85,7 +85,7 @@ struct MomentGalleryViewer:View {
             .sheet(item:$detail){MomentDetailView(initialMoment:$0)}
             .sheet(isPresented:$sharing,onDismiss:clearExports){FileShareView(urls:exportFiles)}
             .onDisappear{if !sharing{clearExports()}}
-            .onChange(of:app.records){_,values in let lookup=Dictionary(uniqueKeysWithValues:values.map{($0.id,$0)});records=records.compactMap{lookup[$0.id]};if records.isEmpty{dismiss()}else if !records.contains(where:{$0.id==selection}){selection=records[0].id}}
+            .onChange(of:app.records){_,values in let lookup=Dictionary(uniqueKeysWithValues:values.map{($0.id,$0)});records=records.compactMap{record in app.deletedRecordIDs.contains(record.id) ? nil:(lookup[record.id] ?? record)};if records.isEmpty{dismiss()}else if !records.contains(where:{$0.id==selection}){selection=records[0].id}}
             .onChange(of:selection){_,_ in message=nil}
         }
     }

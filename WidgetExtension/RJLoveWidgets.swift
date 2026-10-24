@@ -303,7 +303,6 @@ struct RJLoveWidgetBundle: WidgetBundle {
     var body: some Widget {
         RJLoveThoughtWidget()
         RJLoveStatusWidget()
-        RJPartnerLocationWidget()
         RJLoveHealthWidget()
         RJLoveCountdownWidget()
         RJLovePersonalCountdownWidget()

@@ -1048,7 +1048,7 @@ class NotificationHub:
         category = "alarm" if alarm else ("chat" if "chat" in event["kind"] or "comment" in event["kind"] else "poop" if "poop" in event["kind"] else "fart" if "fart" in event["kind"] else "photo" if "moment" in event["kind"] or "photo" in event["kind"] or "instant" in event["kind"] else "heart")
         params = {"title": event["title"], "group": "RJ Love · " + category, "icon": self.public_url() + "/push-icons/" + category + ".png", "isArchive": "1",
                   "level": "passive" if quiet["active"] else ("critical" if alarm and settings["allow_critical"] else "timeSensitive" if event.get("payload", {}).get("notification_priority") == "urgent" else "active"),
-                  "sound": settings["sound"] if alarm else "minuet", "volume": str(settings["volume"])}
+                  "sound": settings["sound"] if alarm else "bell" if event.get("payload", {}).get("notification_priority")=="urgent" else "minuet", "volume": str(settings["volume"])}
         if alarm and settings["allow_critical"]:
             params["call"] = "1"
         params["url"] = self.navigation_url(event, user_id, job)

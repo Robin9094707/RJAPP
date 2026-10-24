@@ -38,15 +38,7 @@ struct MomentsView:View {
             if moments.isEmpty && !loading{ContentUnavailableView("Unser nächster Lieblingsmoment",systemImage:"photo.stack.fill",description:Text("Teilt ein Foto, Video oder Live Photo miteinander."))}
             if mapMode {MomentsAtlasView(records:moments)}
             else {ForEach(monthGroups,id:\.key){group in
-                Text(group.date.formatted(.dateTime.month(.wide).year())).font(.title3.bold()).frame(maxWidth:.infinity,alignment:.leading).padding(.top,12)
-                let side=CGFloat(GalleryMetrics.tileSide(width:Double(geometry.size.width)))
-                LazyVGrid(columns:Array(repeating:GridItem(.fixed(side),spacing:3),count:3),spacing:3) {
-                    ForEach(group.values){moment in
-                        Button{selected=moment}label:{MomentPreview(record:moment).frame(width:side,height:side).clipped().contentShape(Rectangle())}
-                            .buttonStyle(.plain).accessibilityIdentifier("gallery-tile-"+moment.id)
-                            .accessibilityLabel((moment.payload.mediaKind=="video" ? "Video: ":"Foto: ")+(moment.payload.caption ?? "Unser Moment"))
-                    }
-                }
+                MomentMonthGrid(date:group.date,records:group.values,side:CGFloat(GalleryMetrics.tileSide(width:Double(geometry.size.width)))){selected=$0}
             }}
             if let galleryError {Text(galleryError).font(.caption).foregroundStyle(.orange);Button("Erneut laden"){Task{await loadPage(reset:gallery.isEmpty)}}}
             if hasMore && !loading {ProgressView().frame(maxWidth:.infinity).task{await loadPage()}}
@@ -89,6 +81,29 @@ struct MomentsView:View {
         return groups.keys.sorted(by:>).map{date in (key:date.rjISO8601,date:date,values:groups[date] ?? [])}
     }
 
+}
+private struct MomentMonthGrid:View {
+    let date:Date
+    let records:[SharedRecord]
+    let side:CGFloat
+    let onSelect:(SharedRecord)->Void
+    private var columns:[GridItem]{Array(repeating:GridItem(.fixed(side),spacing:3),count:3)}
+    var body:some View {
+        VStack(alignment:.leading,spacing:16){
+            Text(date.formatted(.dateTime.month(.wide).year())).font(.title3.bold()).frame(maxWidth:.infinity,alignment:.leading).padding(.top,12)
+            LazyVGrid(columns:columns,spacing:3){ForEach(records){record in MomentGridTile(record:record,side:side){onSelect(record)}}}
+        }
+    }
+}
+private struct MomentGridTile:View {
+    let record:SharedRecord
+    let side:CGFloat
+    let action:()->Void
+    private var title:String{(record.payload.mediaKind=="video" ? "Video: ":"Foto: ")+(record.payload.caption ?? "Unser Moment")}
+    var body:some View {
+        Button(action:action){MomentPreview(record:record).frame(width:side,height:side).clipped().contentShape(Rectangle())}
+            .buttonStyle(.plain).accessibilityIdentifier("gallery-tile-"+record.id).accessibilityLabel(title)
+    }
 }
 struct StorageSummaryView:View {
     @Environment(AppState.self) private var app

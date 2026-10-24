@@ -28,6 +28,7 @@ final class AppState {
     private(set) var me: UserProfile?
     private(set) var partners: [PartnerSnapshot] = []
     private(set) var records: [SharedRecord] = []
+    private(set) var deletedRecordIDs:Set<String> = []
     private(set) var thoughts: [String: Int] = [:]
     private(set) var storageUsedBytes = 0
     private(set) var features: ServerFeatures?
@@ -236,7 +237,7 @@ final class AppState {
         activity=[:]
         partners = []
         homeLayout = .standard; homeRevision = 0
-        records = []; archiveKinds=[];thoughtHistory=[];lastOpened=[:];openedRecords=[];storageByUser=[:]
+        records = []; deletedRecordIDs=[]; archiveKinds=[];thoughtHistory=[];lastOpened=[:];openedRecords=[];storageByUser=[:]
         farts = []
         studio.discard()
         showingFartRecorder = false
@@ -272,6 +273,7 @@ final class AppState {
             myStatus = snapshot.myPresence
             if let preferences = snapshot.preferences { applyPreferences(preferences) }
             let snapshotIDs=Set(snapshot.records.map(\.id));let deleted=Set(snapshot.deletedRecordIDs ?? [])
+            deletedRecordIDs=deleted
             let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deleted.contains($0.id)}
             records = snapshot.records + history
             dismissRecalledPhotoRequest()

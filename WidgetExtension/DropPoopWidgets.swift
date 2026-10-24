@@ -27,5 +27,5 @@ struct RelationshipMonthWidget:Widget {
     }
 }
 
-struct CoupleExtrasWidgets:WidgetBundle {var body:some Widget {EmergencyFartControl();DropPoopWidget();DropPoopControl();RelationshipMonthWidget()}}
+struct CoupleExtrasWidgets:WidgetBundle {var body:some Widget {RJPartnerLocationWidget();EmergencyFartControl();DropPoopWidget();DropPoopControl();RelationshipMonthWidget()}}
 

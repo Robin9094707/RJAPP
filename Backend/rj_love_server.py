@@ -52,7 +52,7 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.9.2"
+APP_VERSION = "4.0.0"
 MINIMUM_APP_VERSION = "3.9.2"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
@@ -329,6 +329,21 @@ class Database:
             db.execute("PRAGMA synchronous=NORMAL")
             db.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS cinema_rooms (
+                    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, provider TEXT NOT NULL,
+                    media_id TEXT NOT NULL, title TEXT NOT NULL, position REAL NOT NULL DEFAULT 0,
+                    playing INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1,
+                    updated REAL NOT NULL, expires REAL NOT NULL, sleep_until REAL,
+                    closed INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS cinema_members (
+                    room_id TEXT NOT NULL, user_id TEXT NOT NULL, seen REAL NOT NULL,
+                    playing INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(room_id,user_id)
+                );
+                CREATE TABLE IF NOT EXISTS cinema_stats (
+                    room_id TEXT PRIMARY KEY, provider TEXT NOT NULL, seconds REAL NOT NULL DEFAULT 0,
+                    accounted REAL NOT NULL, created REAL NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS fart_clips (
                     id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL,
                     caption TEXT NOT NULL, category TEXT NOT NULL, duration REAL NOT NULL,
@@ -686,13 +701,8 @@ class APNSProvider:
 # SOFTWARE.
 PUSH_ICONS = {'heart': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAACuElEQVR4nO2bUU7DQAwFH4jzwEE4ChyHo8BBuBEfCKmoKqWJ7bE3b34rxes3601apXfvjy8yHPf0Ao6OBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAzANY+/nz7dJHH0+va1S8yl396+l/pHBOSC71Ff9PnYCbUjhnQy71FTdQdA/YmcWGK9RX3Eb6BIS3cXVj1lfcQ+4EZGyiv69ZX3EniQLy1n3pyvUV95MlIPsAPb9+fcUQUgTU3L5Oq9RXjCJeQE0Wp7XqKwbinyJggh9DKzcjSOCDaeQEHCR9hXbqIwjGAmDCBBzn/Pkmql9PAIwFwMQIONr5801I154AGAuAsQAYC4CxABgLgLEAGAuAiRFAvdfHEtK1JwDGAmDCBBztFIrq1xMAYwEwkQKOcwo1fStCx3AQ26OPIJh4AWsPQXh3KROwqoOMvrKOoPUcJHWUeA9YyUFeL7k34TUcpHZR9DfVoe+tFGygosfQiaNQs+bu/5Svp3ivAF/EOk9D/dqYb8I9HSCrwn6K6OaAWo9/C4IhBfQZAnAl8AR0cMCugT+C2P7xHcALEJcCnr6aCBCRRYf01UeAahNpkr5aCTgmvQTUbMw+21/dBCg/nVbpq6EAZWbULX31FKCcpBqmr7YCFJ1Xz/TVWYDiUmubvpoLUER2ndNXfwHLM0DAni3cfPtrhABtzbF/+poiQLenOSJ9DRKgWzKdkr5mCdD/kh2UvsYJ0LV8Z6WviQJ0OeVx6WuogJWYKuB8s0/c/porQL8TH5q+RgvQT+5z0xfyero5ZfYELIAFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWADMF9x9vYMuuS7sAAAAAElFTkSuQmCC', 'chat': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAACOUlEQVR4nO3c0U0DMRAAUQdREzRBLVALtUATdMWHpSgiIQJ5vePzzmsgeCe+S84op6fXjybOA/0HVGcAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAPaY8zJf7y85LxTr+e1z9kucpv5r4kHnfm1eiVkBthn9pRkZptwDtpx+m7Ou+AC7Tr8LX11wgL2n38WuMTJAhel3gSsNC1Bn+l3UemMCVJt+F7LqgAA1p9+Nr91HEbDRAJXf/t3gBNwBMAPAhgJ4/elG5uAOgCWdB3QJj9dDZO5sdwDMADADwAwAS70J+7H1mjsAZgCYAWAGgBkAZgCYAWAGgBkAZgCY5wE3eB5QiAFgBoAZAOZ5AMwdADMAzAAwA8AMADMAzAAwA8AMADMAzPOAGzwPKGQowFHe0bONzMEdADMALOAny4o/5R+8DrsDYAEBKt+Kx9ceswNqNghZddglqFqDqPVG3gPqNAhcafBNuEKD2DXGfwrau0H46qZ8DN21wYx1+ePdf3K8H+8+O3SDhK2ceh7wX7teyi6t+yiiwvTbsgGKTL+tGaDO9NuCAUpNvy11E642+m6VHVBz+m2RAGWn31YIUHn6DQ9QfPqNDeD0GxjA6XdMAKd/lv09wNH/kLoDnP61vABO/6akAE7/NxkBnP4d048kdR//KKI4A8AMADMAzAAwA8AMADMAzAAwA8AMADMAzAAwA8AMADMAzAAwA8AMAPsGg3t0Wav9CJwAAAAASUVORK5CYII=', 'alarm': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADtUlEQVR4nO2dQZKbMBBFmVTu4StkzpdZ+n6+QuYmWaiKctkDlqH7vy/ot03FtPqpJSRA8/Hv75+p4PhFB3B2SgBMCYApATAlAKYEwJQAmBIAUwJgSgBMCYApATAlAKYEwJQAmBIAUwJgfouvd7nelv7p++vzhJF8CB5JrjR1iaQU+EQykytgQ4PvCWy8TyQPZA1BOxvsRmtOhoZ4AVGpF08JPWRoCL4Lsu34PqPZA5ECAiMz7P73BLY0TIBt308iqr0xAobIfnhVhbRavRBbycLcHs340xOJgIB1QGe4nWm9XG+pAvp/P7ZdSygEmM+o62S3bq+A9fiGTv09ec2s3VCYXQJO0v2nV23ZM2lnVcCRst9IalENQTDqdcB+DnbTpXggs5/Ng6y/DGsBZ9jdcxSQuhPgZsJuEs7eh3HbNzSqAHFqTErBpQL0HdOkFPgKeDcRL3tu+A+mAgvI3vLVbCnvgRTQk52Q1MgutAFMgH5B67mEZgSA26huO7jAXRCbgryN5W2oKyAw+88/1f/fferAZTdUXPvtcg5LAekQtNRg6g5k6bpKMToBDt2tH1m0/FYEuxDFd4REAtwGn54YNEWgEOCc/QbogB+CTg4mwKf7N6h40gWMdfPzTHb8TAW4df8GElXNATC5An6sX8/u3/gxttRRqCoApgTAlACYRAHDTQAN8TRQFQBTAmBKAEwJgDmUgMv1NtzW08ACvr8+9QvXcAYWMC3neqBSGFvAOkNoGFvA0ih0j7mGsQU0OjVognkX4NjKvN2IkNfQxTEfoQJmRhyRDiWg0aPBhwMKaKxosNKTKwBfKL2ba/0W+mErYOahFKy6/0QJ0E+Dtreq6QKsetyGYLLjx4Ygq3vBiYvn+HOAOQoBDl8CrQO+QC+qAGcH7OcL/BDEOsB7gE6A1e3QS2TRSivAbSBy+HbK5UPtvL+Ss3I5B9RzgMNRDT7nFEzIJMw6sMr+VOcFpV6xhzoxK/JCG6gz43b9/n7q1MRzn5o4g9wXOqwNXbaj9blwyP6EH9r3nAVBKSw9qT7jh9rPb+kgh/a1GJBhEKiA/jcPBH8/AB8JLU5NzHtcvmHVLXYgFRCy+xi7oMUd8Luh77ZWkB3lhAyfmojfC+IBkIf24Y1vsO9Pkof2+QA6qDPj1jjCqYnOg889hz2077lhhtlvIAOR6M0426Q/oO8u6veCRjExqfqNy/MAK5QLsRIAw78benJKAEwJgCkBMCUApgTAlACYEgBTAmBKAEwJgCkBMCUA5j+qOOXgDNB2/wAAAABJRU5ErkJggg==', 'poop': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADCklEQVR4nO2d0W3jMBAFlcOVdenhUk4auJSTItLYfRAQAjs2bO0u56345i+BTZBvyJVIGfbLv79/NsPxi+7A6lgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXA/KY7cJz3z6+L/3y8vSI9ifDS7mMp17lf08hEsxL0SPqPv0yBTgKeirWLgzYCDgTawkEPAYej1HfQQEAwRHEHDQScGwuAUReQUkCUq5C6gNNjATAWAGMBMBYAYwEwFgAjLUD5/j0L0QcyRdELPqiREzBh1ktp0CpBc2qOVGUTEjAzFx0HKgLmJyLiQEIAlYWCAwkBK8MLYKchvgh4AYsDC8AnIN4HrwAYC4CxABgLgLEAGAuAsQAYUoDCJmAA9gR4IKOT+49MflwzewWIp79N7+FUAfrpD2b2c56ALukPpvV2koBe6Q/m9HmGgI7pDyb0vFxA3/QH1f33RgzGAmBqBXSvP4PSUXgFwFgAjNb3BV2cwySu/bqWgwitgOtTsKxzsbqW46gIuJVIPKm6llNQEbAsEgLuT8bIVK1rOQsJAStjATC1AhTWeJzSUUgcRdx/WeSePaXl0k1DyUZMZ5uTxT6i9NWQvwKOpX/rXXGXuS2nz61kAbnlImu0uS3nOsj8XND5Ks8dsmpR2gpYKv0tb7w5AlZLf5Ay6gQBa6Y/iI9d63nAzvcKGx9kbmu5+CgCJiqgaEJ9bzZ4v1E9/YNt9lgBhx3oH0bpCriYWR9vr0+lef16teo/EL0ID94/vy5C3P+8leYtSZrpb+ICtp8cDJ5aDbLpb8olaOfcP+CgvgIGI8Rnr6ji0Q96CBg8eCjfIvedTgJ2ekV8n+g1QP9Gu5pgAg0uwufGAmASBKxcheJjz1kBazpIGXVaCVrNgdwz4W0lB4kjTb4Ir+Agd4z5d0HndpA+utrvCzrNlrVuVsn9gsZqeCMGYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEw/wGHMf0+o7Y4QgAAAABJRU5ErkJggg==', 'fart': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAC0ElEQVR4nO2c3VHDMBAGDUN70AQ0QQPQBFVQIQ+eyWRCfmT5TitZu48MQ3y3+nSOSPz0/vW6CMczfQGzowAYBcAoAEYBMAqAUQCMAmAUAKMAGAXAKABGATAKgFEAjAJgFACjABgFwCgARgEwCoBRAIwCYBQAo4Asfj5/fz5/H/7akx9NzOCi9R/fb7d+0wTAKCCe8uW/LMtL8sXMRcmmf8GQCbhVZ0X9gVx99fvLfxlxCN8K+PnPH5adekmbLuOYW9CpI6km7geu8KUHE7B188kwUbLRlb/cSFvQ/8rXOiu2/k0+Nv39raaHEcAO2BLqQjbAFnTU1q/sErC2Jm/QHbv1KwEJCB90nfc9dsHVz4CHbSq/0Kk6fkHiDJi5reXUH0V0UkA1nayPXWdBH99vqRqyHffgIPJ9QFQ9V4938mCjnPhGrLx9V1vQcnmCDhKH8OhDog2d/j+g8e4MDoNOBcxDjwKQ9UiFoEcBU0EeR/dwG35B+xsH4Di6w76DtEvAKH1vHIJGM2CU7rcnPQFDt75BGnIFDN39c/JMdHEWNAoZGrIEHK/7J2I1pAzhA3d/ia4uPgHH7v45IVEITsA83V+CivUsCCZSwFTLf2V/ySZgLzsdhAmYcPmf2FO7CYBRQAzVIYgRMPP+sxMTEEbdKlQAjAJgFBDJLN+UPxIKgFEAjAJgYgT4SfRqTACMAmDCBLgL1WECYCIFGIKKDpgAmGABhmAr8QmY1kFd4Slb0LQOKsiaAbM5qK43cQjP5qCO3LugSRzsKbPRl/QO/LGJnYus0fuAo0ahi4f2FdL4KUCj4Dfl6wmJNfzk3EEdBO6ongVtJnaeDfDo4n7IuJVQQBF5d3EKuMfwjyqQhziEYRQAowAYBcAoAEYBMAqAUQCMAmAUAKMAGAXAKABGATAKgFEAjAJgFACjABgFwCgARgEwCoBRAIwCYBQAowAYBcD8AeYX1iaF2cfpAAAAAElFTkSuQmCC', 'photo': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADJUlEQVR4nO2dW3KDMBAESSp39AmSa9i5hk+Q3DIfqqJcMQiBVvTImv41JmZau7wEebt9/kyG453+AaNjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwH+Dfvt4vUav6/vqNWtXJYBUQmH742s6EEdAir04dAALaJdWjA++EYSwAxgJgLADGAmAsAMYCYCwAxgJgmlyMA89IW//p8Kt+wQJ6vBiwi7SBgRrCBLx89I8EaojZBwyV/kzIVgcIGDP9RP221woYOf1EZQI+DIWpEuDhn6jJwRUAc1yAh/8jh9NwBcCQ84JqyJwE9VWanQkoOfmcl+nCRB8Cjp30d2Gig31A/SUX5YmL0hUQGFxalWAp6FZAi2ErWAqiAtolpeZAsQUVZrTYTwoPk3R6kZyAzQTz2c2f5tej40CrBeVTu94v5altLizSi7QEZDg2YEWGeQahFrT36sLi8s9LXu+XtTUrNCKVCtiV/vfXbybT548yKeONSEXAGv+yy0SfXwwf6WtIC3hOf9fXu3AgIWDXNU6RNUchIWCRQZ6k1BXwSM0gxXezeXgBCgGBv4EXsMhjr4i9H6DWhUQFjIMFwFgAjAXAWACMBcCICog9cIw9qI2FF6BwYA7+Bl5ACTUBKQjOoCvA84LOo2SQtrsnzJaIhIA1Ku+oVN7POQdpAdOSg8JB3UX6k46AXffNMxoWP1J+mkNoWsre+SOF2SmnP+lUwCbt7gmzaAnYnExYHujmwgrDf5JqQYlMI0rkHzyqmVmNICdgKnCQONxedNKf1FrQzDjvlxYVMA0zL0ixBc0EvphKMPqEbgXMxN4PUEO6AmYKHzxa+5YyfQiYKTHRRe4zb7fPn8Nf7mtTm3J4R9XBPuC1qRKgf6XlHGpycAXA1ApwEVQmEFABIzuo3/aYFjSmg5CtDjsPkH0hTwsU356eeHkN6v8/IDFmRzqGD0NhLADGAmAsAMYCYCwAxgJgLADGAmAsAMYCYCwAxgJgLADGAmAsAMYCYCwAxgJgLADGAmAsAMYCYCwA5g/ciiPQtCJv4AAAAABJRU5ErkJggg=='}
 
-BARK_PUBLIC_APNS_KEY = """-----BEGIN PRIVATE KEY-----
-MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg4vtC3g5L5HgKGJ2+
-T1eA0tOivREvEAY2g+juRXJkYL2gCgYIKoZIzj0DAQehRANCAASmOs3JkSyoGEWZ
-sUGxFs/4pw1rIlSV2IC19M8u3G5kq36upOwyFWj9Gi3Ejc9d3sC7+SHRqXrEAJow
-8/7tRpV+
------END PRIVATE KEY-----
-"""
+# Bark signing keys belong in the existing data directory or an explicitly
+# configured private_key_file, never in distributed source code.
 
 
 class BarkProvider(APNSProvider):
@@ -710,7 +720,7 @@ class BarkProvider(APNSProvider):
             if config.get("private_key_file"):
                 path = self.app.resolve_config_path(config["private_key_file"])
             elif not path.exists():
-                self.app.atomic_write(path, BARK_PUBLIC_APNS_KEY.encode())
+                raise RuntimeError("Bark-Signaturschlüssel fehlt. Vorhandene bark-public-apns.p8 im bisherigen Datenordner behalten oder bark.private_key_file konfigurieren.")
             header = b64url(json_bytes({"alg": "ES256", "kid": config.get("key_id", "LH4T9V5U4R")}))
             claims = b64url(json_bytes({"iss": config.get("team_id", "5U8LBRXG3A"), "iat": int(time.time())}))
             value = f"{header}.{claims}".encode("ascii")
@@ -1215,6 +1225,7 @@ class RJLoveApplication:
         self._cleanup_thread.start()
         self.push_limiter = LoginLimiter(120)
         self.notification_hub = NotificationHub(self)
+        self.cinema = CinemaService(self)
 
     @staticmethod
     def atomic_write(path: Path, data: bytes) -> None:
@@ -2174,6 +2185,338 @@ class RJLoveApplication:
             self.logger.removeHandler(handler)
 
 
+class CinemaService:
+    """Additive v4 subsystem. No changes to legacy records, config or protocol.
+
+    Plex account credentials are never persisted. Only a selected file can be
+    delegated; the partner never receives a library token or arbitrary proxy.
+    """
+    def __init__(self, app):
+        self.app = app
+        self.lock = threading.RLock()
+        self.grants = {}
+        self.tickets = {}
+        self.oauth = {}
+
+    @staticmethod
+    def number(value, maximum, minimum=0):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not minimum <= value <= maximum:
+            raise APIError(400, "invalid_number", "Ungültiger Medienwert.")
+        return float(value)
+
+    def _room(self, db, room_id, user):
+        row = db.execute("SELECT * FROM cinema_rooms WHERE id=?", (room_id,)).fetchone()
+        if not row or user not in [row["owner_id"], *self.app.partner_ids(row["owner_id"])]:
+            raise APIError(404, "room_missing", "Dieser gemeinsame Abend ist nicht verfügbar.")
+        return row
+
+    @staticmethod
+    def position(row, now):
+        end = min(now, row["expires"], row["sleep_until"] or now)
+        return row["position"] + (max(0, end-row["updated"]) if row["playing"] else 0)
+
+    def _account(self, db, row, now):
+        stat = db.execute("SELECT * FROM cinema_stats WHERE room_id=?", (row["id"],)).fetchone()
+        people = db.execute("SELECT * FROM cinema_members WHERE room_id=?", (row["id"],)).fetchall()
+        if stat:
+            # Both devices must report actual playing, not just room intent.
+            if row["playing"] and not row["closed"] and len(people) >= 2 and all(p["playing"] for p in people):
+                end = min(now, row["expires"], row["sleep_until"] or now, min(p["seen"]+12 for p in people))
+                delta = max(0, min(12, end-stat["accounted"]))
+                db.execute("UPDATE cinema_stats SET seconds=seconds+? WHERE room_id=?", (delta, row["id"]))
+            db.execute("UPDATE cinema_stats SET accounted=? WHERE room_id=?", (now, row["id"]))
+        if not row["closed"] and (now >= row["expires"] or (row["sleep_until"] and now >= row["sleep_until"])):
+            db.execute("UPDATE cinema_rooms SET position=?,playing=0,closed=1,revision=revision+1,updated=? WHERE id=?", (self.position(row, now), now, row["id"]))
+            self.grants.pop(row["id"], None)
+            row = db.execute("SELECT * FROM cinema_rooms WHERE id=?", (row["id"],)).fetchone()
+        return row
+
+    def _wire(self, db, row, user, now):
+        members = [r["user_id"] for r in db.execute("SELECT user_id FROM cinema_members WHERE room_id=?", (row["id"],))]
+        return {"id": row["id"], "owner_id": row["owner_id"], "provider": row["provider"], "media_id": row["media_id"],
+                "title": row["title"], "position": self.position(row, now), "playing": bool(row["playing"]),
+                "revision": row["revision"], "server_time": now, "sleep_until": row["sleep_until"],
+                "closed": bool(row["closed"]), "members": members, "joined": user in members,
+                "plex_shared": row["id"] in self.grants and self.grants[row["id"]]["expires"] > now}
+
+    def get(self, user, path, query):
+        now = time.time()
+        with self.lock, self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if path == "/v1/cinema/features":
+                return {"version": 1, "youtube_search": bool(os.environ.get("RJ_YOUTUBE_API_KEY") or self.app.config.get("cinema", {}).get("youtube_api_key")), "plex_sharing": True}
+            if path == "/v1/cinema/rooms":
+                stale = now-30*86400
+                db.execute("DELETE FROM cinema_members WHERE room_id IN (SELECT id FROM cinema_rooms WHERE expires<?)",(stale,))
+                db.execute("UPDATE cinema_rooms SET title='',media_id='' WHERE expires<?",(stale,))
+                self.grants = {k:v for k,v in self.grants.items() if v["expires"]>now}
+                self.tickets = {k:v for k,v in self.tickets.items() if v["expires"]>now}
+                self.oauth = {k:v for k,v in self.oauth.items() if v["expires"]>now}
+                rows = db.execute("SELECT * FROM cinema_rooms WHERE closed=0 ORDER BY updated DESC LIMIT 50").fetchall()
+                return {"rooms": [self._wire(db, r, user, now) for row in rows
+                                   if user in [row["owner_id"], *self.app.partner_ids(row["owner_id"])]
+                                   for r in [self._account(db, row, now)] if not r["closed"]]}
+            if path == "/v1/cinema/stats":
+                for row in db.execute("SELECT * FROM cinema_rooms WHERE closed=0").fetchall():
+                    self._account(db, row, now)
+                rows = db.execute("SELECT s.provider,SUM(s.seconds) AS seconds,COUNT(CASE WHEN s.seconds>0 THEN 1 END) AS evenings FROM cinema_stats s JOIN cinema_rooms r ON r.id=s.room_id WHERE r.owner_id IN ("+",".join("?" for _ in [user,*self.app.partner_ids(user)])+") GROUP BY s.provider", [user,*self.app.partner_ids(user)]).fetchall()
+                return {"stats": [dict(r) for r in rows]}
+            parts = path.split("/")
+            if len(parts) == 5 and parts[3] == "rooms":
+                row = self._account(db, self._room(db, parts[4], user), now)
+                return self._wire(db, row, user, now)
+        raise APIError(404, "not_found", "Medienfunktion nicht gefunden.")
+
+    def post(self, user, path, body, authorization):
+        if path in {"/v1/cinema/youtube/connect", "/v1/cinema/youtube/claim", "/v1/cinema/youtube/refresh"}:
+            return self.youtube_oauth(user, path.rsplit("/",1)[-1], body, authorization)
+        if path == "/v1/cinema/youtube/search":
+            return self.youtube(body)
+        if path.endswith("/plex-share"):
+            return self.share(user, path.split("/")[-2], body)
+        now = time.time()
+        with self.lock, self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if path == "/v1/cinema/rooms":
+                provider = body.get("provider")
+                media = safe_text(body.get("media_id"), 120, allow_empty=False)
+                title = safe_text(body.get("title", "Unser Filmabend"), 250)
+                if provider not in {"youtube", "plex"} or (provider == "youtube" and not re.fullmatch(r"[A-Za-z0-9_-]{11}", media)):
+                    raise APIError(400, "invalid_media", "Ungültige Medienauswahl.")
+                previous = db.execute("SELECT * FROM cinema_rooms WHERE owner_id=? AND closed=0", (user,)).fetchall()
+                for old in previous:
+                    self._account(db, old, now)
+                    db.execute("UPDATE cinema_rooms SET closed=1,playing=0,revision=revision+1 WHERE id=?", (old["id"],))
+                    self.grants.pop(old["id"], None)
+                room = str(uuid.uuid4())
+                db.execute("INSERT INTO cinema_rooms(id,owner_id,provider,media_id,title,updated,expires) VALUES(?,?,?,?,?,?,?)", (room,user,provider,media,title,now,now+12*3600))
+                db.execute("INSERT INTO cinema_members VALUES(?,?,?,0)", (room,user,now))
+                db.execute("INSERT INTO cinema_stats VALUES(?,?,0,?,?)", (room,provider,now,now))
+                return self._wire(db, self._room(db,room,user),user,now)
+            parts = path.split("/")
+            if len(parts) != 6 or parts[3] != "rooms":
+                raise APIError(404,"not_found","Medienfunktion nicht gefunden.")
+            room, action = parts[4], parts[5]
+            row = self._account(db,self._room(db,room,user),now)
+            if row["closed"]:
+                raise APIError(410,"room_closed","Dieser gemeinsame Abend ist beendet.")
+            member = db.execute("SELECT 1 FROM cinema_members WHERE room_id=? AND user_id=?",(room,user)).fetchone()
+            if action == "join":
+                db.execute("INSERT INTO cinema_members VALUES(?,?,?,0) ON CONFLICT(room_id,user_id) DO UPDATE SET seen=excluded.seen,playing=0", (room,user,now))
+            elif not member:
+                raise APIError(403,"join_first","Bitte zuerst dem Abend beitreten.")
+            elif action == "leave":
+                db.execute("DELETE FROM cinema_members WHERE room_id=? AND user_id=?",(room,user))
+                if user == row["owner_id"]:
+                    self.grants.pop(room,None)
+                    db.execute("UPDATE cinema_rooms SET playing=0,closed=1,revision=revision+1 WHERE id=?",(room,))
+            elif action == "heartbeat":
+                if type(body.get("playing")) is not bool: raise APIError(400,"invalid_playback","Wiedergabestatus fehlt.")
+                db.execute("UPDATE cinema_members SET seen=?,playing=? WHERE room_id=? AND user_id=?",(now,int(body["playing"]),room,user))
+            elif action == "control":
+                if type(body.get("revision")) is not int or body["revision"] != row["revision"]:
+                    raise APIError(409,"stale_room","Der andere hat gerade etwas geändert. Bitte erneut versuchen.")
+                command = body.get("action")
+                position = self.position(row,now)
+                playing, sleep_until, closed = row["playing"], row["sleep_until"], 0
+                if command in {"play","pause","seek"}:
+                    position = self.number(body.get("position",position),7*86400)
+                    if command != "seek": playing = int(command == "play")
+                elif command == "timer":
+                    seconds = self.number(body.get("seconds",0),12*3600)
+                    sleep_until = now+seconds if seconds else None
+                elif command == "end":
+                    playing, closed = 0,1
+                    self.grants.pop(room,None)
+                elif command == "revoke":
+                    if row["owner_id"] != user: raise APIError(403,"not_owner","Nur der Freigebende kann die Plex-Freigabe widerrufen.")
+                    self.grants.pop(room,None)
+                    playing = 0
+                else: raise APIError(400,"invalid_control","Unbekannte Mediensteuerung.")
+                db.execute("UPDATE cinema_rooms SET position=?,playing=?,sleep_until=?,closed=?,updated=?,revision=revision+1 WHERE id=?",(position,playing,sleep_until,closed,now,room))
+                # A pause must break the actual-playing accounting interval.
+                if not playing: db.execute("UPDATE cinema_members SET playing=0 WHERE room_id=?",(room,))
+            elif action == "playback":
+                grant = self.grants.get(room)
+                if not grant or grant["expires"] <= now:
+                    raise APIError(410,"share_expired","Die Plex-Freigabe fehlt oder ist abgelaufen. Der Besitzer kann sie erneut freigeben.")
+                token = secrets.token_urlsafe(32)
+                session = hashlib.sha256((authorization or "").removeprefix("Bearer ").encode()).hexdigest()
+                self.tickets = {k:v for k,v in self.tickets.items() if v["expires"] > now}
+                self.tickets[token] = {"room":room,"user":user,"session":session,"expires":min(grant["expires"],now+4*3600)}
+                return {"path":"/cinema-media/"+token}
+            else: raise APIError(404,"not_found","Medienfunktion nicht gefunden.")
+            return self._wire(db,self._room(db,room,user),user,now)
+
+    def youtube_oauth(self, user, action, body, authorization):
+        config = self.app.config.get("cinema", {}).get("youtube_oauth", {})
+        if not all(config.get(k) for k in ["client_id", "client_secret", "redirect_uri"]):
+            raise APIError(503,"youtube_oauth_missing","YouTube-Konto benötigt einmalig einen eigenen Google-OAuth-Webclient am Server. Öffentliche Videos funktionieren ohne Anmeldung.")
+        if not str(config["redirect_uri"]).startswith("https://") or not str(config["redirect_uri"]).endswith("/cinema-oauth/youtube"):
+            raise APIError(503,"youtube_oauth_config","Google-OAuth-Weiterleitung muss die HTTPS-Serveradresse mit /cinema-oauth/youtube sein.")
+        now = time.time()
+        session = hashlib.sha256((authorization or "").removeprefix("Bearer ").encode()).hexdigest()
+        with self.lock:
+            self.oauth = {k:v for k,v in self.oauth.items() if v["expires"]>now}
+            if action == "connect":
+                state = secrets.token_urlsafe(32); verifier = secrets.token_urlsafe(48)
+                self.oauth[state] = {"user":user,"session":session,"expires":now+600,"verifier":verifier,"tokens":None,"exchanging":False}
+                query = {"client_id":config["client_id"],"redirect_uri":config["redirect_uri"],"response_type":"code","scope":"https://www.googleapis.com/auth/youtube.readonly","state":state,"code_challenge":b64url(hashlib.sha256(verifier.encode()).digest()),"code_challenge_method":"S256","access_type":"offline","prompt":"select_account consent"}
+                return {"state":state,"url":"https://accounts.google.com/o/oauth2/v2/auth?"+urlencode(query)}
+            if action == "claim":
+                state = body.get("state"); flow = self.oauth.get(state)
+                if not flow or flow["user"]!=user or flow["session"]!=session: raise APIError(404,"oauth_expired","Die Anmeldung ist abgelaufen.")
+                if flow.get("error"):
+                    self.oauth.pop(state,None); raise APIError(400,"oauth_denied","Die Google-Anmeldung wurde abgebrochen oder abgelehnt.")
+                if flow["tokens"]:
+                    tokens = flow["tokens"]; self.oauth.pop(state,None)
+                    return {"ready":True,**tokens}
+                return {"ready":False}
+        if action == "refresh":
+            refresh = safe_text(body.get("refresh_token"),4096,allow_empty=False)
+            return self.token_exchange({"client_id":config["client_id"],"client_secret":config["client_secret"],"refresh_token":refresh,"grant_type":"refresh_token"})
+        raise APIError(404,"not_found","YouTube-Kontofunktion nicht gefunden.")
+
+    @staticmethod
+    def token_exchange(body):
+        try:
+            request = urllib.request.Request("https://oauth2.googleapis.com/token", data=urlencode(body).encode(),headers={"Content-Type":"application/x-www-form-urlencoded"})
+            with urllib.request.urlopen(request,timeout=15) as response: value=json.loads(response.read(65536))
+            return {k:value[k] for k in ["access_token","refresh_token","expires_in"] if k in value}
+        except (OSError,ValueError): raise APIError(502,"oauth_failed","Google-Anmeldung fehlgeschlagen. Bitte erneut verbinden.") from None
+
+    def oauth_callback(self, handler, query):
+        state = query.get("state",[""])[0]
+        with self.lock:
+            flow = self.oauth.get(state)
+            if not flow or flow["expires"]<=time.time() or flow["exchanging"]:
+                raise APIError(400,"oauth_expired","Diese Anmeldung ist nicht mehr gültig.")
+            flow["exchanging"]=True
+            if query.get("error"): flow["error"]=True
+            verifier=flow["verifier"]
+        if not flow.get("error"):
+            config = self.app.config.get("cinema",{}).get("youtube_oauth",{})
+            try:
+                tokens = self.token_exchange({"client_id":config["client_id"],"client_secret":config["client_secret"],"code":query.get("code",[""])[0],"code_verifier":verifier,"redirect_uri":config["redirect_uri"],"grant_type":"authorization_code"})
+                with self.lock: flow["tokens"]=tokens
+            except APIError:
+                with self.lock: flow["error"]=True
+        handler.push_bytes(b'<!doctype html><meta name="viewport" content="width=device-width"><title>RJ Love</title><body style="background:#100c18;color:#fff;font:20px system-ui;padding:40px">Du kannst jetzt zu RJ Love zurueckkehren. Die App holt deinen persoenlichen Zugang sicher ab.</body>',"text/html; charset=utf-8")
+
+    @staticmethod
+    def remote_json(url, token=None, method="GET", data=None):
+        headers = {"Accept":"application/json","X-Plex-Product":"RJ Love","X-Plex-Client-Identifier":"rjlove-cinema-server"}
+        if token: headers["X-Plex-Token"] = token
+        request = urllib.request.Request(url, data=data, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return json.loads(response.read(4*1024*1024))
+        except (OSError, ValueError, urllib.error.URLError):
+            raise APIError(502,"provider_unavailable","Der Mediendienst ist nicht erreichbar oder die Anmeldung ist abgelaufen.") from None
+
+    def youtube(self, body):
+        key = os.environ.get("RJ_YOUTUBE_API_KEY") or self.app.config.get("cinema",{}).get("youtube_api_key")
+        if not key: raise APIError(503,"youtube_key_missing","Für die Suche RJ_YOUTUBE_API_KEY am Server eintragen. Video-Links funktionieren auch ohne Suchschlüssel.")
+        text = safe_text(body.get("query"),180,allow_empty=False)
+        self.app.push_limiter.check("youtube:");self.app.push_limiter.fail("youtube:")
+        values = {"part":"snippet","type":"video","videoEmbeddable":"true","maxResults":20,"q":text,"key":key}
+        page = body.get("page")
+        if page: values["pageToken"] = safe_text(page,300)
+        data = self.remote_json("https://www.googleapis.com/youtube/v3/search?"+urlencode(values))
+        return {"items":[{"id":v["id"]["videoId"],"title":html.unescape(v["snippet"]["title"]),"channel":v["snippet"]["channelTitle"]} for v in data.get("items",[])],"next_page":data.get("nextPageToken")}
+
+    def share(self, user, room, body):
+        with self.lock,self.app.database.connect() as db:
+            row = self._room(db,room,user)
+            if row["owner_id"] != user or row["provider"] != "plex" or row["closed"]:
+                raise APIError(403,"not_owner","Nur deine eigene Plex-Auswahl kann freigegeben werden.")
+            media_id = row["media_id"]
+        token = safe_text(body.get("token"),4096,allow_empty=False)
+        machine = safe_text(body.get("machine_id"),120,allow_empty=False)
+        duration = self.number(body.get("seconds",14400),14400,60)
+        resources = self.remote_json("https://plex.tv/api/v2/resources?includeHttps=1",token)
+        resource = next((r for r in resources if r.get("clientIdentifier")==machine and "server" in r.get("provides", "").split(",")),None)
+        if not resource: raise APIError(403,"plex_forbidden","Dieser Plex-Server ist deinem Konto nicht zugänglich.")
+        # Never accept a client-provided URL or proxy arbitrary hosts/paths.
+        connections = [c.get("uri","") for c in resource.get("connections",[])]
+        base = body.get("connection")
+        parsed = urlparse(base if isinstance(base,str) else "")
+        if base not in connections or parsed.scheme != "https" or not (parsed.hostname or "").endswith(".plex.direct") or parsed.username or parsed.password:
+            raise APIError(400,"secure_plex_required","Zum zeitweisen Teilen wird eine sichere, von Plex bestätigte plex.direct-Verbindung benötigt.")
+        if not re.fullmatch(r"[0-9]+",media_id): raise APIError(400,"invalid_media","Ungültige Plex-Auswahl.")
+        import socket, ipaddress
+        try:
+            addresses = {ipaddress.ip_address(v[4][0]) for v in socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)}
+            if not addresses or any(v.is_loopback or v.is_link_local or v.is_multicast or v.is_unspecified or str(v) in {"169.254.169.254","100.100.100.200"} for v in addresses): raise ValueError()
+        except (OSError,ValueError):
+            raise APIError(400,"unsafe_plex_address","Diese Plex-Verbindung ist nicht zum Teilen geeignet.") from None
+        access = resource.get("accessToken") or token
+        data = self.remote_json(base.rstrip("/")+"/library/metadata/"+media_id,access)
+        try:
+            parts = data["MediaContainer"]["Metadata"][0]["Media"][0]["Part"]
+            part = parts[0]
+            path = part["key"]
+            if len(parts)!=1 or not re.fullmatch(r"/library/parts/[0-9]+/[0-9]+/file(?:\.[A-Za-z0-9]+)?",path): raise ValueError()
+        except (KeyError,IndexError,TypeError,ValueError):
+            raise APIError(422,"unsupported_plex","Diese Plex-Datei kann nicht direkt geteilt werden.") from None
+        with self.lock,self.app.database.connect() as db:
+            row = self._room(db,room,user)
+            if row["closed"] or time.time() >= row["expires"]: raise APIError(410,"room_closed","Dieser Abend ist beendet.")
+            self.grants[room] = {"url":base.rstrip("/")+path,"token":access,"expires":min(time.time()+duration,row["expires"]),"id":secrets.token_hex(16)}
+            return self._wire(db,row,user,time.time())
+
+    def stream(self, handler, ticket):
+        now = time.time()
+        with self.lock,self.app.database.connect() as db:
+            value = self.tickets.get(ticket)
+            grant = self.grants.get(value["room"]) if value else None
+            row = db.execute("SELECT * FROM cinema_rooms WHERE id=?",(value["room"],)).fetchone() if value else None
+            member = db.execute("SELECT 1 FROM cinema_members WHERE room_id=? AND user_id=?",(value["room"],value["user"])).fetchone() if value else None
+            session = db.execute("SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?",(value["session"],iso_now())).fetchone() if value else None
+            if not value or not grant or not row or not member or not session or row["closed"] or min(value["expires"],grant["expires"],row["expires"],row["sleep_until"] or row["expires"])<=now:
+                raise APIError(410,"share_expired","Die Freigabe wurde beendet.")
+            grant = dict(grant)
+        headers = {"X-Plex-Token":grant["token"],"Accept-Encoding":"identity"}
+        requested_range = handler.headers.get("Range")
+        if requested_range:
+            if not re.fullmatch(r"bytes=\d*-\d*",requested_range): raise APIError(416,"invalid_range","Ungültiger Medienbereich.")
+            headers["Range"] = requested_range
+        # Redirects could expose the Plex token to an untrusted destination.
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self,*args,**kwargs): return None
+        try:
+            upstream = urllib.request.build_opener(NoRedirect()).open(urllib.request.Request(grant["url"],headers=headers,method=handler.command),timeout=15)
+        except urllib.error.HTTPError as exc:
+            raise APIError(416 if exc.code==416 else 502,"plex_stream_failed","Plex kann diese Datei gerade nicht wiedergeben.") from None
+        except OSError:
+            raise APIError(502,"plex_stream_failed","Der Plex-Server ist nicht erreichbar.") from None
+        with upstream:
+            handler.send_response(upstream.status)
+            for key in ["Content-Type","Content-Length","Content-Range","Accept-Ranges"]:
+                if upstream.headers.get(key): handler.send_header(key,upstream.headers[key])
+            handler.send_header("Cache-Control","no-store")
+            handler.send_header("Connection","close")
+            handler.end_headers();handler.close_connection=True
+            if handler.command == "HEAD": return
+            try:
+                checked = 0.0
+                while True:
+                    if time.time()-checked > 1:
+                        with self.app.database.connect() as db:
+                            row = db.execute("SELECT * FROM cinema_rooms WHERE id=?",(value["room"],)).fetchone()
+                            member = db.execute("SELECT 1 FROM cinema_members WHERE room_id=? AND user_id=?",(value["room"],value["user"])).fetchone()
+                            session = db.execute("SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?",(value["session"],iso_now())).fetchone()
+                        checked = time.time()
+                        if not row or row["closed"] or not member or not session: break
+                    with self.lock:
+                        current = self.grants.get(value["room"])
+                        if not current or current["id"]!=grant["id"] or min(value["expires"],current["expires"],row["sleep_until"] or row["expires"])<=time.time(): break
+                    data = upstream.read(128*1024)
+                    if not data: break
+                    handler.wfile.write(data)
+            except (BrokenPipeError,ConnectionResetError): pass
+
+
 class RJLoveRequestHandler(BaseHTTPRequestHandler):
     server_version = f"RJLoveServer/{APP_VERSION}"
     protocol_version = "HTTP/1.1"
@@ -2183,6 +2526,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         return self.server.app  # type: ignore[attr-defined]
 
     def log_message(self, fmt: str, *args: Any) -> None:
+        if self.path.startswith(("/cinema-media/", "/cinema-oauth/")): return
         message=fmt % args
         message=re.sub(r"/(bark|push-image|push-ack|push-integration)(?:/[^ ?\"]*)?(?:\?[^ \"]*)?", r"/\1/[redacted]", message)
         message=re.sub(r"([?&]ticket=)[^ &\"]+",r"\1[redacted]",message)
@@ -2260,7 +2604,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_HEAD(self) -> None:
-        if urlparse(self.path).path.startswith("/media/assets/"):self.do_GET()
+        if urlparse(self.path).path.startswith(("/media/assets/", "/cinema-media/")):self.do_GET()
         else:self.send_json(404,{"error":"not_found","message":"Medium nicht gefunden."})
 
     def push_bytes(self, raw, mime, status=200, script_nonce=None):
@@ -2469,6 +2813,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         try:
             path, parts, query = self.route()
             if self.external_push_route(path, parts, query): return
+            if path == "/cinema-oauth/youtube":
+                self.app.cinema.oauth_callback(self, query); return
+            if path.startswith("/cinema-media/"):
+                self.app.cinema.stream(self, path.rsplit("/",1)[-1]); return
+            if path.startswith("/v1/cinema/"):
+                self.send_json(200, self.app.cinema.get(self.current_user(), path, query)); return
             if path == "/v1/navigation":
                 self.send_json(200, self.navigation_target(self.current_user(), query)); return
             if path == "/v1/notifications/settings":
@@ -2552,6 +2902,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
+            if path.startswith("/v1/cinema/"):
+                self.send_json(200, self.app.cinema.post(user_id, path, self.read_json(), self.headers.get("Authorization"))); return
             if path == "/v1/notifications/settings":
                 self.send_json(200, self.app.notification_hub.save(user_id, self.read_json())); return
             if path == "/v1/notifications/test":

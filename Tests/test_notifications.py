@@ -101,8 +101,12 @@ class ExternalPushTests(TestCase):
             self.assertEqual(payload['call'],'1')
             self.assertLessEqual(len(kwargs['input']),4096)
         self.assertFalse(hub.bark.push(key,{'body':'💗'*4000},'robin')[0])
+        # Test with a newly generated disposable key, never publish APNs credentials.
+        import subprocess
+        key_path = self.app.data_directory / 'bark-public-apns.p8'
+        subprocess.run(['openssl','genpkey','-algorithm','EC','-pkeyopt','ec_paramgen_curve:P-256','-out',str(key_path)],check=True,capture_output=True)
         jwt=hub.bark.provider_token()
-        self.assertEqual(len(jwt.split('.')),3) # Real OpenSSL signing with upstream public self-host credential.
+        self.assertEqual(len(jwt.split('.')),3) # Real OpenSSL signing with a disposable local credential.
 
     def test_due_time_persistent_repeat_ack_and_quiet_no_fallback(self):
         hub=self.pause_worker(); token=self.login(); key,_=self.register(token)

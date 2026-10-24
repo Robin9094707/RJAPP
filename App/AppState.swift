@@ -233,6 +233,8 @@ final class AppState {
     }
 
     func logout() async {
+        await CinemaCoordinator.shared.leave()
+        CinemaCoordinator.shared.reset()
         EveningPlaylistService.shared.stop()
         nearby.stop(api: api)
         await liveActivity.stop()

@@ -66,21 +66,9 @@ final class AlarmService {
     }
 
     func reconcile(reminders: [SharedRecord], myID: String, senderName: String) async {
-        let active = reminders.filter { reminder in
-            reminder.payload.targetID == nil || reminder.payload.targetID == myID
-        }
-        let activeIDs = Set(active.map(\.id))
-        for trackedID in reminderFingerprints.keys where !activeIDs.contains(trackedID) {
-            cancel(id: trackedID)
-        }
-        for reminder in active {
-            do {
-                try await schedule(reminder: reminder, senderName: senderName)
-            } catch {
-                lastError = error.localizedDescription
-                DebugLogger.shared.log("Erinnerung \(reminder.id): \(error.localizedDescription)", category: "Alarm")
-            }
-        }
+        // The server is authoritative for receiver quiet hours. Remove alarms
+        // installed by older app versions so they cannot bypass those rules.
+        for id in Array(scheduledIDs) { cancel(id: id) }
     }
 
     func cancel(id: String) {
@@ -141,3 +129,4 @@ enum AlarmServiceError: LocalizedError {
         "AlarmKit ist nicht erlaubt. Aktiviere die Berechtigung unter Mehr → Berechtigungen."
     }
 }
+

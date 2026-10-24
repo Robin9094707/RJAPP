@@ -18,7 +18,7 @@ struct CommandDelivery: Decodable, Identifiable {
     let updatedAt: String?
     enum CodingKeys: String, CodingKey { case id, message, status, reason; case dueAt = "due_at"; case updatedAt = "updated_at" }
     var title: String {
-        switch status { case "scheduled": "Auf dem iPhone eingeplant"; case "expired": "Abgelaufen · wird nicht verspätet ausgelöst"; case "failed": "iPhone meldet ein Problem"; default: "Warte auf Bestätigung des iPhones" }
+        switch status { case "scheduled": "Auf dem iPhone eingeplant"; case "expired": "Abgelaufen · wird nicht verspätet ausgelöst"; case "failed": "Zustellung meldet ein Problem"; case "acknowledged": "Empfänger ist wach · bestätigt"; case "suppressed": "Ruhezeit · Weckruf gesperrt"; case "sent": "An Push-Dienst übergeben"; default: "Warte auf Bestätigung des iPhones" }
     }
 }
 struct PushAttempt: Decodable, Identifiable {
@@ -47,6 +47,7 @@ struct PushReadiness: Decodable {
     func process(_ commands: [RemoteCommand], api: APIClient, senderName: String) async {
         for command in commands {
             guard !Task.isCancelled else { return }
+            if ["bark", "ntfy"].contains(command.payload.transport ?? "") { continue }
             guard !processing.contains(command.id) else { continue }
             processing.insert(command.id)
             if let due = command.dueAt?.rjDate, Date.now.timeIntervalSince(due) > 300 {
@@ -125,3 +126,4 @@ struct PushReadiness: Decodable {
         }
     }
 }
+

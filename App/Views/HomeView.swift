@@ -275,6 +275,8 @@ private struct WakeComposerView: View {
     @State private var scheduled = false
     @State private var dueAt = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now.addingTimeInterval(3600)
     @State private var sending = false
+    @State private var repeatUntilAck = false
+    @State private var partnerPush: PartnerPushStatus?
 
     var body: some View {
         NavigationStack {
@@ -286,10 +288,15 @@ private struct WakeComposerView: View {
                 Section("Zeitpunkt") {
                     Toggle("Weckruf im Voraus planen", isOn: $scheduled)
                     if scheduled { DatePicker("Weckzeit", selection: $dueAt, in: Date.now.addingTimeInterval(10)...Date.now.addingTimeInterval(30 * 86400)).datePickerStyle(.compact) }
-                    Text("Vorab empfangene Wecker werden sofort auf dem anderen iPhone eingeplant und können später auch ohne Netz klingeln. Den Planungsstatus siehst du unter Push & Wecker.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Der Server versendet den Weckruf zur gewählten Zeit. Das Empfänger-iPhone braucht Bark und Internet. Ruhezeiten werden beim Versand erneut geprüft.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section {
-                    Label("AlarmKit kann den Systemwecker erst auslösen, wenn das andere iPhone den Befehl per Push oder Synchronisierung empfangen hat.", systemImage: "info.circle.fill")
+                    if let partnerPush, partnerPush.quiet.active {
+                        Label(partnerPush.quiet.label + " · Weckrufe derzeit gesperrt", systemImage: "moon.zzz.fill")
+                    }
+                    Toggle("Wiederholen, bis Schatzi bestätigt", isOn: $repeatUntilAck)
+                        .disabled(partnerPush?.provider == "ntfy")
+                    Label("Bark klingelt bis zu 30 Sekunden. Optional alle 45 Sekunden erneut, bis zur Bestätigung, Ruhezeit oder spätestens einer Stunde. ntfy versendet nur normale Hinweise.", systemImage: "info.circle.fill")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -310,15 +317,17 @@ private struct WakeComposerView: View {
                 Button(scheduled ? "Weckruf für diese Zeit senden" : "Ja, jetzt wecken", role: .destructive) {
                     sending = true
                     Task {
-                        if await appState.sendWake(message: message, dueAt: scheduled ? dueAt : .now.addingTimeInterval(2)) { dismiss() }
+                        if await appState.sendWake(message: message, dueAt: scheduled ? dueAt : .now.addingTimeInterval(2), repeatUntilAck: repeatUntilAck) { dismiss() }
                         sending = false
                     }
                 }
                 Button("Abbrechen", role: .cancel) {}
             } message: {
-                Text("Auf dem iPhone von \(appState.partner?.displayName ?? "Schatzi") wird nach dem Empfang ein AlarmKit-Weckruf geplant.")
+                Text("Der Weckruf wird über den gewählten Push-Dienst versendet. Die Ruhezeit deines Gegenübers hat Vorrang.")
             }
         }
-        .presentationDetents([.medium])
+        .task { if let status = try? await appState.api.externalPushStatus() { partnerPush = status.partners.first } }
+        .presentationDetents([.medium, .large])
     }
 }
+

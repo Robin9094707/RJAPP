@@ -381,10 +381,10 @@ final class AppState {
         catch { alert = AppAlert(title: "Löschen", message: error.localizedDescription) }
     }
 
-    func sendWake(message: String, dueAt: Date = .now.addingTimeInterval(2)) async -> Bool {
+    func sendWake(message: String, dueAt: Date = .now.addingTimeInterval(2), repeatUntilAck: Bool = false) async -> Bool {
         guard let partner else { return false }
         do {
-            _ = try await api.sendWake(targetID: partner.id, message: message, dueAt: dueAt)
+            _ = try await api.sendWake(targetID: partner.id, message: message, dueAt: dueAt, repeatUntilAck: repeatUntilAck)
             Haptics.success()
             return true
         } catch {
@@ -673,7 +673,7 @@ final class AppState {
         for event in events {
             // A push test must only arrive through APNs. A poll-generated local
             // notification would falsely suggest that signing/server push works.
-            if event.kind != "push_test", myStatus?.isQuiet != true { await notifications.scheduleLocal(event: event) }
+            if event.externalDelivery != true, event.kind != "push_test", event.kind != "wake_request", myStatus?.isQuiet != true { await notifications.scheduleLocal(event: event) }
             try? await api.acknowledgeEvent(id: event.id)
         }
         await CommandDeliveryProcessor.shared.process(commands, api: api, senderName: partner?.displayName ?? "Schatzi")
@@ -921,3 +921,4 @@ extension AppState {
     }
 }
 #endif
+

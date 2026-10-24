@@ -221,19 +221,21 @@ final class APIClient: @unchecked Sendable {
         _ = try await execute(try request(path: "/v1/records/\(id)", method: "DELETE"), as: EmptyResponse.self)
     }
 
-    func sendWake(targetID: String, message: String, dueAt: Date = .now.addingTimeInterval(2)) async throws -> CreatedCommandResponse {
+    func sendWake(targetID: String, message: String, dueAt: Date = .now.addingTimeInterval(2), repeatUntilAck: Bool = false) async throws -> CreatedCommandResponse {
         struct Body: Encodable {
             let targetID: String
             let kind: String
             let message: String
             let dueAt: String
+            let repeatUntilAck: Bool
             enum CodingKeys: String, CodingKey {
                 case kind, message
                 case targetID = "target_id"
                 case dueAt = "due_at"
+                case repeatUntilAck = "repeat_until_ack"
             }
         }
-        let body = Body(targetID: targetID, kind: "wake", message: message, dueAt: dueAt.rjISO8601)
+        let body = Body(targetID: targetID, kind: "wake", message: message, dueAt: dueAt.rjISO8601, repeatUntilAck: repeatUntilAck)
         return try await execute(
             try request(path: "/v1/commands", method: "POST", body: encoder.encode(body)),
             as: CreatedCommandResponse.self
@@ -375,3 +377,4 @@ struct FartCommentPage:Decodable {
     let nextCursor:String?
     enum CodingKeys:String,CodingKey {case comments;case hasMore="has_more",nextCursor="next_cursor"}
 }
+

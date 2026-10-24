@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Backend/rj_love_server.py
           python3 Scripts/validate_project.py
-          python3 -m unittest -v Tests/test_backend.py
+          python3 -m unittest -v Tests/test_backend.py Tests/test_notifications.py
           swiftc Shared/SleepModels.swift Tests/SleepAnalysisChecks.swift -o /tmp/rjlove-sleep-check
           /tmp/rjlove-sleep-check
           swiftc Shared/RelationshipMilestones.swift Tests/RelationshipChecks.swift -o /tmp/rjlove-relationship-check
@@ -108,9 +108,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-3.8-Komplettpaket
+          name: RJ-Love-3.9-Komplettpaket
           path: |
-            RJ-Love-3.8-Komplettpaket.zip
+            RJ-Love-3.9-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -166,3 +166,4 @@ jobs:
             Layout-*.xcresult
             UIAttachments-*
           if-no-files-found: warn
+

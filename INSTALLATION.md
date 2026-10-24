@@ -1,3 +1,7 @@
+## Update 3.9: Bark direkt im vorhandenen Python-Server
+
+Nur die neue `rj_love_server.py` ersetzen, vorhandene Konfiguration und Datenordner behalten, mit dem bisherigen Befehl neu starten. OpenSSL und curl mit HTTP/2 werden benötigt. Danach beide Apps aktualisieren. Bark-Server: `https://love.rjuhas.eu/bark`; individuelle Kopplung unter **Push & Wecker**. Der vorhandene Proxy muss alle Pfade dieser Domain weiterleiten. Vollständige Anleitung und Grenzen: [RELEASE-3.9.md](RELEASE-3.9.md).
+
 > Aktuell: [Version 3.1 – Fotos, Startseite, Schlafbalance und UWB](RELEASE-3.1.md). Für App 3.1 zuerst den Python-Server auf 3.1 aktualisieren; Konfiguration und Daten behalten.
 
 > Aktuelles Update 3.0: Erst [RELEASE-3.0.md](RELEASE-3.0.md) lesen. Serverdatei ersetzen, Konfiguration und Datenordner behalten; danach beide Apps inklusive Widget aktualisieren.
@@ -87,3 +91,4 @@ Auch beim Update von einer früheren Version: Server stoppen, Python-Datei erset
 ## Push, Wecker und Hintergrund prüfen
 
 Unter **Wir → Push, Wecker & Hintergrund prüfen** Profil, tatsächliches APNs-Topic und Serverantworten prüfen. Bei wichtigen Weckrufen im Voraus planen und die Bestätigung „Auf dem iPhone eingeplant“ abwarten. Hintergrundpushes sind durch iOS nicht garantiert. Eine fremde Bundle-ID übernimmt keine Rechte eines anderen Apple-Teams. Walkie-Talkie wird in 3.0 nicht mehr angeboten.
+

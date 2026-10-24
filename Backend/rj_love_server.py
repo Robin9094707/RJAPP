@@ -23,6 +23,7 @@ import re
 import getpass
 import argparse
 import urllib.request
+import urllib.error
 import hashlib
 import hmac
 import json
@@ -46,12 +47,12 @@ import tempfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, unquote
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.8.0"
-MINIMUM_APP_VERSION = "3.8.0"
+APP_VERSION = "3.9.0"
+MINIMUM_APP_VERSION = "3.9.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -184,6 +185,7 @@ def default_config() -> dict[str, Any]:
             "notify_when_charging_stops": True,
         },
         "openai": {"enabled": False, "api_key": "", "model": "gpt-6-luna", "daily_limit": 8},
+        "bark": {"enabled": True},
         "ntfy": {"enabled": False, "server_url": "https://ntfy.sh", "access_token": "", "topics": {"robin": "", "raphaela": ""}},
         "apns": {
             "enabled": False,
@@ -654,6 +656,487 @@ class APNSProvider:
                     db.execute("DELETE FROM devices WHERE id=? AND device_token=?", (device["id"],device["device_token"]))
 
 
+# Bark's MIT-licensed self-hosting APNs credential is intentionally published by
+# Finb/bark-server, deploy/AuthKey_LH4T9V5U4R_5U8LBRXG3A.p8 (not an RJ secret).
+# MIT License
+# 
+# Copyright (c) 2018 Feng
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+PUSH_ICONS = {'heart': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAACuElEQVR4nO2bUU7DQAwFH4jzwEE4ChyHo8BBuBEfCKmoKqWJ7bE3b34rxes3601apXfvjy8yHPf0Ao6OBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAzANY+/nz7dJHH0+va1S8yl396+l/pHBOSC71Ff9PnYCbUjhnQy71FTdQdA/YmcWGK9RX3Eb6BIS3cXVj1lfcQ+4EZGyiv69ZX3EniQLy1n3pyvUV95MlIPsAPb9+fcUQUgTU3L5Oq9RXjCJeQE0Wp7XqKwbinyJggh9DKzcjSOCDaeQEHCR9hXbqIwjGAmDCBBzn/Pkmql9PAIwFwMQIONr5801I154AGAuAsQAYC4CxABgLgLEAGAuAiRFAvdfHEtK1JwDGAmDCBBztFIrq1xMAYwEwkQKOcwo1fStCx3AQ26OPIJh4AWsPQXh3KROwqoOMvrKOoPUcJHWUeA9YyUFeL7k34TUcpHZR9DfVoe+tFGygosfQiaNQs+bu/5Svp3ivAF/EOk9D/dqYb8I9HSCrwn6K6OaAWo9/C4IhBfQZAnAl8AR0cMCugT+C2P7xHcALEJcCnr6aCBCRRYf01UeAahNpkr5aCTgmvQTUbMw+21/dBCg/nVbpq6EAZWbULX31FKCcpBqmr7YCFJ1Xz/TVWYDiUmubvpoLUER2ndNXfwHLM0DAni3cfPtrhABtzbF/+poiQLenOSJ9DRKgWzKdkr5mCdD/kh2UvsYJ0LV8Z6WviQJ0OeVx6WuogJWYKuB8s0/c/porQL8TH5q+RgvQT+5z0xfyero5ZfYELIAFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWADMF9x9vYMuuS7sAAAAAElFTkSuQmCC', 'chat': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAACOUlEQVR4nO3c0U0DMRAAUQdREzRBLVALtUATdMWHpSgiIQJ5vePzzmsgeCe+S84op6fXjybOA/0HVGcAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAGYAmAFgBoAZAPaY8zJf7y85LxTr+e1z9kucpv5r4kHnfm1eiVkBthn9pRkZptwDtpx+m7Ou+AC7Tr8LX11wgL2n38WuMTJAhel3gSsNC1Bn+l3UemMCVJt+F7LqgAA1p9+Nr91HEbDRAJXf/t3gBNwBMAPAhgJ4/elG5uAOgCWdB3QJj9dDZO5sdwDMADADwAwAS70J+7H1mjsAZgCYAWAGgBkAZgCYAWAGgBkAZgCY5wE3eB5QiAFgBoAZAOZ5AMwdADMAzAAwA8AMADMAzAAwA8AMADMAzPOAGzwPKGQowFHe0bONzMEdADMALOAny4o/5R+8DrsDYAEBKt+Kx9ceswNqNghZddglqFqDqPVG3gPqNAhcafBNuEKD2DXGfwrau0H46qZ8DN21wYx1+ePdf3K8H+8+O3SDhK2ceh7wX7teyi6t+yiiwvTbsgGKTL+tGaDO9NuCAUpNvy11E642+m6VHVBz+m2RAGWn31YIUHn6DQ9QfPqNDeD0GxjA6XdMAKd/lv09wNH/kLoDnP61vABO/6akAE7/NxkBnP4d048kdR//KKI4A8AMADMAzAAwA8AMADMAzAAwA8AMADMAzAAwA8AMADMAzAAwA8AMAPsGg3t0Wav9CJwAAAAASUVORK5CYII=', 'alarm': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADtUlEQVR4nO2dQZKbMBBFmVTu4StkzpdZ+n6+QuYmWaiKctkDlqH7vy/ot03FtPqpJSRA8/Hv75+p4PhFB3B2SgBMCYApATAlAKYEwJQAmBIAUwJgSgBMCYApATAlAKYEwJQAmBIAUwJgfouvd7nelv7p++vzhJF8CB5JrjR1iaQU+EQykytgQ4PvCWy8TyQPZA1BOxvsRmtOhoZ4AVGpF08JPWRoCL4Lsu34PqPZA5ECAiMz7P73BLY0TIBt308iqr0xAobIfnhVhbRavRBbycLcHs340xOJgIB1QGe4nWm9XG+pAvp/P7ZdSygEmM+o62S3bq+A9fiGTv09ec2s3VCYXQJO0v2nV23ZM2lnVcCRst9IalENQTDqdcB+DnbTpXggs5/Ng6y/DGsBZ9jdcxSQuhPgZsJuEs7eh3HbNzSqAHFqTErBpQL0HdOkFPgKeDcRL3tu+A+mAgvI3vLVbCnvgRTQk52Q1MgutAFMgH5B67mEZgSA26huO7jAXRCbgryN5W2oKyAw+88/1f/fferAZTdUXPvtcg5LAekQtNRg6g5k6bpKMToBDt2tH1m0/FYEuxDFd4REAtwGn54YNEWgEOCc/QbogB+CTg4mwKf7N6h40gWMdfPzTHb8TAW4df8GElXNATC5An6sX8/u3/gxttRRqCoApgTAlACYRAHDTQAN8TRQFQBTAmBKAEwJgDmUgMv1NtzW08ACvr8+9QvXcAYWMC3neqBSGFvAOkNoGFvA0ih0j7mGsQU0OjVognkX4NjKvN2IkNfQxTEfoQJmRhyRDiWg0aPBhwMKaKxosNKTKwBfKL2ba/0W+mErYOahFKy6/0QJ0E+Dtreq6QKsetyGYLLjx4Ygq3vBiYvn+HOAOQoBDl8CrQO+QC+qAGcH7OcL/BDEOsB7gE6A1e3QS2TRSivAbSBy+HbK5UPtvL+Ss3I5B9RzgMNRDT7nFEzIJMw6sMr+VOcFpV6xhzoxK/JCG6gz43b9/n7q1MRzn5o4g9wXOqwNXbaj9blwyP6EH9r3nAVBKSw9qT7jh9rPb+kgh/a1GJBhEKiA/jcPBH8/AB8JLU5NzHtcvmHVLXYgFRCy+xi7oMUd8Luh77ZWkB3lhAyfmojfC+IBkIf24Y1vsO9Pkof2+QA6qDPj1jjCqYnOg889hz2077lhhtlvIAOR6M0426Q/oO8u6veCRjExqfqNy/MAK5QLsRIAw78benJKAEwJgCkBMCUApgTAlACYEgBTAmBKAEwJgCkBMCUA5j+qOOXgDNB2/wAAAABJRU5ErkJggg==', 'poop': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADCklEQVR4nO2d0W3jMBAFlcOVdenhUk4auJSTItLYfRAQAjs2bO0u56345i+BTZBvyJVIGfbLv79/NsPxi+7A6lgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXA/KY7cJz3z6+L/3y8vSI9ifDS7mMp17lf08hEsxL0SPqPv0yBTgKeirWLgzYCDgTawkEPAYej1HfQQEAwRHEHDQScGwuAUReQUkCUq5C6gNNjATAWAGMBMBYAYwEwFgAjLUD5/j0L0QcyRdELPqiREzBh1ktp0CpBc2qOVGUTEjAzFx0HKgLmJyLiQEIAlYWCAwkBK8MLYKchvgh4AYsDC8AnIN4HrwAYC4CxABgLgLEAGAuAsQAYUoDCJmAA9gR4IKOT+49MflwzewWIp79N7+FUAfrpD2b2c56ALukPpvV2koBe6Q/m9HmGgI7pDyb0vFxA3/QH1f33RgzGAmBqBXSvP4PSUXgFwFgAjNb3BV2cwySu/bqWgwitgOtTsKxzsbqW46gIuJVIPKm6llNQEbAsEgLuT8bIVK1rOQsJAStjATC1AhTWeJzSUUgcRdx/WeSePaXl0k1DyUZMZ5uTxT6i9NWQvwKOpX/rXXGXuS2nz61kAbnlImu0uS3nOsj8XND5Ks8dsmpR2gpYKv0tb7w5AlZLf5Ay6gQBa6Y/iI9d63nAzvcKGx9kbmu5+CgCJiqgaEJ9bzZ4v1E9/YNt9lgBhx3oH0bpCriYWR9vr0+lef16teo/EL0ID94/vy5C3P+8leYtSZrpb+ICtp8cDJ5aDbLpb8olaOfcP+CgvgIGI8Rnr6ji0Q96CBg8eCjfIvedTgJ2ekV8n+g1QP9Gu5pgAg0uwufGAmASBKxcheJjz1kBazpIGXVaCVrNgdwz4W0lB4kjTb4Ir+Agd4z5d0HndpA+utrvCzrNlrVuVsn9gsZqeCMGYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEw/wGHMf0+o7Y4QgAAAABJRU5ErkJggg==', 'fart': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAC0ElEQVR4nO2c3VHDMBAGDUN70AQ0QQPQBFVQIQ+eyWRCfmT5TitZu48MQ3y3+nSOSPz0/vW6CMczfQGzowAYBcAoAEYBMAqAUQCMAmAUAKMAGAXAKABGATAKgFEAjAJgFACjABgFwCgARgEwCoBRAIwCYBQAo4Asfj5/fz5/H/7akx9NzOCi9R/fb7d+0wTAKCCe8uW/LMtL8sXMRcmmf8GQCbhVZ0X9gVx99fvLfxlxCN8K+PnPH5adekmbLuOYW9CpI6km7geu8KUHE7B188kwUbLRlb/cSFvQ/8rXOiu2/k0+Nv39raaHEcAO2BLqQjbAFnTU1q/sErC2Jm/QHbv1KwEJCB90nfc9dsHVz4CHbSq/0Kk6fkHiDJi5reXUH0V0UkA1nayPXWdBH99vqRqyHffgIPJ9QFQ9V4938mCjnPhGrLx9V1vQcnmCDhKH8OhDog2d/j+g8e4MDoNOBcxDjwKQ9UiFoEcBU0EeR/dwG35B+xsH4Di6w76DtEvAKH1vHIJGM2CU7rcnPQFDt75BGnIFDN39c/JMdHEWNAoZGrIEHK/7J2I1pAzhA3d/ia4uPgHH7v45IVEITsA83V+CivUsCCZSwFTLf2V/ySZgLzsdhAmYcPmf2FO7CYBRQAzVIYgRMPP+sxMTEEbdKlQAjAJgFBDJLN+UPxIKgFEAjAJgYgT4SfRqTACMAmDCBLgL1WECYCIFGIKKDpgAmGABhmAr8QmY1kFd4Slb0LQOKsiaAbM5qK43cQjP5qCO3LugSRzsKbPRl/QO/LGJnYus0fuAo0ahi4f2FdL4KUCj4Dfl6wmJNfzk3EEdBO6ongVtJnaeDfDo4n7IuJVQQBF5d3EKuMfwjyqQhziEYRQAowAYBcAoAEYBMAqAUQCMAmAUAKMAGAXAKABGATAKgFEAjAJgFACjABgFwCgARgEwCoBRAIwCYBQAowAYBcD8AeYX1iaF2cfpAAAAAElFTkSuQmCC', 'photo': 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADJUlEQVR4nO2dW3KDMBAESSp39AmSa9i5hk+Q3DIfqqJcMQiBVvTImv41JmZau7wEebt9/kyG453+AaNjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwFgBjATAWAGMBMBYAYwEwH+Dfvt4vUav6/vqNWtXJYBUQmH742s6EEdAir04dAALaJdWjA++EYSwAxgJgLADGAmAsAMYCYCwAxgJgmlyMA89IW//p8Kt+wQJ6vBiwi7SBgRrCBLx89I8EaojZBwyV/kzIVgcIGDP9RP221woYOf1EZQI+DIWpEuDhn6jJwRUAc1yAh/8jh9NwBcCQ84JqyJwE9VWanQkoOfmcl+nCRB8Cjp30d2Gig31A/SUX5YmL0hUQGFxalWAp6FZAi2ErWAqiAtolpeZAsQUVZrTYTwoPk3R6kZyAzQTz2c2f5tej40CrBeVTu94v5altLizSi7QEZDg2YEWGeQahFrT36sLi8s9LXu+XtTUrNCKVCtiV/vfXbybT548yKeONSEXAGv+yy0SfXwwf6WtIC3hOf9fXu3AgIWDXNU6RNUchIWCRQZ6k1BXwSM0gxXezeXgBCgGBv4EXsMhjr4i9H6DWhUQFjIMFwFgAjAXAWACMBcCICog9cIw9qI2FF6BwYA7+Bl5ACTUBKQjOoCvA84LOo2SQtrsnzJaIhIA1Ku+oVN7POQdpAdOSg8JB3UX6k46AXffNMxoWP1J+mkNoWsre+SOF2SmnP+lUwCbt7gmzaAnYnExYHujmwgrDf5JqQYlMI0rkHzyqmVmNICdgKnCQONxedNKf1FrQzDjvlxYVMA0zL0ixBc0EvphKMPqEbgXMxN4PUEO6AmYKHzxa+5YyfQiYKTHRRe4zb7fPn8Nf7mtTm3J4R9XBPuC1qRKgf6XlHGpycAXA1ApwEVQmEFABIzuo3/aYFjSmg5CtDjsPkH0hTwsU356eeHkN6v8/IDFmRzqGD0NhLADGAmAsAMYCYCwAxgJgLADGAmAsAMYCYCwAxgJgLADGAmAsAMYCYCwAxgJgLADGAmAsAMYCYCwA5g/ciiPQtCJv4AAAAABJRU5ErkJggg=='}
+
+BARK_PUBLIC_APNS_KEY = """-----BEGIN PRIVATE KEY-----
+MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg4vtC3g5L5HgKGJ2+
+T1eA0tOivREvEAY2g+juRXJkYL2gCgYIKoZIzj0DAQehRANCAASmOs3JkSyoGEWZ
+sUGxFs/4pw1rIlSV2IC19M8u3G5kq36upOwyFWj9Gi3Ejc9d3sC7+SHRqXrEAJow
+8/7tRpV+
+-----END PRIVATE KEY-----
+"""
+
+
+class BarkProvider(APNSProvider):
+    """APNs for the official App Store Bark app, separate from RJ signing."""
+    @property
+    def enabled(self):
+        return self.app.config.get("bark", {}).get("enabled", True)
+
+    def provider_token(self):
+        with self._lock:
+            if self._jwt and time.time() - self._jwt_created < 2700:
+                return self._jwt
+            config = self.app.config.get("bark", {})
+            path = self.app.data_directory / "bark-public-apns.p8"
+            if config.get("private_key_file"):
+                path = self.app.resolve_config_path(config["private_key_file"])
+            elif not path.exists():
+                self.app.atomic_write(path, BARK_PUBLIC_APNS_KEY.encode())
+            header = b64url(json_bytes({"alg": "ES256", "kid": config.get("key_id", "LH4T9V5U4R")}))
+            claims = b64url(json_bytes({"iss": config.get("team_id", "5U8LBRXG3A"), "iat": int(time.time())}))
+            value = f"{header}.{claims}".encode("ascii")
+            result = subprocess.run(["openssl", "dgst", "-sha256", "-sign", str(path)], input=value, capture_output=True, timeout=10)
+            if result.returncode:
+                raise RuntimeError("Bark-Schlüssel konnte nicht signiert werden.")
+            self._jwt = f"{header}.{claims}.{b64url(self._der_to_raw(result.stdout))}"
+            self._jwt_created = time.time()
+            return self._jwt
+
+    def record(self, user_id, kind, status, reason):
+        super().record(user_id, "bark/" + kind, status, reason)
+
+    def push(self, device_key, params, user_id="bark-device"):
+        with self.app.database.connect() as db:
+            row = db.execute("SELECT device_token FROM bark_devices WHERE device_key=?", (device_key,)).fetchone()
+        if not row or not row[0]:
+            return False, "Bark-Gerät nicht registriert. Bark öffnen und Server erneut verbinden."
+        sound = str(params.get("sound") or "1107")
+        if not sound.endswith(".caf"):
+            sound += ".caf"
+        aps = {"alert": {"title": str(params.get("title", "RJ Love")), "subtitle": str(params.get("subtitle", "")), "body": str(params.get("body", ""))},
+               "sound": sound, "mutable-content": 1, "category": "myNotificationCategory", "thread-id": str(params.get("group", "RJ Love"))}
+        # Bark's NotificationServiceExtension reads these custom fields and applies
+        # level/volume/call/icon/image, exactly as the upstream Go backend does.
+        payload = {str(k).lower(): str(v) for k, v in params.items() if k not in {"device_key", "aps"}}
+        payload["aps"] = aps
+        if params.get("level") == "critical":
+            aps["sound"] = {"critical": 1, "name": sound, "volume": min(1.0, max(0.0, float(params.get("volume", 10)) / 10))}
+            aps["interruption-level"] = "critical"
+        elif params.get("level") == "passive":
+            aps["interruption-level"] = "passive"
+            aps.pop("sound", None)
+        elif params.get("level") == "timeSensitive":
+            aps["interruption-level"] = "time-sensitive"
+        if len(json_bytes(payload)) > 4096:
+            return False, "Bark-Nachricht überschreitet Apples 4096-Byte-Grenze."
+        status, reason = self.deliver(user_id, row[0], "production", payload, topic="me.fin.bark", push_type="alert", expiration=int(time.time()) + (60 if params.get("call") == "1" else 3600))
+        if status == "410" or reason == "BadDeviceToken":
+            with self.app.database.connect() as db:
+                db.execute("UPDATE bark_devices SET device_token='' WHERE device_key=? AND device_token=?", (device_key, row[0]))
+        return status == "200", reason or ("Von Apple angenommen" if status == "200" else "Bark-Zustellung fehlgeschlagen")
+
+
+class NotificationHub:
+    """Durable external delivery, receiver-controlled quiet hours and wake jobs."""
+    def __init__(self, app):
+        self.app = app
+        self.lock = threading.RLock()
+        self.tick_lock = threading.Lock()
+        self.stop = threading.Event()
+        self.wake = threading.Event()
+        with app.database.connect() as db:
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS notification_settings (user_id TEXT PRIMARY KEY,payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS bark_devices (device_key TEXT PRIMARY KEY,device_token TEXT NOT NULL,updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS push_jobs (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,event TEXT NOT NULL,next_at TEXT NOT NULL,expires_at TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,repeat_seconds INTEGER NOT NULL DEFAULT 0,stopped INTEGER NOT NULL DEFAULT 0,reason TEXT NOT NULL DEFAULT '');
+                CREATE INDEX IF NOT EXISTS push_jobs_due ON push_jobs(stopped,next_at);
+                CREATE TABLE IF NOT EXISTS reminder_pushes (occurrence TEXT PRIMARY KEY,created_at TEXT NOT NULL);
+            """)
+        self.bark = BarkProvider(app)
+        self.migrate_commands()
+        self.thread = threading.Thread(target=self.run, name="rjlove-push", daemon=True)
+        self.thread.start()
+
+    def migrate_commands(self):
+        with self.app.database.connect() as db:
+            rows = list(db.execute("SELECT * FROM commands WHERE acknowledged_at IS NULL"))
+        for row in rows:
+            payload = json.loads(row["payload"])
+            if payload.get("transport"):
+                continue
+            payload["transport"] = self.settings(row["target_id"])["provider"]
+            sender = self.app.user_by_id(row["owner_id"])
+            if not sender:
+                continue
+            with self.app.database.connect() as db:
+                db.execute("UPDATE commands SET payload=? WHERE id=?", (json.dumps(payload, ensure_ascii=False), row["id"]))
+            event = {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, "rjlove-upgrade:" + row["id"])), "kind": "wake_request", "title": "Weckruf von " + sender["display_name"], "body": payload["message"], "payload": {"command_id": row["id"]}}
+            self.enqueue(row["target_id"], event, due=parse_iso(row["due_at"]) or utc_now())
+
+    def settings(self, user_id):
+        legacy = self.app.config.get("ntfy", {})
+        default = {"provider": "bark", "bark_device_key": "", "ntfy_server_url": legacy.get("server_url", "https://ntfy.sh"),
+                   "ntfy_topic": legacy.get("topics", {}).get(user_id) or "rjlove_" + secrets.token_urlsafe(24),
+                   "ntfy_access_token": legacy.get("access_token", ""), "fallback_ntfy": False, "allow_critical": True,
+                   "sound": "alarm", "volume": 10, "quiet_schedules": [], "integration_secret": secrets.token_urlsafe(24)}
+        # Serialize creation so a generated private ntfy topic remains stable.
+        with self.lock, self.app.database.connect() as db:
+            row = db.execute("SELECT payload FROM notification_settings WHERE user_id=?", (user_id,)).fetchone()
+            if row:
+                default.update(json.loads(row[0]))
+            else:
+                db.execute("INSERT INTO notification_settings VALUES(?,?)", (user_id, json.dumps(default)))
+        return default
+
+    def public_url(self):
+        value = str(self.app.config["server"].get("public_url") or "https://love.rjuhas.eu").rstrip("/")
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return "https://love.rjuhas.eu"
+        return value
+
+    def quiet(self, user_id, now=None):
+        now = now or utc_now()
+        with self.app.database.connect() as db:
+            row = db.execute("SELECT payload FROM user_status WHERE user_id=?", (user_id,)).fetchone()
+        if row:
+            status = json.loads(row[0])
+            deadline = parse_iso(status.get("dnd_until"))
+            if deadline and deadline > now:
+                return {"active": True, "label": status.get("status_message") or "Ruhezeit", "until": deadline.isoformat()}
+        settings = self.settings(user_id)
+        for schedule in settings["quiet_schedules"]:
+            if not schedule["enabled"]:
+                continue
+            local = now.astimezone(ZoneInfo(schedule["timezone"]))
+            minute = local.hour * 60 + local.minute
+            start = int(schedule["start"][:2]) * 60 + int(schedule["start"][3:])
+            end = int(schedule["end"][:2]) * 60 + int(schedule["end"][3:])
+            overnight = start >= end
+            anchor = local.date() - dt.timedelta(days=1) if overnight and minute < end else local.date()
+            inside = (minute >= start or minute < end) if overnight else start <= minute < end
+            if inside and anchor.weekday() in schedule["days"]:
+                end_day = anchor + dt.timedelta(days=1 if overnight else 0)
+                until = dt.datetime.combine(end_day, dt.time(end // 60, end % 60), ZoneInfo(schedule["timezone"]))
+                return {"active": True, "label": schedule["label"] or "Schläft gerade", "until": until.astimezone(dt.timezone.utc).isoformat()}
+        return {"active": False, "label": "Erreichbar", "until": None}
+
+    def status(self, user_id):
+        settings = self.settings(user_id)
+        with self.app.database.connect() as db:
+            bound = db.execute("SELECT device_token FROM bark_devices WHERE device_key=?", (settings["bark_device_key"],)).fetchone()
+            attempts = [dict(r) for r in db.execute("SELECT * FROM push_deliveries WHERE target_id=? ORDER BY created_at DESC LIMIT 15", (user_id,))]
+            alarms = [dict(r) for r in db.execute("SELECT id,event,reason,attempts,next_at FROM push_jobs WHERE user_id=? AND stopped=0 AND repeat_seconds>0 ORDER BY next_at", (user_id,))]
+        issues = []
+        ready = bool(bound and bound[0]) if settings["provider"] == "bark" else bool(settings["ntfy_topic"])
+        if settings["provider"] == "bark":
+            if not ready:
+                issues.append("Bark installieren, dort den eigenen Server hinzufügen und den Bark-Geräteschlüssel hier einfügen.")
+            if not self.bark.enabled:
+                issues.append("Bark ist in der Serverkonfiguration deaktiviert."); ready = False
+            if not shutil.which("curl") or not shutil.which("openssl"):
+                issues.append("Auf dem Server werden curl mit HTTP/2 und openssl benötigt."); ready = False
+            else:
+                try:
+                    if b"HTTP2" not in subprocess.run(["curl", "--version"], capture_output=True, timeout=3).stdout:
+                        issues.append("curl benötigt HTTP/2-Unterstützung."); ready = False
+                except (OSError, subprocess.TimeoutExpired):
+                    ready = False; issues.append("curl konnte nicht geprüft werden.")
+        partners = [{"user_id": p, "display_name": self.app.user_by_id(p)["display_name"], "provider": self.settings(p)["provider"], "quiet": self.quiet(p)} for p in self.app.partner_ids(user_id)]
+        return {"settings": settings, "bark_server_url": self.public_url() + "/bark", "ready": ready, "issues": issues,
+                "quiet": self.quiet(user_id), "partners": partners, "attempts": attempts,
+                "integration_url": self.public_url() + "/push-integration/" + user_id + "/" + hmac.new(self.app.config["security"]["server_secret"].encode(), ("integration:" + user_id + ":" + settings["integration_secret"]).encode(), hashlib.sha256).hexdigest(),
+                "active_alarms": [{"id": r["id"], "message": json.loads(r["event"])["body"], "attempts": r["attempts"], "next_at": r["next_at"]} for r in alarms]}
+
+    def save(self, user_id, data):
+        current = self.settings(user_id)
+        if not isinstance(data, dict) or set(data) - set(current):
+            raise APIError(400, "invalid_push_settings", "Unbekannte Push-Einstellung.")
+        value = current | data
+        value["integration_secret"] = current["integration_secret"]
+        if value["provider"] not in {"bark", "ntfy"}:
+            raise APIError(400, "invalid_provider", "Bitte Bark oder ntfy auswählen.")
+        for flag in ("fallback_ntfy", "allow_critical"):
+            if type(value[flag]) is not bool:
+                raise APIError(400, "invalid_flag", "Push-Schalter ungültig.")
+        for name, maximum in (("bark_device_key", 200), ("ntfy_topic", 128), ("ntfy_access_token", 1000), ("sound", 100), ("ntfy_server_url", 500)):
+            value[name] = safe_text(value[name], maximum)
+        # Pasting Bark's whole test URL also works, provided it is our server.
+        key = value["bark_device_key"]
+        if key.startswith("https://"):
+            parsed = urlparse(key)
+            base = urlparse(self.public_url())
+            prefix = base.path.rstrip("/") + "/bark/"
+            if parsed.netloc != base.netloc or not parsed.path.startswith(prefix):
+                raise APIError(400, "foreign_bark_server", "Bitte den Schlüssel vom eigenen Bark-Server verwenden.")
+            value["bark_device_key"] = key = parsed.path[len(prefix):].split("/")[0]
+        if key and not re.fullmatch(r"[A-Za-z0-9_-]{20,200}", key):
+            raise APIError(400, "invalid_bark_key", "Ungültiger Bark-Geräteschlüssel.")
+        target = urlparse(value["ntfy_server_url"])
+        if target.scheme != "https" or not target.netloc or target.username or target.password or target.query or target.fragment or target.path not in {"", "/"}:
+            raise APIError(400, "invalid_ntfy_url", "ntfy benötigt eine HTTPS-Serveradresse ohne Pfad oder Zugangsdaten.")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", value["ntfy_topic"]):
+            raise APIError(400, "invalid_ntfy_topic", "Privates ntfy-Topic mit mindestens 16 Zeichen nötig.")
+        if type(value["volume"]) is not int or not 0 <= value["volume"] <= 10:
+            raise APIError(400, "invalid_volume", "Lautstärke muss zwischen 0 und 10 liegen.")
+        if not re.fullmatch(r"[A-Za-z0-9_. -]{1,100}", value["sound"]):
+            raise APIError(400, "invalid_sound", "Ungültiger Soundname.")
+        schedules = value["quiet_schedules"]
+        if not isinstance(schedules, list) or len(schedules) > 20:
+            raise APIError(400, "invalid_quiet_schedule", "Höchstens 20 Ruhepläne möglich.")
+        for s in schedules:
+            if not isinstance(s, dict) or set(s) != {"id", "enabled", "label", "start", "end", "days", "timezone"}:
+                raise APIError(400, "invalid_quiet_schedule", "Ruheplan unvollständig.")
+            for k, limit in (("id", 80), ("label", 100), ("timezone", 100)):
+                safe_text(s[k], limit)
+            if type(s["enabled"]) is not bool or not isinstance(s["days"], list) or not s["days"] or any(type(d) is not int or d not in range(7) for d in s["days"]):
+                raise APIError(400, "invalid_quiet_schedule", "Wochentage des Ruheplans ungültig.")
+            for field in ("start", "end"):
+                if not isinstance(s[field], str) or not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", s[field]):
+                    raise APIError(400, "invalid_quiet_schedule", "Uhrzeit muss HH:MM sein.")
+            try:
+                ZoneInfo(s["timezone"])
+            except (KeyError, ValueError):
+                raise APIError(400, "invalid_timezone", "Zeitzone unbekannt.")
+        with self.lock, self.app.database.connect() as db:
+            if key:
+                if not db.execute("SELECT 1 FROM bark_devices WHERE device_key=? AND device_token<>''", (key,)).fetchone():
+                    raise APIError(409, "bark_not_registered", "Den eigenen Server zuerst in Bark hinzufügen.")
+                for row in db.execute("SELECT user_id,payload FROM notification_settings WHERE user_id<>?", (user_id,)):
+                    if json.loads(row["payload"]).get("bark_device_key") == key:
+                        raise APIError(409, "bark_already_bound", "Dieses Bark-Gerät ist bereits mit einem anderen Konto verbunden.")
+            db.execute("UPDATE notification_settings SET payload=? WHERE user_id=?", (json.dumps(value), user_id))
+        self.wake.set()
+        return self.status(user_id)
+
+    def enqueue(self, user_id, event, *, due=None, repeat_seconds=0):
+        now = utc_now()
+        due = due or now
+        alarm = event["kind"] in {"wake_request", "reminder_due", "wake", "love_alarm"}
+        expires = due + dt.timedelta(hours=1 if repeat_seconds else 0, minutes=0 if repeat_seconds else (5 if alarm else 60))
+        with self.app.database.connect() as db:
+            db.execute("INSERT OR IGNORE INTO push_jobs(id,user_id,event,next_at,expires_at,repeat_seconds) VALUES(?,?,?,?,?,?)", (event["id"], user_id, json.dumps(event, ensure_ascii=False), due.isoformat(), expires.isoformat(), repeat_seconds))
+        self.wake.set()
+
+    @staticmethod
+    def chunks(text, limit=1800):
+        # Each character stays whole; concatenating chunks reconstructs full text.
+        chunks, current, size = [], [], 0
+        for c in text:
+            n = len(c.encode("utf-8"))
+            if current and size + n > limit:
+                chunks.append("".join(current)); current, size = [], 0
+            current.append(c); size += n
+        if current or not chunks:
+            chunks.append("".join(current))
+        return chunks
+
+    def ack_token(self, job_id, user_id):
+        return hmac.new(self.app.config["security"]["server_secret"].encode(), ("push-ack:" + job_id + ":" + user_id).encode(), hashlib.sha256).hexdigest()
+
+    def acknowledge(self, job_id, user_id):
+        with self.app.database.connect() as db:
+            result = db.execute("UPDATE push_jobs SET stopped=1,reason='Vom Empfänger bestätigt' WHERE id=? AND user_id=?", (job_id, user_id))
+            if not result.rowcount:
+                raise APIError(404, "alarm_not_found", "Weckruf nicht gefunden.")
+            row = db.execute("SELECT event FROM push_jobs WHERE id=?", (job_id,)).fetchone()
+            command_id = json.loads(row[0]).get("payload", {}).get("command_id")
+            if command_id:
+                db.execute("UPDATE commands SET acknowledged_at=? WHERE id=? AND target_id=?", (iso_now(), command_id, user_id))
+                db.execute("INSERT INTO command_receipts VALUES(?,?,?,?,?) ON CONFLICT(command_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at", (command_id, user_id, "acknowledged", "Bark-Weckruf bestätigt", iso_now()))
+
+    def send_ntfy(self, user_id, event, settings=None):
+        settings = settings or self.settings(user_id)
+        ok = True
+        for part in self.chunks(event["body"], 3500):
+            body = {"topic": settings["ntfy_topic"], "title": event["title"], "message": part, "priority": 3, "tags": ["heart"], "click": self.public_url()}
+            headers = {"Content-Type": "application/json"}
+            if settings["ntfy_access_token"]:
+                headers["Authorization"] = "Bearer " + settings["ntfy_access_token"]
+            try:
+                request = urllib.request.Request(settings["ntfy_server_url"].rstrip("/"), data=json_bytes(body), headers=headers)
+                # Do not allow redirects to forward account tokens to another host.
+                opener = urllib.request.build_opener(NoPushRedirect)
+                with opener.open(request, timeout=10) as response:
+                    ok = ok and 200 <= response.status < 300
+            except Exception:
+                ok = False
+        self.app.apns.record(user_id, "ntfy", "accepted" if ok else "failed", "ntfy hat die Nachricht angenommen; Empfang am iPhone unbestätigt." if ok else "ntfy nicht erreichbar oder Zugangsdaten ungültig.")
+        return ok
+
+    def send(self, user_id, event, job=None):
+        settings = self.settings(user_id)
+        alarm = event["kind"] in {"wake_request", "reminder_due", "wake", "love_alarm"} or event.get("payload", {}).get("critical") is True
+        quiet = self.quiet(user_id)
+        if quiet["active"]:
+            if alarm:
+                self.app.apns.record(user_id, settings["provider"], "suppressed", quiet["label"] + " · Kritischer Hinweis gesperrt")
+                return "suppressed"
+            # Existing manual DND also silences normal pushes. Recurring night mode
+            # delivers ordinary messages passively (never with sound/call).
+            with self.app.database.connect() as db:
+                row = db.execute("SELECT payload FROM user_status WHERE user_id=?", (user_id,)).fetchone()
+            if row and (parse_iso(json.loads(row[0]).get("dnd_until")) or dt.datetime.min.replace(tzinfo=dt.timezone.utc)) > utc_now():
+                return "suppressed"
+        if settings["provider"] == "ntfy":
+            return "sent" if self.send_ntfy(user_id, event, settings) else "failed"
+        if not self.bark.enabled:
+            return "failed"
+        category = "alarm" if alarm else ("chat" if "chat" in event["kind"] or "comment" in event["kind"] else "poop" if "poop" in event["kind"] else "fart" if "fart" in event["kind"] else "photo" if "moment" in event["kind"] or "photo" in event["kind"] or "instant" in event["kind"] else "heart")
+        params = {"title": event["title"], "group": "RJ Love · " + category, "icon": self.public_url() + "/push-icons/" + category + ".png", "isArchive": "1",
+                  "level": "passive" if quiet["active"] else ("critical" if alarm and settings["allow_critical"] else "active"),
+                  "sound": settings["sound"] if alarm else "minuet", "volume": str(settings["volume"])}
+        if alarm and settings["allow_critical"]:
+            params["call"] = "1"
+        if alarm and job:
+            params["url"] = self.public_url() + "/push-ack/" + job["id"] + "?token=" + self.ack_token(job["id"], user_id)
+        else:
+            params["url"] = self.public_url()
+        image = self.image_url(event, user_id)
+        if image:
+            params["image"] = image
+        parts = self.chunks(event["body"])
+        accepted = True
+        for index, part in enumerate(parts):
+            # Recheck before every network request so newly enabled quiet hours
+            # also stop multipart alerts and automatic fallback.
+            if alarm and self.quiet(user_id)["active"]:
+                return "suppressed"
+            if job:
+                with self.app.database.connect() as db:
+                    state = db.execute("SELECT stopped FROM push_jobs WHERE id=?", (job["id"],)).fetchone()
+                if not state or state[0]:
+                    return "acknowledged"
+            current = params | {"body": part}
+            if len(parts) > 1:
+                current["subtitle"] = f"Teil {index + 1}/{len(parts)}"
+                if index:
+                    current.pop("call", None); current["level"] = "passive"
+            ok, _ = self.bark.push(settings["bark_device_key"], current, user_id)
+            accepted = accepted and ok
+        if not accepted and settings["fallback_ntfy"] and not self.quiet(user_id)["active"]:
+            return "fallback" if self.send_ntfy(user_id, event, settings) else "failed"
+        return "sent" if accepted else "failed"
+
+    def image_url(self, event, user_id):
+        record_id = event.get("payload", {}).get("record_id")
+        if not record_id:
+            return None
+        with self.app.database.connect() as db:
+            row = db.execute("SELECT payload FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()
+        if not row:
+            return None
+        payload = json.loads(row[0])
+        if not payload.get("image_base64") and not payload.get("poster_base64") and not payload.get("asset_ids"):
+            return None
+        expires = str(int(time.time()) + 86400)
+        value = f"push-image:{record_id}:{user_id}:{expires}"
+        token = hmac.new(self.app.config["security"]["server_secret"].encode(), value.encode(), hashlib.sha256).hexdigest()
+        return self.public_url() + f"/push-image/{record_id}/{user_id}/{expires}/{token}"
+
+    def tick(self, now=None):
+        now = now or utc_now()
+        with self.tick_lock:
+            self.enqueue_reminders(now)
+            with self.app.database.connect() as db:
+                rows = [dict(r) for r in db.execute("SELECT * FROM push_jobs WHERE stopped=0 AND next_at<=? ORDER BY next_at LIMIT 30", (now.isoformat(),))]
+            for row in rows:
+                if self.stop.is_set():
+                    return
+                expired = (parse_iso(row["expires_at"]) or now) < now
+                if expired:
+                    result = "expired"
+                else:
+                    result = self.send(row["user_id"], json.loads(row["event"]), row)
+                repeat = row["repeat_seconds"] > 0 and result == "sent" and self.settings(row["user_id"])["provider"] == "bark" and self.settings(row["user_id"])["allow_critical"]
+                retry = result == "failed" and row["attempts"] < 4
+                next_at = now + dt.timedelta(seconds=row["repeat_seconds"] if repeat else min(300, 30 * (2 ** min(row["attempts"], 4))))
+                with self.app.database.connect() as db:
+                    db.execute("UPDATE push_jobs SET attempts=attempts+1,next_at=?,stopped=?,reason=? WHERE id=? AND stopped=0", (next_at.isoformat(), int(not (repeat or retry)), result, row["id"]))
+                command_id = json.loads(row["event"]).get("payload", {}).get("command_id")
+                if command_id and result not in {"suppressed", "expired", "acknowledged"}:
+                    with self.app.database.connect() as db:
+                        db.execute("INSERT INTO command_receipts VALUES(?,?,?,?,?) ON CONFLICT(command_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at WHERE command_receipts.status NOT IN ('acknowledged','scheduled')", (command_id, row["user_id"], "sent" if result in {"sent", "fallback"} else "failed", "An Push-Dienst übergeben · Empfang noch unbestätigt" if result in {"sent", "fallback"} else "Push-Zustellung fehlgeschlagen", iso_now()))
+                if result in {"suppressed", "expired"}:
+                    command_id = json.loads(row["event"]).get("payload", {}).get("command_id")
+                    if command_id:
+                        with self.app.database.connect() as db:
+                            db.execute("UPDATE commands SET acknowledged_at=? WHERE id=?", (iso_now(), command_id))
+                            db.execute("INSERT INTO command_receipts VALUES(?,?,?,?,?) ON CONFLICT(command_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at", (command_id, row["user_id"], result, "Ruhezeit · kein Weckruf" if result == "suppressed" else "Weckruf abgelaufen", iso_now()))
+
+    def enqueue_reminders(self, now):
+        with self.app.database.connect() as db:
+            records = list(db.execute("SELECT id,owner_id,kind,payload FROM records WHERE kind IN ('reminder','calendar','milestone') AND deleted_at IS NULL"))
+        for row in records:
+            p = json.loads(row["payload"])
+            if p.get("completed"):
+                continue
+            original = parse_iso(p.get("due_at") if row["kind"] == "reminder" else p.get("start_at"))
+            if not original:
+                continue
+            if row["kind"] != "reminder" and not p.get("alarm_enabled"):
+                continue
+            due = original
+            recurrence = p.get("recurrence", "none")
+            local = original.astimezone(self.app.timezone)
+            today = now.astimezone(self.app.timezone)
+            if recurrence in {"daily", "weekly", "monthly", "yearly"}:
+                if recurrence == "daily":
+                    candidate = local.replace(year=today.year, month=today.month, day=today.day)
+                elif recurrence == "weekly":
+                    candidate = (today - dt.timedelta(days=(today.weekday() - local.weekday()) % 7)).replace(hour=local.hour, minute=local.minute, second=local.second, microsecond=local.microsecond)
+                else:
+                    import calendar
+                    year, month = today.year, (today.month if recurrence == "monthly" else local.month)
+                    candidate = local.replace(year=year, month=month, day=min(local.day, calendar.monthrange(year, month)[1]))
+                due = candidate.astimezone(dt.timezone.utc)
+            if due < original or due > now or (now - due).total_seconds() > 300:
+                continue
+            targets = [p["target_id"]] if p.get("target_id") else [u["id"] for u in self.app.config["users"]]
+            for target in targets:
+                occurrence = row["id"] + ":" + target + ":" + due.isoformat()
+                with self.app.database.connect() as db:
+                    inserted = db.execute("INSERT OR IGNORE INTO reminder_pushes VALUES(?,?)", (occurrence, iso_now())).rowcount
+                if not inserted:
+                    continue
+                event = {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, occurrence)), "kind": "reminder_due" if p.get("alarm_enabled") else "reminder_notice", "title": p.get("title") or "Erinnerung", "body": p.get("message") or p.get("text") or p.get("notes") or p.get("title") or "Es ist Zeit 💗", "payload": {"record_id": row["id"]}}
+                self.enqueue(target, event, due=due)
+
+    def run(self):
+        while not self.stop.is_set():
+            self.wake.wait(2); self.wake.clear()
+            if self.stop.is_set():
+                break
+            try:
+                self.tick()
+            except Exception:
+                self.app.logger.exception("Push-Aufträge konnten nicht verarbeitet werden")
+
+    def close(self):
+        self.stop.set(); self.wake.set()
+        self.thread.join(timeout=20)
+
+
+class NoPushRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, "Push redirects disabled", headers, fp)
+
+
+
 class RJLoveApplication:
     def __init__(self, config: dict[str, Any], config_path: Path):
         self.config = config
@@ -679,6 +1162,8 @@ class RJLoveApplication:
         self._cleanup_stop = threading.Event()
         self._cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
         self._cleanup_thread.start()
+        self.push_limiter = LoginLimiter(120)
+        self.notification_hub = NotificationHub(self)
 
     @staticmethod
     def atomic_write(path: Path, data: bytes) -> None:
@@ -1242,25 +1727,7 @@ class RJLoveApplication:
         threading.Thread(target=deliver, daemon=True).start()
 
     def send_ntfy(self, user_id: str, event: dict[str, Any]) -> None:
-        config = self.config.get("ntfy", {})
-        topic = config.get("topics", {}).get(user_id, "")
-        if not config.get("enabled") or not topic:
-            return
-        def deliver() -> None:
-            try:
-                url = str(config.get("server_url", "")).rstrip("/")
-                if not url.startswith("https://") or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", topic):
-                    raise ValueError("ntfy benötigt HTTPS und einen privaten Topic-Namen mit mindestens 16 Zeichen")
-                # No health values, coordinates or message contents leave the private server.
-                data = json_bytes({"topic": topic, "title": "RJ Love", "message": "Eine neue Nachricht wartet in eurer App.", "tags": ["heart"]})
-                req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-                if config.get("access_token"):
-                    req.add_header("Authorization", "Bearer " + config["access_token"])
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    response.read(1024)
-            except Exception:
-                self.logger.warning("ntfy-Zustellung fehlgeschlagen")
-        threading.Thread(target=deliver, daemon=True).start()
+        self.notification_hub.send_ntfy(user_id, event)
 
     def authenticate(self, authorization: str | None) -> str:
         if not authorization or not authorization.startswith("Bearer "):
@@ -1326,7 +1793,7 @@ class RJLoveApplication:
             "target_id": target_id,
             "kind": kind,
             "title": title[:120],
-            "body": body[:500],
+            "body": body,
             "payload": payload or {},
             "created_at": iso_now(),
         }
@@ -1343,12 +1810,9 @@ class RJLoveApplication:
         finally:
             if owns_connection:
                 connection.close()
-        with self.database.connect() as status_db:
-            row=status_db.execute("SELECT payload FROM user_status WHERE user_id=?",(target_id,)).fetchone()
-        quiet_until=parse_iso(json.loads(row["payload"]).get("dnd_until")) if row else None
-        if not quiet_until or quiet_until <= utc_now() or kind in {"wake","love_alarm","wake_request","push_test"}:
-            self.apns.send_to_user(target_id, event)
-            self.send_ntfy(target_id, event)
+        # Exactly one primary external provider; no second RJ alert on polling.
+        if kind != "wake_request":
+            self.notification_hub.enqueue(target_id, event)
         return event
 
     def broadcast_event(
@@ -1575,7 +2039,7 @@ class RJLoveApplication:
         events = [
             {
                 "id": row["id"], "kind": row["kind"], "title": row["title"],
-                "body": row["body"], "payload": json.loads(row["payload"]),
+                "body": row["body"], "external_delivery": True, "payload": json.loads(row["payload"]),
                 "created_at": row["created_at"],
             }
             for row in event_rows
@@ -1629,6 +2093,8 @@ class RJLoveApplication:
         old_events = now - dt.timedelta(days=30)
         old_commands = now - dt.timedelta(days=14)
         with self.database.connect() as db:
+            db.execute("DELETE FROM push_jobs WHERE stopped=1 AND expires_at<?", ((now-dt.timedelta(days=30)).isoformat(),))
+            db.execute("DELETE FROM reminder_pushes WHERE created_at<?", ((now-dt.timedelta(days=400)).isoformat(),))
             db.execute("DELETE FROM push_deliveries WHERE created_at<?", ((now-dt.timedelta(days=7)).isoformat(),))
             db.execute("DELETE FROM radio_events WHERE created_at<?", ((now - dt.timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),))
             db.execute("DELETE FROM radio_floor WHERE expires_at<?", (iso_now(),))
@@ -1646,6 +2112,7 @@ class RJLoveApplication:
                 self.configure_push_automatically()
 
     def close(self) -> None:
+        self.notification_hub.close()
         self._cleanup_stop.set()
         for handler in list(self.logger.handlers):
             handler.close()
@@ -1662,6 +2129,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args: Any) -> None:
         message=fmt % args
+        message=re.sub(r"/(bark|push-image|push-ack|push-integration)(?:/[^ ?\"]*)?(?:\?[^ \"]*)?", r"/\1/[redacted]", message)
         message=re.sub(r"([?&]ticket=)[^ &\"]+",r"\1[redacted]",message)
         self.app.logger.info("%s %s",self.client_address[0],message)
 
@@ -1740,9 +2208,166 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if urlparse(self.path).path.startswith("/media/assets/"):self.do_GET()
         else:self.send_json(404,{"error":"not_found","message":"Medium nicht gefunden."})
 
+    def push_bytes(self, raw, mime, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(raw)
+
+    def external_push_route(self, path, parts, query):
+        hub = self.app.notification_hub
+        if path.startswith("/push-icons/") and self.command == "GET":
+            icon = parts[-1].removesuffix(".png")
+            if icon not in PUSH_ICONS:
+                raise APIError(404, "not_found", "Symbol nicht gefunden.")
+            self.push_bytes(base64.b64decode(PUSH_ICONS[icon]), "image/png"); return True
+        if len(parts) == 5 and parts[0] == "push-image" and self.command == "GET":
+            _, record_id, user_id, expires, token = parts
+            value = f"push-image:{record_id}:{user_id}:{expires}"
+            expected = hmac.new(self.app.config["security"]["server_secret"].encode(), value.encode(), hashlib.sha256).hexdigest()
+            if not expires.isdigit() or int(expires) < time.time() or not hmac.compare_digest(expected, token):
+                raise APIError(404, "not_found", "Vorschau abgelaufen.")
+            with self.app.database.connect() as db:
+                row = db.execute("SELECT payload FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()
+                if not row:
+                    raise APIError(404, "not_found", "Medium zurückgerufen.")
+                p = json.loads(row[0])
+                encoded = p.get("poster_base64") or p.get("image_base64")
+                if encoded:
+                    raw = base64.b64decode(encoded)
+                    mime = "image/png" if raw.startswith(b"\x89PNG") else "image/jpeg"
+                else:
+                    asset = next((db.execute("SELECT path,mime_type,size_bytes FROM assets WHERE id=? AND ready=1 AND mime_type IN ('image/jpeg','image/png')", (aid,)).fetchone() for aid in p.get("asset_ids", [])[:1]), None)
+                    if not asset or asset["size_bytes"] > 5 * 1024 * 1024:
+                        raise APIError(404, "not_found", "Keine kleine Bildvorschau vorhanden.")
+                    raw = self.app.media_path(asset["path"]).read_bytes(); mime = asset["mime_type"]
+            self.push_bytes(raw, mime); return True
+        if len(parts) == 2 and parts[0] == "push-ack":
+            job_id = parts[1]
+            with self.app.database.connect() as db:
+                row = db.execute("SELECT user_id FROM push_jobs WHERE id=?", (job_id,)).fetchone()
+            supplied = query.get("token", [""])[0]
+            if self.command == "POST":
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length < 1024:
+                    raise APIError(400, "invalid_ack", "Bestätigung ungültig.")
+                supplied = parse_qs(self.rfile.read(length).decode()).get("token", [""])[0]
+            if not row or not hmac.compare_digest(supplied, hub.ack_token(job_id, row[0])):
+                raise APIError(404, "not_found", "Weckruf nicht gefunden.")
+            if self.command == "POST":
+                with hub.lock:
+                    hub.acknowledge(job_id, row[0])
+                body = "<h1>Bin wach 💗</h1><p>Die Wiederholung wurde beendet. Ein bereits zugestellter Bark-Klingelton kann noch bis zu 30 Sekunden laufen.</p>"
+            else:
+                # Never acknowledge on a GET: previews and link scanners can fetch it.
+                body = '<h1>Dein Weckruf 💗</h1><form method="post"><input type="hidden" name="token" value="' + supplied + '"><button>Bin wach · Wiederholung beenden</button></form><p>Oder in RJ Love unter Push &amp; Wecker bestätigen.</p>'
+            page = '<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RJ Love · Weckruf</title><style>body{font:18px system-ui;max-width:32rem;margin:12vh auto;padding:24px;background:#fff3f7;color:#432c40}button{font:inherit;background:#ad3365;color:white;border:0;border-radius:16px;padding:20px}</style>' + body + '</html>'
+            self.push_bytes(page.encode(), "text/html; charset=utf-8"); return True
+        if len(parts) == 3 and parts[0] == "push-integration" and self.command == "POST":
+            user_id, token = parts[1:]
+            if not self.app.user_by_id(user_id):
+                raise APIError(404, "not_found", "Integration unbekannt.")
+            settings = hub.settings(user_id)
+            expected = hmac.new(self.app.config["security"]["server_secret"].encode(), ("integration:" + user_id + ":" + settings["integration_secret"]).encode(), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, token):
+                raise APIError(401, "unauthorized", "Integrationsschlüssel ungültig.")
+            self.app.push_limiter.check("integration:" + user_id); self.app.push_limiter.fail("integration:" + user_id)
+            body = self.read_json()
+            title = safe_text(body.get("title", "RJ Love"), 120, allow_empty=False)
+            message = safe_text(body.get("body", body.get("message", "")), 20000, allow_empty=False)
+            alarm = body.get("alarm") is True
+            repeat = body.get("repeat_until_ack") is True
+            due = parse_iso(body.get("due_at")) or utc_now()
+            if due > utc_now() + dt.timedelta(days=30) or due < utc_now() - dt.timedelta(minutes=5):
+                raise APIError(400, "invalid_due", "Weckzeit ist ungültig.")
+            event = {"id": str(uuid.uuid4()), "kind": "wake_request" if alarm else "integration", "title": title, "body": message, "payload": {}}
+            hub.enqueue(user_id, event, due=due, repeat_seconds=45 if alarm and repeat else 0)
+            self.send_json(202, {"id": event["id"], "queued": True, "quiet": hub.quiet(user_id)}); return True
+        if not (path == "/bark" or path.startswith("/bark/")):
+            return False
+        if not hub.bark.enabled:
+            raise APIError(503, "bark_disabled", "Bark ist deaktiviert.")
+        route = parts[1:]
+        if route in ([], ["ping"], ["healthz"], ["info"]) and self.command == "GET":
+            self.send_json(200, {"code": 200, "message": "pong", "timestamp": int(time.time()), "version": APP_VERSION}); return True
+        # Bound rate limit, including failed requests. Device keys are bearer secrets.
+        self.app.push_limiter.check("bark:" + self.client_key()); self.app.push_limiter.fail("bark:" + self.client_key())
+        data = {k: v[0] for k, v in query.items()}
+        if self.command == "POST":
+            if "application/json" in self.headers.get("Content-Type", ""):
+                data.update(self.read_json())
+            else:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 16384:
+                    raise APIError(413, "too_large", "Bark-Anfrage zu groß.")
+                data.update({k: v[0] for k, v in parse_qs(self.rfile.read(length).decode()).items()})
+        if route and route[0] == "register":
+            if len(route) == 2 and self.command == "GET":
+                with self.app.database.connect() as db:
+                    row = db.execute("SELECT 1 FROM bark_devices WHERE device_key=? AND device_token<>''", (route[1],)).fetchone()
+                self.send_json(200 if row else 400, {"code": 200 if row else 400, "message": "success" if row else "device not registered"}); return True
+            device_token = data.get("device_token") or data.get("devicetoken", "")
+            key = data.get("device_key") or data.get("key") or secrets.token_urlsafe(32)
+            if not isinstance(device_token, str) or not re.fullmatch(r"[A-Fa-f0-9]{32,160}", device_token) or not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_-]{20,200}", key):
+                raise APIError(400, "invalid_bark_registration", "Bark-Geräteregistrierung ungültig.")
+            with self.app.database.connect() as db:
+                db.execute("INSERT INTO bark_devices VALUES(?,?,?) ON CONFLICT(device_key) DO UPDATE SET device_token=excluded.device_token,updated_at=excluded.updated_at", (key, device_token, iso_now()))
+            self.send_json(200, {"code": 200, "message": "success", "data": {"key": key, "device_key": key, "device_token": device_token}}); return True
+        if route and route[0] != "push":
+            data["device_key"] = route[0]
+            for name, text in zip((["body"] if len(route) == 2 else ["title", "body"] if len(route) == 3 else ["title", "subtitle", "body"]), route[1:]):
+                data[name] = unquote(text)
+        key = data.get("device_key", "")
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_-]{20,200}", key):
+            raise APIError(400, "invalid_bark_key", "Bark-Schlüssel fehlt.")
+        with self.app.database.connect() as db:
+            owner = next((r["user_id"] for r in db.execute("SELECT * FROM notification_settings") if json.loads(r["payload"]).get("bark_device_key") == key), None)
+        # Direct Bark URLs must also respect provider selection and the recipient's
+        # quiet plans. Unbound devices may only receive normal setup tests.
+        params = {k: safe_text(str(data.get(k, "")), maximum) for k, maximum in (("title", 120), ("subtitle", 120), ("body", 20000))}
+        for name in ("sound", "volume", "call", "level", "group", "icon", "image", "url", "isArchive"):
+            if name in data:
+                params[name] = safe_text(str(data[name]), 1000)
+        settings = hub.settings(owner) if owner else None
+        alarm = params.get("level") == "critical" or params.get("call") == "1"
+        if owner and settings["provider"] != "bark":
+            self.send_json(200, {"code": 200, "message": "Bark currently disabled for this account"}); return True
+        quiet = hub.quiet(owner) if owner else {"active": False}
+        if quiet["active"] and alarm:
+            self.send_json(200, {"code": 200, "message": "quiet hours: critical alert suppressed", "data": {"suppressed": True}}); return True
+        if quiet["active"]:
+            params["level"] = "passive"; params.pop("call", None)
+        if not owner or not settings["allow_critical"]:
+            params["level"] = "active"; params.pop("call", None)
+        if owner and alarm:
+            params["volume"] = str(settings["volume"])
+        try:
+            volume = float(params.get("volume", 10))
+            if not math.isfinite(volume) or not 0 <= volume <= 10:
+                raise ValueError()
+        except (TypeError, ValueError):
+            raise APIError(400, "invalid_volume", "Bark-Lautstärke ungültig.")
+        ok = True
+        for index, part in enumerate(hub.chunks(params["body"])):
+            item = params | {"body": part}
+            if index:
+                item["level"] = "passive"; item.pop("call", None)
+            accepted, _ = hub.bark.push(key, item, owner or "bark-device"); ok = ok and accepted
+        self.send_json(200 if ok else 502, {"code": 200 if ok else 502, "message": "success" if ok else "Bark delivery failed; check server push status"}); return True
+
+
     def do_GET(self) -> None:  # noqa: N802
         try:
             path, parts, query = self.route()
+            if self.external_push_route(path, parts, query): return
+            if path == "/v1/notifications/settings":
+                self.send_json(200, self.app.notification_hub.status(self.current_user())); return
             if path.startswith("/v1/radio/"):
                 raise APIError(410,"removed","Walkie-Talkie wurde durch den Messenger ersetzt.")
             if self._media_get(path,parts,query): return
@@ -1812,7 +2437,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         try:
-            path, parts, _ = self.route()
+            path, parts, query = self.route()
+            if self.external_push_route(path, parts, query): return
             if path == "/v1/auth/login":
                 self._login()
                 return
@@ -1821,6 +2447,22 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
+            if path == "/v1/notifications/settings":
+                self.send_json(200, self.app.notification_hub.save(user_id, self.read_json())); return
+            if path == "/v1/notifications/test":
+                self.read_json()
+                hub = self.app.notification_hub
+                status = hub.status(user_id)
+                if not status["ready"]:
+                    raise APIError(409, "push_not_ready", " ".join(status["issues"]))
+                self.app.push_limiter.check("test:" + user_id); self.app.push_limiter.fail("test:" + user_id)
+                self.app.create_event(user_id, "external_test", "RJ Love · Testnachricht 💗", "So sehen eure Nachrichten aus: vollständiger Inhalt, eigene Überschrift und passendes Symbol.")
+                self.send_empty(); return
+            if len(parts) == 4 and parts[:2] == ["v1", "notifications"] and parts[3] == "ack":
+                self.read_json()
+                with self.app.notification_hub.lock:
+                    self.app.notification_hub.acknowledge(parts[2], user_id)
+                self.send_empty(); return
             if path == "/v1/ai/consent":
                 body=self.read_json()
                 if type(body.get("enabled")) is not bool:raise APIError(400,"invalid_consent","Freigabe ungültig.")
@@ -2601,7 +3243,11 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "photo_request": ("Ein Foto nur für dich 📷", "wünscht sich ein Foto von dir."),
         }
         title, phrase = labels.get(kind,("Ein Moment für uns","hat etwas Neues für dich geteilt."))
-        self.app.broadcast_event(user_id, f"record_{kind}", title, f"{sender['display_name']} {phrase}", {"record_id": record_id})
+        content = "\n".join(str(payload[k]) for k in ("title", "text", "message", "caption", "notes", "location") if isinstance(payload.get(k), str) and payload[k])
+        if kind == "chat":
+            title = f"{sender['display_name']} hat dir geschrieben 💌"
+        preview = f"{sender['display_name']} {phrase}" + ("\n" + content if content else "")
+        self.app.broadcast_event(user_id, f"record_{kind}", title, preview, {"record_id": record_id, "critical": kind == "chat" and payload.get("urgency", 0) >= 0.8})
         self.send_json(
             HTTPStatus.OK,
             {"id": record_id, "kind": kind, "owner_id": owner_id, "payload": record_payload_wire(kind,payload), "created_at": created_at, "updated_at": now},
@@ -2720,7 +3366,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 path.unlink(missing_ok=True)
                 raise
         sender = self.app.user_by_id(user_id)["display_name"]
-        self.app.broadcast_event(user_id, "fart_clip", "Neue Duftpost 💨", f"{sender} hat ein kleines Meisterwerk für dich aufgenommen.")
+        self.app.broadcast_event(user_id, "fart_clip", "Neue Duftpost 💨", f"{sender} hat Duftpost hinterlassen.\n{title}\n{caption}")
         self.send_json(200, self.app.fart_clip(clip_id))
 
     def _list_fart_comments(self,clip_id,query):
@@ -2752,7 +3398,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.app.enforce_quota(user_id,len(text.encode()),db=db)
             db.execute("INSERT INTO fart_comments VALUES(?,?,?,?,?)",(comment_id,clip_id,user_id,text,created))
         sender=self.app.user_by_id(user_id)["display_name"]
-        self.app.broadcast_event(user_id,"fart_comment","Neue Worte zur Duftpost",sender+" hat einen Kommentar geschrieben.",{"clip_id":clip_id})
+        self.app.broadcast_event(user_id,"fart_comment","Neue Worte zur Duftpost",sender+" hat kommentiert:\n"+text,{"clip_id":clip_id})
         self.send_json(201,{"id":comment_id,"clip_id":clip_id,"user_id":user_id,"text":text,"created_at":created})
 
     def _fart_audio(self, clip_id: str) -> None:
@@ -2829,23 +3475,32 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         kind = safe_text(body.get("kind", "wake"), 30, allow_empty=False)
         if kind not in ALLOWED_COMMAND_KINDS:
             raise APIError(HTTPStatus.BAD_REQUEST, "invalid_command", "Dieser Befehl wird nicht unterstützt.")
-        message = safe_text(body.get("message", "Schatzi möchte dich wecken 💗"), 120, allow_empty=False)
+        message = safe_text(body.get("message", "Schatzi möchte dich wecken 💗"), 2000, allow_empty=False)
         due = parse_iso(body.get("due_at")) or (utc_now() + dt.timedelta(seconds=2))
         if due > utc_now() + dt.timedelta(days=30):
             raise APIError(HTTPStatus.BAD_REQUEST, "due_too_far", "Der Alarm darf höchstens 30 Tage in der Zukunft liegen.")
         command_id = str(uuid.uuid4())
         created = iso_now()
-        payload = {"message": message}
+        repeat = body.get("repeat_until_ack", False)
+        if type(repeat) is not bool:
+            raise APIError(400, "invalid_repeat", "Wiederholung muss ein Schalter sein.")
+        if due < utc_now() - dt.timedelta(minutes=5):
+            raise APIError(400, "invalid_due", "Die Weckzeit liegt in der Vergangenheit.")
+        hub = self.app.notification_hub
+        if hub.quiet(target_id)["active"] and due <= utc_now() + dt.timedelta(seconds=10):
+            raise APIError(409, "recipient_quiet", hub.quiet(target_id)["label"] + " · Kritische Hinweise sind gerade gesperrt.")
+        payload = {"message": message, "transport": hub.settings(target_id)["provider"], "repeat_until_ack": repeat}
         with self.app.database.connect() as db:
             db.execute(
                 "INSERT INTO commands(id,owner_id,target_id,kind,payload,due_at,created_at) VALUES(?,?,?,?,?,?,?)",
                 (command_id, user_id, target_id, kind, json.dumps(payload, ensure_ascii=False), due.isoformat(), created),
             )
         sender = self.app.user_by_id(user_id) or {"display_name": "Schatzi"}
-        self.app.create_event(
+        event = self.app.create_event(
             target_id, "wake_request", f"Weckruf von {sender['display_name']} 💗", message,
             {"command_id": command_id, "due_at": due.isoformat()},
         )
+        hub.enqueue(target_id, event, due=due, repeat_seconds=45 if repeat else 0)
         self.send_json(
             HTTPStatus.CREATED,
             {"id": command_id, "kind": kind, "target_id": target_id, "payload": payload, "due_at": due.isoformat(), "created_at": created},
@@ -3134,3 +3789,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

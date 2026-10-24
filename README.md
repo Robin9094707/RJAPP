@@ -1,6 +1,6 @@
-# RJ Love 3.8
+# RJ Love 3.9
 
-Aktuelles Update: [Galerie, Streaming, Momentkarte und Drop-Poop 3.8](RELEASE-3.8.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
+Aktuelles Update: [Bark, ntfy, Weckrufe und persönliche Ruhezeiten 3.9](RELEASE-3.9.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 
 Neu: BeReal-Fotokalender, Tagesrückblick, gemeinsamer Feed, Abendritual und ein aufgeräumtes Duftstudio. Die UWB-Diagnose unterscheidet fehlenden Token, Serveraustausch und tatsächliche Freigabefehler.
 
@@ -73,7 +73,7 @@ Die IPA wird **unsigniert** gebaut. ArcticSign/Feather muss die Haupt-App **und*
 
 ## Mitteilungen ohne eigenes APNs
 
-Der optionale `ntfy`-Block sendet ausschließlich allgemeine Hinweise ohne Nachrichteninhalt, Health-Werte oder Koordinaten. Dazu braucht jedes iPhone die separate ntfy-App mit eigenem privaten Topic. Das ist ein Hinweisweg zur App, kein Mechanismus, um RJ Love dauerhaft auszuführen. Empfang und Hintergrundzustellung hängen von ntfy, dessen iOS-Konfiguration und iOS ab.
+Bark ist ab 3.9 der vorausgewählte externe Push-Weg. Der Bark-Server ist direkt in der Python-Datei unter `/bark` enthalten. Jeder koppelt seinen eigenen Bark-Geräteschlüssel unter **Push & Wecker**; dort sind auch Ruhezeiten, kritische Hinweise und die ntfy-Alternative einstellbar. Beide Wege erhalten auf Wunsch des Betreibers vollständige Nachrichteninhalte und Überschriften. Bark bietet Bilder, passende Symbole und kritische Weckrufe; ntfy ausschließlich normale Hinweise. Bestehende ntfy-Konfigurationsdaten werden übernommen. Einrichtung, Zustellgrenzen und Update ohne Datenverlust: [RELEASE-3.9.md](RELEASE-3.9.md).
 
 ## Entwicklung und Build
 
@@ -91,3 +91,4 @@ Der grüne Build prüft Compiler, Paketstruktur und Backend-Verträge. HealthKit
 ## Frühere Versionen
 
 Die historischen Änderungslisten stehen in [RELEASE-2.2.md](RELEASE-2.2.md), [RELEASE-2.3.md](RELEASE-2.3.md) und [RELEASE-2.4.md](RELEASE-2.4.md). Für die aktuelle Installation gelten ausschließlich [INSTALLATION.md](INSTALLATION.md) und [RELEASE-3.0.md](RELEASE-3.0.md). Walkie-Talkie und die eigene Face-ID-Sperre sind in 3.0 entfernt.
+

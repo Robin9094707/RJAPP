@@ -265,6 +265,7 @@ struct RemoteCommand: Codable, Identifiable, Hashable, Sendable {
 
 struct CommandPayload: Codable, Hashable, Sendable {
     let message: String
+    var transport: String? = nil
 }
 
 struct RemoteEvent: Codable, Identifiable, Hashable, Sendable {
@@ -272,10 +273,12 @@ struct RemoteEvent: Codable, Identifiable, Hashable, Sendable {
     let kind: String
     let title: String
     let body: String
+    var externalDelivery: Bool? = nil
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, body
+        case externalDelivery = "external_delivery"
         case createdAt = "created_at"
     }
 }
@@ -404,3 +407,4 @@ struct PartnerActivity:Codable,Hashable,Sendable {
         return (foregroundEndedAt?.rjDate ?? .distantPast)<date
     }
 }
+

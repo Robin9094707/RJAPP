@@ -90,35 +90,11 @@ import Observation
         }.filter{$0 > .now}
     }
     private func reconcileAlarms(_ records:[SharedRecord],namespace:String) async {
+        // Bark/ntfy delivery now runs on the server; clear previous local plans.
+        let key=namespace+".alarms"
+        let ledger=UserDefaults.standard.dictionary(forKey:key) as? [String:String] ?? [:]
+        for id in ledger.keys { if let uuid=UUID(uuidString:id) { try? AlarmManager.shared.cancel(id:uuid) } }
+        UserDefaults.standard.set([String:String](),forKey:key)
         alarmError=nil
-        var desired:[String:(Date,String)]=[:]
-        for record in records where record.payload.alarmEnabled==true && record.payload.completed != true {
-            if record.kind == .reminder && record.payload.recurrence != "yearly" {continue}
-            guard let date=(record.payload.dueAt ?? record.payload.startAt)?.rjDate else{continue}
-            for occurrence in Self.occurrences(date,yearly:record.payload.recurrence=="yearly") {
-                let hash=SHA256.hash(data:Data((record.id+occurrence.rjISO8601).utf8)).map{String(format:"%02x",$0)}.joined();let h=Array(hash.prefix(32));let id=String(h[0..<8])+"-"+String(h[8..<12])+"-"+String(h[12..<16])+"-"+String(h[16..<20])+"-"+String(h[20..<32])
-                desired[id]=(occurrence,record.payload.title ?? "Unsere Zeit")
-            }
-        }
-        let selected=desired.sorted{$0.value.0 < $1.value.0}.prefix(48)
-        let allowed=Set(selected.map(\.key));let key=namespace+".alarms"
-        var ledger=UserDefaults.standard.dictionary(forKey:key) as? [String:String] ?? [:]
-        if let actual=try? AlarmManager.shared.alarms {
-            let active=Set(actual.map{$0.id.uuidString.lowercased()})
-            for id in ledger.keys.filter({!active.contains($0.lowercased())}){ledger.removeValue(forKey:id)}
-        }
-        if desired.count>48 {alarmError="Die nächsten 48 Jahres-/Terminwecker werden geplant; weitere werden beim Öffnen nachgerückt."}
-        for id in ledger.keys.filter({!allowed.contains($0)}) {if let uuid=UUID(uuidString:id){try? AlarmManager.shared.cancel(id:uuid)};ledger.removeValue(forKey:id)}
-        for (id,entry) in selected {
-            let signature=entry.0.rjISO8601+entry.1
-            guard ledger[id] != signature else{continue}
-            if AlarmManager.shared.authorizationState != .authorized { let granted=await AlarmService.shared.requestAuthorization(); if !granted {alarmError="AlarmKit ist nicht freigegeben.";break} }
-            if let uuid=UUID(uuidString:id) {
-                if ledger[id] != nil{try? AlarmManager.shared.cancel(id:uuid)}
-                do {try await RJLoveAlarmFactory.schedule(id:uuid,title:entry.1,senderName:"Unsere Zeit",fireDate:entry.0);ledger[id]=signature}
-                catch{alarmError=error.localizedDescription}
-            }
-        }
-        UserDefaults.standard.set(ledger,forKey:key)
     }
 }

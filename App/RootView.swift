@@ -73,11 +73,11 @@ struct ChangelogView:View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
-                Text("Unsere Bilder.\nUnsere kleinen Spuren.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.8").font(.title3.bold())
-                Label("Eine neue Galerie mit Vollbild-Wischen und Fotozoom",systemImage:"photo.on.rectangle.angled")
-                Label("Videos streamen und Vorschaubilder sofort sehen",systemImage:"play.rectangle.fill")
-                Label("Eure Momente auf einer gemeinsamen Karte",systemImage:"map.fill")
+                Text("Deine Nachricht.\nAuch wenn die App ruht.").font(.system(size:38,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 3.9").font(.title3.bold())
+                Label("Bark und ntfy mit vollständigen Nachrichten",systemImage:"bell.badge.fill")
+                Label("Kritische Bark-Weckrufe und Wiederholung bis zur Bestätigung",systemImage:"alarm.fill")
+                Label("Eigene Ruhezeiten mit Wochentagen und Nachtstatus",systemImage:"moon.zzz.fill")
                 Label("Drop-Poop: das private Thronarchiv für euch zwei",systemImage:"toilet.fill")
                 Label("Beziehungsmonate, Monatstage und Jahrestag im Blick",systemImage:"heart.circle.fill")
                 Text("Original oder optional platzsparend teilen: Ihr entscheidet. Eure bisherigen Erinnerungen bleiben erhalten. Ortsmarkierungen werden nur mit den entsprechenden Freigaben gespeichert.").font(.subheadline).foregroundStyle(.secondary)
@@ -87,3 +87,4 @@ struct ChangelogView:View {
         }.interactiveDismissDisabled()
     }
 }
+

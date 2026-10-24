@@ -317,10 +317,10 @@ private struct ReminderEditorView: View {
                         if let me = appState.me { Text("Nur \(me.displayName)").tag(me.id) }
                         if let partner = appState.partner { Text("Nur \(partner.displayName)").tag(partner.id) }
                     }
-                    Toggle("AlarmKit-Wecker", isOn: $alarmEnabled)
+                    Toggle("Kritischer Bark-Weckruf", isOn: $alarmEnabled)
                 }
                 Section {
-                    Text("Der Alarm wird auf jedem ausgewählten iPhone lokal geplant, nachdem die Erinnerung dort synchronisiert wurde.")
+                    Text("Der Server sendet zur Fälligkeit über Bark oder ntfy. Kritisches Klingeln gibt es mit Bark und deiner Freigabe; die Ruhezeiten des Empfängers gelten immer.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -337,7 +337,7 @@ private struct ReminderEditorView: View {
                 Button("Speichern") { save() }
                 Button("Abbrechen", role: .cancel) {}
             } message: {
-                Text(alarmEnabled ? "iOS fragt auf dem Zielgerät bei Bedarf nach der AlarmKit-Berechtigung." : "Die Erinnerung wird ohne Systemalarm geteilt.")
+                Text(alarmEnabled ? "Der Server berücksichtigt die Bark-Berechtigung und die Ruhezeiten des Empfängers." : "Die Erinnerung wird ohne Systemalarm geteilt.")
             }
         }
     }
@@ -420,3 +420,4 @@ private struct CalendarEditorView: View {
         }
     }
 }
+

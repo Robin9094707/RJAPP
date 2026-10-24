@@ -28,7 +28,7 @@ struct PlannerView:View {
                 Text("Mit Apple verbinden").font(.headline)
                 Text(PlannerService.shared.status).font(.caption).foregroundStyle(.secondary)
                 Button("Kalender und Erinnerungen verbinden"){Task{_ = await app.calendar.requestAccess();_ = await app.calendar.requestReminderAccess();await PlannerService.shared.reconcile(app:app)}}.buttonStyle(.bordered)
-                Text("Nur eure in RJ Love angelegten Einträge werden verbunden. Änderungen an diesen verknüpften Apple-Einträgen werden beim Öffnen abgeglichen. Jährliche AlarmKit-Wecker werden für bis zu vier kommende Jahre vorausgeplant und beim Öffnen ergänzt.").font(.footnote).foregroundStyle(.secondary)
+                Text("Nur eure in RJ Love angelegten Einträge werden verbunden. Änderungen an diesen verknüpften Apple-Einträgen werden beim Öffnen abgeglichen. Fällige Hinweise kommen über deinen gewählten Push-Dienst. Deine Ruhezeiten werden auf dem Server berücksichtigt.").font(.footnote).foregroundStyle(.secondary)
             }.loveCard()
         }.padding(20)}.background(LoveBackground()).navigationTitle("Unsere Zeit")
             .sheet(isPresented:$creating){PlannerEditor(initial:nil,initialDate:day)}
@@ -84,3 +84,4 @@ struct ThoughtHistoryView:View {
         if history.isEmpty{ContentUnavailableView("Das nächste Herz wartet",systemImage:"heart.fill")}
     }.padding(22)}.background(LoveBackground()).navigationTitle("Herzgedanken").onChange(of:app.thoughtHistory){_,events in var merged=Dictionary(uniqueKeysWithValues:history.map{($0.id,$0)});for event in events{merged[event.id]=event};history=merged.values.sorted{$0.receivedAt>$1.receivedAt}}.task{history=app.thoughtHistory;do{history=try await app.api.thoughtArchive()}catch{app.alert=AppAlert(title:"Herzarchiv",message:error.localizedDescription)}}}
 }
+

@@ -53,6 +53,7 @@ struct MainTabView:View {
         }
 
         .tint(LovePalette.pink)
+        .sheet(item:$state.notificationDestination,onDismiss:{appState.offerForegroundMoments()}) { route in NotificationDestinationView(route:route).id(route.id) }
         .sheet(isPresented:$state.showingEvening,onDismiss:{appState.didCloseEvening()}){NavigationStack{SharedJournalView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingEvening=false}}}}}
         .sheet(isPresented:$state.showingPartnerProfile){NavigationStack{PartnerProfileView()}.presentationDragIndicator(.visible)}
         .sheet(isPresented:$state.showingCountdowns){NavigationStack{CountdownHubView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingCountdowns=false}}}}}
@@ -74,8 +75,8 @@ struct ChangelogView:View {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
                 Text("Deine Nachricht.\nAuch wenn die App ruht.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 3.9").font(.title3.bold())
-                Label("Bark und ntfy mit vollständigen Nachrichten",systemImage:"bell.badge.fill")
+                Text("Willkommen in RJ Love 3.9.1").font(.title3.bold())
+                Label("Bark bringt dich direkt zur Nachricht oder zum Kommentar",systemImage:"bell.badge.fill")
                 Label("Kritische Bark-Weckrufe und Wiederholung bis zur Bestätigung",systemImage:"alarm.fill")
                 Label("Eigene Ruhezeiten mit Wochentagen und Nachtstatus",systemImage:"moon.zzz.fill")
                 Label("Drop-Poop: das private Thronarchiv für euch zwei",systemImage:"toilet.fill")

@@ -2,6 +2,10 @@ import SwiftUI
 
 struct FartCommentsView:View {
     let clip:FartClip
+    var initialCommentID: String? = nil
+    @FocusState private var commentFocused: Bool
+    @AppStorage("rjlove.keyboard-dismiss-after-send") private var closeKeyboardAfterSend=false
+    @State private var positioned=false
     @Environment(AppState.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var comments:[FartComment]=[]
@@ -27,13 +31,15 @@ struct FartCommentsView:View {
                         if hasMore {Button("Weitere Kommentare laden"){Task{await load(reset:false)}}.disabled(loading)}
                     }.padding(20)
                 }.refreshable{await load(reset:true)}
+                    .task(id:comments.map(\.id)){if !positioned,let id=initialCommentID,comments.contains(where:{$0.id==id}){await Task.yield();scroll.scrollTo(id,anchor:.center);positioned=true}}
                     .onChange(of:comments.last?.id) {_,value in if sending,let value {withAnimation{scroll.scrollTo(value,anchor:.bottom)}}}
             }
             .safeAreaInset(edge:.bottom) {
                 VStack(alignment:.leading,spacing:8) {
                     if let error {Text(error).font(.caption).foregroundStyle(.orange);Button("Erneut laden"){Task{await load(reset:true)}}.font(.caption)}
                     HStack(alignment:.bottom,spacing:12) {
-                        TextField("Ein paar Worte zur Duftpost …",text:$text,axis:.vertical).lineLimit(1...5).textFieldStyle(.roundedBorder).disabled(sending)
+                        TextField("Ein paar Worte zur Duftpost …",text:$text,axis:.vertical).focused($commentFocused).lineLimit(1...5).textFieldStyle(.roundedBorder)
+                        Button{commentFocused=false}label:{Image(systemName:"keyboard.chevron.compact.down")}.accessibilityLabel("Tastatur schließen").disabled(!commentFocused)
                         Button {Task{await send()}} label: {if sending {ProgressView()}else{Image(systemName:"arrow.up.circle.fill").font(.title)}}.accessibilityLabel("Kommentar senden").disabled(sending || text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || text.count>1000)
                     }
                     Text("\(text.count) / 1000 · Nur für euch zwei").font(.caption2).foregroundStyle(.secondary)
@@ -64,7 +70,7 @@ struct FartCommentsView:View {
     private func load(reset:Bool) async {
         guard !loading else{return};loading=true;defer{loading=false}
         do {
-            let page=try await app.api.fartComments(id:clip.id,after:reset ? nil:cursor)
+            let page=try await app.api.fartComments(id:clip.id,after:reset ? nil:cursor,focus:reset ? initialCommentID:nil)
             if reset {comments=page.comments}else{let ids=Set(comments.map(\.id));comments+=page.comments.filter{!ids.contains($0.id)}}
             comments.sort{($0.createdAt,$0.id)<($1.createdAt,$1.id)}
             hasMore=page.hasMore;cursor=page.nextCursor;error=nil
@@ -72,15 +78,17 @@ struct FartCommentsView:View {
     }
     private func send() async {
         sending=true;defer{sending=false}
-        let message=text.trimmingCharacters(in:.whitespacesAndNewlines)
+        let submitted=text
+        let message=submitted.trimmingCharacters(in:.whitespacesAndNewlines)
         if pendingText != message {pendingID=UUID().uuidString;pendingText=message}
         do {
             let item=try await app.api.addFartComment(clipID:clip.id,id:pendingID,text:message)
             if !comments.contains(where:{$0.id==item.id}) {comments.append(item);comments.sort{($0.createdAt,$0.id)<($1.createdAt,$1.id)}}
-            text="";pendingText=nil;error=nil;Haptics.success()
+            if text==submitted{text=""};if closeKeyboardAfterSend{commentFocused=false};pendingText=nil;error=nil;Haptics.success()
         }catch{self.error=error.localizedDescription}
     }
     private func remove(_ item:FartComment) async {
         do{try await app.api.deleteFartComment(clipID:clip.id,id:item.id);comments.removeAll{$0.id==item.id};error=nil}catch{self.error=error.localizedDescription}
     }
 }
+

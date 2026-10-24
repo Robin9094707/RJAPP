@@ -355,10 +355,10 @@ private struct UpdatedAtResponse: Codable {
 }
 
 extension APIClient {
-    func fartComments(id:String,after:String?=nil) async throws -> FartCommentPage {
+    func fartComments(id:String,after:String?=nil,focus:String?=nil) async throws -> FartCommentPage {
         var req=try request(path:"/v1/farts/\(id)/comments",method:"GET")
         var components=URLComponents(url:req.url!,resolvingAgainstBaseURL:false)!
-        components.queryItems=after.map{[URLQueryItem(name:"after",value:$0)]};req.url=components.url
+        components.queryItems=after.map{[URLQueryItem(name:"after",value:$0)]} ?? [];if let focus {components.queryItems?.append(URLQueryItem(name:"focus",value:focus))};req.url=components.url
         return try await execute(req,as:FartCommentPage.self)
     }
     func addFartComment(clipID:String,id:String,text:String) async throws -> FartComment {

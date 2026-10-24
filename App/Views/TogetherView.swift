@@ -235,7 +235,7 @@ struct TogetherView: View {
     }
 }
 
-private struct NoteEditorView: View {
+struct NoteEditorView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     let record: SharedRecord?
@@ -282,7 +282,7 @@ private struct NoteEditorView: View {
     }
 }
 
-private struct ReminderEditorView: View {
+struct ReminderEditorView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     let record: SharedRecord?
@@ -358,7 +358,7 @@ private struct ReminderEditorView: View {
     }
 }
 
-private struct CalendarEditorView: View {
+struct CalendarEditorView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     let record: SharedRecord?

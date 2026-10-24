@@ -36,6 +36,8 @@ final class AppState {
     var homeLayout = HomeLayout.standard
     var homeRevision = 0
     var selectedTab: AppTab = .home
+    var notificationDestination: NotificationRoute?
+    private var pendingNotificationRoute: NotificationRoute?
     var experienceSection: ExperienceSection = .farts
     var showingFartRecorder = false
     var quickFartRecording = false
@@ -238,6 +240,7 @@ final class AppState {
         studio.discard()
         showingFartRecorder = false
         showingEvening=false
+        notificationDestination=nil
         thoughts = [:]
         UserDefaults.standard.removeObject(forKey: "rjlove.chat-draft")
         queuedPresenceTask?.cancel()
@@ -294,6 +297,7 @@ final class AppState {
             queuePresenceUpload(force: true)
             await PlannerService.shared.reconcile(app: self)
             if !setupJourney.presented, !showingFartRecorder, pendingSweet==nil,pendingPhotoRequest==nil,UserDefaults.standard.string(forKey:"rjlove.changelog-seen") != RJVersion.app { showingChangelog = true }
+            presentPendingNotification()
             offerForegroundMoments()
             return true
         } catch let issue as UpdateRequirement {
@@ -511,7 +515,8 @@ final class AppState {
         showingChangelog = false
     }
     func offerForegroundMoments() {
-        guard UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, !showingHealthUpgrade, !showingEvening, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
+        presentPendingNotification()
+        guard notificationDestination == nil, pendingNotificationRoute == nil, UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, !showingHealthUpgrade, !showingEvening, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
         let defaults = UserDefaults.standard
         if defaults.string(forKey:"rjlove.changelog-seen") != RJVersion.app {showingChangelog=true;return}
         if health.needsExpandedAccess {showingHealthUpgrade=true;return}
@@ -673,7 +678,7 @@ final class AppState {
         for event in events {
             // A push test must only arrive through APNs. A poll-generated local
             // notification would falsely suggest that signing/server push works.
-            if event.externalDelivery != true, event.kind != "push_test", event.kind != "wake_request", myStatus?.isQuiet != true { await notifications.scheduleLocal(event: event) }
+            if event.externalDelivery != true, event.kind != "push_test", event.kind != "wake_request", event.kind != "record_photo_request", myStatus?.isQuiet != true { await notifications.scheduleLocal(event: event) }
             try? await api.acknowledgeEvent(id: event.id)
         }
         await CommandDeliveryProcessor.shared.process(commands, api: api, senderName: partner?.displayName ?? "Schatzi")
@@ -727,8 +732,34 @@ final class AppState {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
+    func retainNotificationRecord(_ record: SharedRecord) {
+        records.removeAll { $0.id == record.id }
+        records.append(record)
+        archiveKinds.insert(record.kind)
+    }
+
+    private func presentPendingNotification() {
+        guard phase == .authenticated, !setupJourney.presented, !showingFartRecorder, let me, let route = pendingNotificationRoute else { return }
+        pendingNotificationRoute = nil
+        if let account = route.account, account != me.id {
+            alert = AppAlert(title: "Anderes Konto", message: "Diese Mitteilung ist für das andere Konto. Bitte mit dem passenden Konto anmelden.")
+            return
+        }
+        showingProfile=false; showingPartnerProfile=false; showingCountdowns=false
+        showingStatus=false; showingEvening=false; showingChangelog=false; showingHealthUpgrade=false
+        pendingSweet=nil; pendingPhotoRequest=nil
+        if route.target == "home" { notificationDestination=nil; selectedTab = .home }
+        else { notificationDestination=route }
+    }
+
     func handleDeepLink(_ url: URL) {
+        if let route = NotificationRoute(url: url) {
+            pendingNotificationRoute=route
+            presentPendingNotification()
+            return
+        }
         guard url.scheme?.lowercased() == "rjlove" else { return }
+        if url.host?.lowercased() == "open" { return }
         switch url.host?.lowercased() {
         case "poop", "poop-log": selectedTab = .home;composingPoop=url.host?.lowercased()=="poop-log";showingPoop=true
         case "stop-nearby": nearby.stop(api: api)

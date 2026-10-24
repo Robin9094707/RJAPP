@@ -97,6 +97,7 @@ final class NotificationCoordinator: ObservableObject {
     }
 
     func scheduleLocal(event: RemoteEvent) async {
+        guard event.kind != "record_photo_request" else { return }
         let content = UNMutableNotificationContent()
         content.title = event.title
         content.body = event.body
@@ -117,3 +118,4 @@ final class NotificationCoordinator: ObservableObject {
         completion?(result)
     }
 }
+

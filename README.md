@@ -1,6 +1,6 @@
-# RJ Love 3.9
+# RJ Love 3.9.1
 
-Aktuelles Update: [Bark, ntfy, Weckrufe und persönliche Ruhezeiten 3.9](RELEASE-3.9.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
+Aktuelles Update: [Direkte Bark-Links, versteckte Fotowünsche und Tastatursteuerung 3.9.1](RELEASE-3.9.1.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 
 Neu: BeReal-Fotokalender, Tagesrückblick, gemeinsamer Feed, Abendritual und ein aufgeräumtes Duftstudio. Die UWB-Diagnose unterscheidet fehlenden Token, Serveraustausch und tatsächliche Freigabefehler.
 

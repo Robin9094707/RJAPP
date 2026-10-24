@@ -15,6 +15,7 @@ class ExternalPushTests(TestCase):
     request_error = backend.RJLoveBackendTests.request_error
     login = backend.RJLoveBackendTests.login
     upload_asset = backend.RJLoveBackendTests.upload_asset
+    upload_clip = backend.RJLoveBackendTests.upload_clip
 
     def pause_worker(self):
         hub = self.app.notification_hub
@@ -208,3 +209,65 @@ class ExternalPushTests(TestCase):
         self.assertEqual(sum(r['payload'].get('command_id')==command_id for r in rows),1)
         hub.migrate_commands()
         with self.app.database.connect() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM push_jobs').fetchone()[0],2)
+
+    def test_photo_wishes_stay_in_app_and_old_jobs_never_spoil(self):
+        hub=self.pause_worker(); token=self.login()
+        hub.bark.push=lambda *args:self.fail('A photo wish must not leave the app')
+        hub.send_ntfy=lambda *args:self.fail('No ntfy spoiler for a photo wish')
+        record=self.request('/v1/photo-requests','POST',{'id':str(uuid.uuid4()),'title':'Bitte lächeln'},token)[1]
+        with self.app.database.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM push_jobs').fetchone()[0],0)
+            row=db.execute("SELECT * FROM events WHERE kind='record_photo_request'").fetchone()
+            old=dict(row);old['payload']=json.loads(row['payload'])
+        self.assertTrue(any(r['id']==record['id'] for r in self.app.bootstrap('raphaela')['records']))
+        hub.enqueue('raphaela',old);hub.tick()
+        with self.app.database.connect() as db:self.assertEqual(db.execute('SELECT reason FROM push_jobs WHERE id=?',(old['id'],)).fetchone()[0],'hidden')
+        self.app.apns._send_worker('raphaela',old)
+
+    def test_bark_exact_comment_chat_and_alarm_routes(self):
+        hub=self.pause_worker();token=self.login();partner=self.login('raphaela','raphaela-test-password');self.register(token)
+        _,(_,clip),_=self.upload_clip(token)
+        comment_id=str(uuid.uuid4())
+        self.request('/v1/farts/'+clip['id']+'/comments','POST',{'id':comment_id,'text':'Dieser Furz ist legendär'},partner)
+        with self.app.database.connect() as db:
+            row=db.execute("SELECT * FROM events WHERE kind='fart_comment'").fetchone()
+            event=dict(row);event['payload']=json.loads(row['payload'])
+        captured=[];hub.bark.push=lambda key,p,user:(captured.append(p) or True,'ok')
+        hub.send('robin',event)
+        link=SERVER.urlparse(captured[0]['url']);query=SERVER.parse_qs(link.query)
+        self.assertEqual((link.scheme,link.netloc),('rjlove','open'))
+        self.assertEqual(query['target'],['fart-comments']);self.assertEqual(query['id'],[clip['id']]);self.assertEqual(query['comment'],[comment_id]);self.assertEqual(query['account'],['robin'])
+        record=str(uuid.uuid4())
+        self.assertEqual(hub.navigation({'kind':'record_chat','payload':{'record_id':record}}),{'target':'chat','id':record})
+        alarm=str(uuid.uuid4())
+        self.assertEqual(hub.navigation({'kind':'wake_request'},job={'id':alarm})['target'],'alarms')
+
+    def test_navigation_auth_old_content_recall_and_web_fallback(self):
+        hub=self.pause_worker();token=self.login();partner=self.login('raphaela','raphaela-test-password')
+        record=self.request('/v1/records','POST',{'id':str(uuid.uuid4()),'kind':'note','payload':{'title':'Ein alter Beitrag','text':'Noch vollständig lesbar'}},token)[1]
+        query=SERVER.urlencode({'target':'record','id':record['id'],'account':'robin'})
+        endpoint='/v1/navigation?'+query
+        self.assertEqual(self.request_error(endpoint)[0],401)
+        self.assertEqual(self.request_error(endpoint,token=partner)[0],403)
+        loaded=self.request(endpoint,token=token)[1]
+        self.assertEqual(loaded['record']['payload']['text'],'Noch vollständig lesbar')
+        with SERVER.urllib.request.urlopen(self.base+'/open?'+query) as response:
+            page=response.read().decode()
+            self.assertIn('rjlove://open?',page);self.assertIn('window.location.replace',page)
+            self.assertIn('script-src',response.headers['Content-Security-Policy'])
+            self.assertNotIn('Noch vollständig lesbar',page)
+        self.request('/v1/records/'+record['id'],'DELETE',token=token)
+        self.assertEqual(self.request_error(endpoint,token=token)[0],410)
+        for bad in ['/open?target=delete','/open?target=record&id=javascript%3Aalert(1)','/open?target=chat&target=alarms','/open?target=chat&url=https://evil.example']:
+            self.assertEqual(self.request_error(bad)[0],400)
+
+    def test_comment_focus_loads_window_after_bootstrap_boundary(self):
+        hub=self.pause_worker();token=self.login();_,(_,clip),_=self.upload_clip(token)
+        ids=[str(uuid.uuid4()) for _ in range(450)]
+        with self.app.database.connect() as db:
+            for index,identifier in enumerate(ids):
+                db.execute('INSERT INTO fart_comments VALUES(?,?,?,?,?)',(identifier,clip['id'],'robin',str(index),(SERVER.utc_now()+dt.timedelta(seconds=index)).isoformat()))
+        result=self.request('/v1/farts/'+clip['id']+'/comments?focus='+ids[400],token=token)[1]
+        self.assertIn(ids[400],[c['id'] for c in result['comments']])
+        self.assertEqual(len(result['comments']),70)
+        self.assertEqual(result['comments'][20]['id'],ids[400])

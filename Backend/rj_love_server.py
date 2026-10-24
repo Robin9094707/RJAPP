@@ -19,6 +19,7 @@ import binascii
 import contextlib
 import datetime as dt
 import math
+import html
 import re
 import getpass
 import argparse
@@ -47,12 +48,12 @@ import tempfile
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlparse, unquote
+from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "3.9.0"
-MINIMUM_APP_VERSION = "3.9.0"
+APP_VERSION = "3.9.1"
+MINIMUM_APP_VERSION = "3.9.1"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -637,6 +638,8 @@ class APNSProvider:
             return "", "provider_unavailable"
 
     def _send_worker(self, user_id: str, event: dict[str, Any]) -> None:
+        if event.get("kind") == "record_photo_request":
+            return
         with self.app.database.connect() as db:
             devices = db.execute("SELECT * FROM devices WHERE user_id=?", (user_id,)).fetchall()
         if not devices:
@@ -963,11 +966,45 @@ class NotificationHub:
                 db.execute("UPDATE commands SET acknowledged_at=? WHERE id=? AND target_id=?", (iso_now(), command_id, user_id))
                 db.execute("INSERT INTO command_receipts VALUES(?,?,?,?,?) ON CONFLICT(command_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at", (command_id, user_id, "acknowledged", "Bark-Weckruf bestätigt", iso_now()))
 
+    @staticmethod
+    def navigation(event, user_id=None, job=None):
+        kind, payload = event.get("kind", ""), event.get("payload", {})
+        target, identifier = "feed", None
+        if kind in {"wake_request", "wake", "love_alarm"}:
+            target, identifier = "alarms", (job or {}).get("id")
+        elif kind == "fart_comment":
+            target, identifier = "fart-comments", payload.get("clip_id")
+        elif kind.startswith("fart_"):
+            target, identifier = "fart", payload.get("clip_id")
+        elif kind == "record_chat":
+            target, identifier = "chat", payload.get("record_id")
+        elif payload.get("record_id") and kind not in {"record_deleted", "record_photo_request"}:
+            target, identifier = "record", payload["record_id"]
+        elif kind == "thought":
+            target = "home"
+        elif kind in {"low_battery", "charging_started", "charging_stopped", "status"}:
+            target = "partner"
+        if target in {"fart", "fart-comments", "record"} and not identifier:
+            target = "farts" if target.startswith("fart") else "feed"
+        data = {"target": target}
+        if identifier:
+            data["id"] = identifier
+        if user_id:
+            data["account"] = user_id
+        if payload.get("comment_id"):
+            data["comment"] = payload["comment_id"]
+        return data
+
+    def navigation_url(self, event, user_id=None, job=None, *, web=False):
+        return (self.public_url() + "/open" if web else "rjlove://open") + "?" + urlencode(self.navigation(event, user_id, job))
+
     def send_ntfy(self, user_id, event, settings=None):
+        if event.get("kind") == "record_photo_request":
+            return True
         settings = settings or self.settings(user_id)
         ok = True
         for part in self.chunks(event["body"], 3500):
-            body = {"topic": settings["ntfy_topic"], "title": event["title"], "message": part, "priority": 3, "tags": ["heart"], "click": self.public_url()}
+            body = {"topic": settings["ntfy_topic"], "title": event["title"], "message": part, "priority": 3, "tags": ["heart"], "click": self.navigation_url(event, user_id, web=True)}
             headers = {"Content-Type": "application/json"}
             if settings["ntfy_access_token"]:
                 headers["Authorization"] = "Bearer " + settings["ntfy_access_token"]
@@ -983,6 +1020,9 @@ class NotificationHub:
         return ok
 
     def send(self, user_id, event, job=None):
+        # Also suppress requests left in the 3.9.0 queue before this upgrade.
+        if event.get("kind") == "record_photo_request":
+            return "hidden"
         settings = self.settings(user_id)
         alarm = event["kind"] in {"wake_request", "reminder_due", "wake", "love_alarm"} or event.get("payload", {}).get("critical") is True
         quiet = self.quiet(user_id)
@@ -1006,10 +1046,7 @@ class NotificationHub:
                   "sound": settings["sound"] if alarm else "minuet", "volume": str(settings["volume"])}
         if alarm and settings["allow_critical"]:
             params["call"] = "1"
-        if alarm and job:
-            params["url"] = self.public_url() + "/push-ack/" + job["id"] + "?token=" + self.ack_token(job["id"], user_id)
-        else:
-            params["url"] = self.public_url()
+        params["url"] = self.navigation_url(event, user_id, job)
         image = self.image_url(event, user_id)
         if image:
             params["image"] = image
@@ -1820,7 +1857,7 @@ class RJLoveApplication:
             if owns_connection:
                 connection.close()
         # Exactly one primary external provider; no second RJ alert on polling.
-        if kind != "wake_request":
+        if kind not in {"wake_request", "record_photo_request"}:
             self.notification_hub.enqueue(target_id, event)
         return event
 
@@ -2217,20 +2254,68 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if urlparse(self.path).path.startswith("/media/assets/"):self.do_GET()
         else:self.send_json(404,{"error":"not_found","message":"Medium nicht gefunden."})
 
-    def push_bytes(self, raw, mime, status=200):
+    def push_bytes(self, raw, mime, status=200, script_nonce=None):
         self.send_response(status)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'" + ("; script-src 'nonce-" + script_nonce + "'" if script_nonce else ""))
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(raw)
 
+    @staticmethod
+    def navigation_data(query):
+        allowed = {"home", "feed", "partner", "planner", "alarms", "chat", "moments", "farts", "poop", "countdowns", "record", "fart", "fart-comments"}
+        if set(query) - {"target", "id", "comment", "account"} or any(len(v) != 1 for v in query.values()):
+            raise APIError(400, "invalid_navigation", "Dieser Link ist ungültig.")
+        data = {k: values[0] for k, values in query.items() if values}
+        if data.get("target") not in allowed:
+            raise APIError(400, "invalid_navigation", "Dieses App-Ziel ist unbekannt.")
+        for key in ("id", "comment"):
+            if key in data:
+                try:
+                    uuid.UUID(data[key])
+                except (ValueError, TypeError, AttributeError):
+                    raise APIError(400, "invalid_navigation", "Dieser Link ist ungültig.")
+        if data["target"] in {"record", "fart", "fart-comments"} and "id" not in data:
+            raise APIError(400, "invalid_navigation", "Das Ziel fehlt im Link.")
+        if "account" in data and not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", data["account"]):
+            raise APIError(400, "invalid_navigation", "Das Konto im Link ist ungültig.")
+        return data
+
+    def navigation_target(self, user_id, query):
+        data = self.navigation_data(query)
+        if data.get("account") and data["account"] != user_id:
+            raise APIError(403, "wrong_account", "Diese Mitteilung ist für das andere Konto. Bitte passend anmelden.")
+        result = {"record": None, "clip": None}
+        identifier = data.get("id")
+        if not identifier:
+            return result
+        if data["target"] in {"fart", "fart-comments"}:
+            result["clip"] = self.app.fart_clip(identifier)
+        elif data["target"] in {"record", "chat"}:
+            with self.app.database.connect() as db:
+                row = db.execute("SELECT id,kind,owner_id,payload,created_at,updated_at FROM records WHERE id=? AND deleted_at IS NULL", (identifier,)).fetchone()
+            if not row:
+                raise APIError(410, "content_recalled", "Dieser Beitrag wurde inzwischen zurückgerufen oder gelöscht.")
+            if row["kind"] == "photo_request":
+                raise APIError(404, "not_found", "Fotowünsche erscheinen nur in der App.")
+            if data["target"] == "chat" and row["kind"] != "chat":
+                raise APIError(404, "not_found", "Nachricht nicht gefunden.")
+            result["record"] = dict(row) | {"payload": record_payload_wire(row["kind"], json.loads(row["payload"]))}
+        return result
+
     def external_push_route(self, path, parts, query):
         hub = self.app.notification_hub
+        if path == "/open" and self.command == "GET":
+            data = self.navigation_data(query)
+            url = "rjlove://open?" + urlencode(data)
+            nonce = secrets.token_urlsafe(18)
+            page = '<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RJ Love öffnen</title><style>body{font:18px system-ui;max-width:30rem;margin:15vh auto;padding:24px;background:#fff3f7;color:#432c40}a{display:inline-block;padding:18px;border-radius:16px;background:#ad3365;color:white}</style><h1>Zurück zu euch 💗</h1><p>Der passende Bereich wird in RJ Love geöffnet.</p><a href="' + html.escape(url, quote=True) + '">RJ Love öffnen</a><p>Falls iOS nachfragt, das Öffnen bestätigen. Die aktuelle RJ Love-App muss installiert sein.</p><script nonce="' + nonce + '">window.location.replace(' + json.dumps(url) + ');</script></html>'
+            self.push_bytes(page.encode(), "text/html; charset=utf-8", script_nonce=nonce); return True
         if path.startswith("/push-icons/") and self.command == "GET":
             icon = parts[-1].removesuffix(".png")
             if icon not in PUSH_ICONS:
@@ -2375,6 +2460,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         try:
             path, parts, query = self.route()
             if self.external_push_route(path, parts, query): return
+            if path == "/v1/navigation":
+                self.send_json(200, self.navigation_target(self.current_user(), query)); return
             if path == "/v1/notifications/settings":
                 self.send_json(200, self.app.notification_hub.status(self.current_user())); return
             if path.startswith("/v1/radio/"):
@@ -3375,7 +3462,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 path.unlink(missing_ok=True)
                 raise
         sender = self.app.user_by_id(user_id)["display_name"]
-        self.app.broadcast_event(user_id, "fart_clip", "Neue Duftpost 💨", f"{sender} hat Duftpost hinterlassen.\n{title}\n{caption}")
+        self.app.broadcast_event(user_id, "fart_clip", "Neue Duftpost 💨", f"{sender} hat Duftpost hinterlassen.\n{title}\n{caption}", {"clip_id": clip_id})
         self.send_json(200, self.app.fart_clip(clip_id))
 
     def _list_fart_comments(self,clip_id,query):
@@ -3383,8 +3470,17 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         stamp,separator,identifier=after.partition("|")
         if after and (not separator or parse_iso(stamp) is None or not re.fullmatch(r"[0-9a-fA-F-]{36}",identifier)):
             raise APIError(400,"invalid_page","Ungültige Kommentarseite.")
+        focus=query.get("focus",[""])[0]
+        if focus:
+            try: uuid.UUID(focus)
+            except ValueError: raise APIError(400,"invalid_focus","Kommentar-Link ungültig.")
         with self.app.database.connect() as db:
             self.app.fart_clip(clip_id,db)
+            if focus and not after:
+                anchor=db.execute("SELECT created_at,id FROM fart_comments WHERE clip_id=? AND id=?",(clip_id,focus)).fetchone()
+                if anchor:
+                    before=db.execute("SELECT created_at,id FROM fart_comments WHERE clip_id=? AND (created_at<? OR (created_at=? AND id<?)) ORDER BY created_at DESC,id DESC LIMIT 21",(clip_id,anchor["created_at"],anchor["created_at"],anchor["id"])).fetchall()
+                    if len(before)==21: stamp,identifier=before[-1]["created_at"],before[-1]["id"]
             rows=[dict(r) for r in db.execute("SELECT id,clip_id,user_id,text,created_at FROM fart_comments WHERE clip_id=? AND (created_at>? OR (created_at=? AND id>?)) ORDER BY created_at,id LIMIT 201",(clip_id,stamp,stamp,identifier))]
         shown=rows[:200]
         cursor=shown[-1]["created_at"]+"|"+shown[-1]["id"] if len(rows)>200 else None
@@ -3407,7 +3503,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.app.enforce_quota(user_id,len(text.encode()),db=db)
             db.execute("INSERT INTO fart_comments VALUES(?,?,?,?,?)",(comment_id,clip_id,user_id,text,created))
         sender=self.app.user_by_id(user_id)["display_name"]
-        self.app.broadcast_event(user_id,"fart_comment","Neue Worte zur Duftpost",sender+" hat kommentiert:\n"+text,{"clip_id":clip_id})
+        self.app.broadcast_event(user_id,"fart_comment","Neue Worte zur Duftpost",sender+" hat kommentiert:\n"+text,{"clip_id":clip_id,"comment_id":comment_id})
         self.send_json(201,{"id":comment_id,"clip_id":clip_id,"user_id":user_id,"text":text,"created_at":created})
 
     def _fart_audio(self, clip_id: str) -> None:
@@ -3448,7 +3544,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     db.execute("INSERT INTO fart_reactions VALUES(?,?,?)", (clip_id, user_id, emoji))
             self.app.write_clip_manifest(clip_id, db)
         if action == "rating":
-            self.app.broadcast_event(user_id, "fart_rating", "Die Duftjury hat gesprochen 🏆", "Dein Meisterwerk hat eine neue Bewertung.")
+            self.app.broadcast_event(user_id, "fart_rating", "Die Duftjury hat gesprochen 🏆", "Dein Meisterwerk hat eine neue Bewertung.", {"clip_id": clip_id})
         self.send_json(200, self.app.fart_clip(clip_id))
 
     def _delete_fart(self, user_id: str, clip_id: str) -> None:

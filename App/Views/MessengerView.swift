@@ -4,6 +4,10 @@ import PhotosUI
 import SwiftUI
 
 struct MessengerView:View {
+    var initialMessageID: String? = nil
+    @FocusState private var messageFocused: Bool
+    @AppStorage("rjlove.keyboard-dismiss-after-send") private var closeKeyboardAfterSend = false
+    @State private var positioned = false
     @Environment(AppState.self) private var app
     @AppStorage("rjlove.chat-draft") private var text=""
     @State private var queuedMedia:SelectedMedia?
@@ -20,11 +24,14 @@ struct MessengerView:View {
             ScrollViewReader{proxy in ScrollView{LazyVStack(spacing:14){
                 Text("Ein Gespräch, das bei uns bleibt.").font(.system(.title3,design:.serif)).foregroundStyle(.secondary).padding(.vertical,22)
                 ForEach(messages){record in message(record).id(record.id)}
-            }.padding(16)}.defaultScrollAnchor(.bottom).onChange(of:messages.count){_,_ in if let last=messages.last{withAnimation{proxy.scrollTo(last.id,anchor:.bottom)}}}}
+            }.padding(16)}.defaultScrollAnchor(.bottom)
+                .task(id:messages.map(\.id)){if !positioned,let id=initialMessageID,messages.contains(where:{$0.id==id}){await Task.yield();proxy.scrollTo(id,anchor:.center);positioned=true}}
+                .onChange(of:messages.count){_,_ in if initialMessageID == nil || positioned,let last=messages.last{withAnimation{proxy.scrollTo(last.id,anchor:.bottom)}}}}
             if MediaTransfer.shared.busy{VStack{ProgressView(value:MediaTransfer.shared.progress);Text("\(MediaTransfer.shared.stage) · \(Int(MediaTransfer.shared.progress*100)) %").font(.caption)}.padding(12)}
             HStack(alignment:.bottom,spacing:10){
-                Menu{Button("Foto, Video oder Live Photo",systemImage:"photo"){picker=true};Button("Sprachnachricht",systemImage:"mic.fill"){voice=true};Button("Termin mit optionalem Wecker",systemImage:"alarm.fill"){planning=true}}label:{Image(systemName:"plus.circle.fill").font(.title2)}.accessibilityLabel("Nachricht hinzufügen")
-                TextField("Eine Nachricht nur für dich …",text:$text,axis:.vertical).lineLimit(1...5).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22))
+                Menu{Toggle("Tastatur nach dem Senden schließen",isOn:$closeKeyboardAfterSend);Divider();Button("Foto, Video oder Live Photo",systemImage:"photo"){picker=true};Button("Sprachnachricht",systemImage:"mic.fill"){voice=true};Button("Termin mit optionalem Wecker",systemImage:"alarm.fill"){planning=true}}label:{Image(systemName:"plus.circle.fill").font(.title2)}.accessibilityLabel("Nachricht hinzufügen")
+                TextField("Eine Nachricht nur für dich …",text:$text,axis:.vertical).focused($messageFocused).accessibilityIdentifier("chat-message-input").lineLimit(1...5).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22))
+                Button{messageFocused=false}label:{Image(systemName:"keyboard.chevron.compact.down").font(.title3)}.accessibilityLabel("Tastatur schließen").accessibilityIdentifier("chat-dismiss-keyboard").disabled(!messageFocused)
                 Button{Task{await sendText()}}label:{Image(systemName:"arrow.up.circle.fill").font(.system(size:34)).foregroundStyle(LovePalette.pink)}.disabled(sending || text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || text.count>4000).accessibilityLabel("Nachricht senden")
             }.padding(.horizontal,16).padding(.vertical,10).background(.ultraThinMaterial)
         }.background(LoveBackground()).scrollDismissesKeyboard(.interactively)
@@ -48,7 +55,7 @@ struct MessengerView:View {
             if mine,let opened=app.openedRecords.first(where:{$0.recordID==record.id && $0.userID != app.me?.id})?.openedAt.rjDate{Text("Geöffnet "+opened.formatted(.dateTime.day().month().hour().minute().second())).font(.system(size:10)).foregroundStyle(.secondary)}
         };if !mine{Spacer(minLength:35)}}.contextMenu{if mine{Button("Zurückrufen",systemImage:"trash",role:.destructive){deleting=record}}}.task{if !mine,!UserDefaults.standard.bool(forKey:"rjlove.opened."+record.id){await app.markOpened(record)}}
     }
-    private func sendText() async {sending=true;defer{sending=false};if await app.saveRecord(kind:.chat,payload:RecordPayload(text:text.trimmingCharacters(in:.whitespacesAndNewlines))) != nil{text=""}}
+    private func sendText() async {let submitted=text;sending=true;defer{sending=false};if await app.saveRecord(kind:.chat,payload:RecordPayload(text:submitted.trimmingCharacters(in:.whitespacesAndNewlines))) != nil{if text==submitted{text=""};if closeKeyboardAfterSend{messageFocused=false}}}
 }
 struct MediaComposer:View {
     @Environment(AppState.self) private var app
@@ -171,3 +178,4 @@ struct SweetPlaybackView:View {
     @State private var error:String?
     var body:some View {VStack(spacing:24){Image(systemName:"heart.circle.fill").font(.system(size:85)).foregroundStyle(LovePalette.pink.gradient);Text("Eine Stimme nur für dich.").font(.system(size:31,weight:.medium,design:.serif));Text(record.payload.text ?? "Dein Lieblingsmensch hat dir etwas dagelassen.").multilineTextAlignment(.center);if let date=record.createdAt.rjDate{Text(date.formatted(.dateTime.day().month().year().hour().minute().second())).font(.caption)};if let error{Text(error).foregroundStyle(.orange)}else{Label("Wiedergabe mit deiner Medienlautstärke",systemImage:"speaker.wave.2.fill").font(.caption)};Button("Stoppen & schließen"){VoiceNoteService.shared.stop();dismiss()}.buttonStyle(.borderedProminent)}.padding(28).background(LoveBackground()).task{await app.markOpened(record);do{if let id=record.payload.assetIDs?.first{let url=try await app.api.assetFile(id:id,mime:"audio/mp4");guard !Task.isCancelled else{return};file=url;try VoiceNoteService.shared.play(url,volume:0.15+0.85*(record.payload.urgency ?? 1)){dismiss()}}else{VoiceNoteService.shared.speak(record.payload.text ?? "",volume:record.payload.urgency ?? 1)}}catch{self.error=error.localizedDescription}}.onDisappear{VoiceNoteService.shared.stop();if let file{try? FileManager.default.removeItem(at:file)}}}
 }
+

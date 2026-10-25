@@ -43,7 +43,8 @@ class Cinema42Tests(unittest.TestCase):
  def test_external_session_scope_privacy_presence_and_disconnect(self):
   bridge=self.bridge()
   def item(user,media):return {'ratingKey':media,'title':'Movie','duration':90000,'viewOffset':12000,'User':{'id':user},'Player':{'machineIdentifier':'tv','title':'TV','product':'Plex for Apple TV','state':'playing'},'Media':[{'Part':[{'key':'/library/parts/2/3/file.mkv'}]}]}
-  data={'MediaContainer':{'Metadata':[item('99','99'),item('7','42')]}}
+  bridge['local_owner']=True
+  data={'MediaContainer':{'Metadata':[item('99','99'),item('1','42')]}}
   with patch.object(self.app.cinema,'remote_json',return_value=data):self.app.cinema._poll_bridge(self.user,bridge)
   rooms=self.request('/v1/cinema/rooms',who=1)['rooms'];self.assertEqual(len(rooms),1);room=rooms[0];self.assertEqual(room['media_id'],'42');self.assertTrue(room['details']['external']);self.assertTrue(room['plex_shared']);self.assertNotIn('PRIVATE',json.dumps(rooms))
   self.request('/v1/cinema/rooms/'+room['id']+'/heartbeat',{'playing':False,'same_screen':True},1)

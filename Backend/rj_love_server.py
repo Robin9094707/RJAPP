@@ -2323,7 +2323,7 @@ class CinemaService:
         session=hashlib.sha256((authorization or "").removeprefix("Bearer ").encode()).hexdigest()
         with self.lock:
             self.bridges[user]={"base":base.rstrip("/"),"token":resource.get("accessToken") or token,"account":account_id,
-                                "session":session,"machine":machine,"name":str(resource.get("name", "Plex"))[:200],
+                                "session":session,"machine":machine,"local_owner":bool(resource.get("owned")) and not bool(account.get("restricted")),"name":str(resource.get("name", "Plex"))[:200],
                                 "expires":time.time()+12*3600,"error":None,"last_ok":time.time(),"command":0}
         return {"connected":True}
 
@@ -2361,7 +2361,8 @@ class CinemaService:
         candidates=[]
         for m in data.get("MediaContainer",{}).get("Metadata",[]):
             player=m.get("Player",{})
-            if str(m.get("User",{}).get("id", ""))!=bridge["account"]:continue
+            session_user=str(m.get("User",{}).get("id", ""))
+            if session_user!=bridge["account"] and not (bridge.get("local_owner") and session_user=="1"):continue
             if not re.fullmatch(r"[0-9]+",str(m.get("ratingKey", ""))):continue
             if player.get("product")=="RJ Love" or str(player.get("machineIdentifier", "")).startswith("rjlove-"):continue
             if not player.get("machineIdentifier"):continue

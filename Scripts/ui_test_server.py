@@ -50,7 +50,7 @@ try:
             if self.path == '/old/health':
                 self.send_json(200,{'status':'ok','version':'2.3.0'})
             elif self.path == '/future/health':
-                self.send_json(200,{'status':'ok','version':'4.0.0','minimum_app_version':'4.0.0','minimum_protocol':5,'maximum_protocol':5})
+                self.send_json(200,{'status':'ok','version':'9.0.0','minimum_app_version':'9.0.0','minimum_protocol':5,'maximum_protocol':5})
             else:
                 super().do_GET()
     server = module.build_server(app)

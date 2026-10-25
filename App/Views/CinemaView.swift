@@ -9,7 +9,7 @@ struct CinemaView: View {
     @State private var cinema = CinemaCoordinator.shared
     @State private var tv = TVPresentation.shared
     @State private var section: CinemaSection = .youtube
-    @State private var together = false
+    @State private var together = true
     @State private var sharePlex = false
     var body: some View {
         ScrollView {
@@ -23,7 +23,7 @@ struct CinemaView: View {
                 if section != .television {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Zusammen schauen", isOn: $together).accessibilityIdentifier("cinema-together")
-                        Text(together ? "Der andere tritt auf seinem iPhone ausdrücklich bei. Ihr könnt beide starten, pausieren und springen." : "Nur für dich. Es wird kein gemeinsamer Raum angelegt und keine gemeinsame Schauzeit gezählt.")
+                        Text(together ? "YouTube verbindet euch automatisch im selben Raum. Ihr könnt beide starten, pausieren, springen und das nächste Video auswählen." : "Nur für dich. Es wird kein gemeinsamer Raum angelegt und keine gemeinsame Schauzeit gezählt.")
                             .font(.caption).foregroundStyle(.secondary)
                         if section == .plex && together {
                             Toggle("Diesen Film für maximal 4 Stunden freigeben", isOn: $sharePlex)
@@ -132,69 +132,76 @@ struct CinemaYouTubeBrowser: View {
     let together: Bool
     @State private var cinema = CinemaCoordinator.shared
     @State private var account = YouTubeAccount.shared
-    @Environment(\.openURL) private var openURL
     @AppStorage("rjlove.youtube.consent.v1") private var consent = false
     @State private var query = ""
-    @State private var items: [YouTubeResult] = []
-    @State private var nextPage: String?
-    @State private var searching = false
-    @State private var error: String?
+    @State private var browser: YouTubeWebDestination?
     var body: some View {
         VStack(alignment: .leading,spacing: 16) {
             if !consent {
-                Text("YouTube verwendet beim Laden des Players eigene Dienste und Cookies. Mit dem Aktivieren akzeptierst du die YouTube-Nutzungsbedingungen und die nachfolgend verlinkten Datenschutzhinweise. An Google gehen unter anderem Videoauswahl, IP-Adresse und Geräteinformationen. RJ Love teilt keine YouTube-Anmeldedaten mit deinem Partner.").font(.footnote)
+                Text("YouTube wird von Google bereitgestellt. Beim Öffnen gehen unter anderem IP-Adresse, Geräteinformationen und die Videoauswahl an Google. Anmeldungen erfolgen ausschließlich auf der echten Google-/YouTube-Seite. Deine Abos und Anmeldedaten werden nicht mit Schatzi geteilt.").font(.footnote)
                 links
                 Button("YouTube aktivieren") { consent = true }.buttonStyle(.borderedProminent).accessibilityIdentifier("cinema-youtube-consent")
             } else {
-                TextField("YouTube suchen oder Video-Link einfügen",text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never).onSubmit { Task { await search() } }.accessibilityIdentifier("cinema-youtube-query")
-                Button(searching ? "Suche …" : "Suchen / Video öffnen",systemImage: "magnifyingglass") { Task { await search() } }.buttonStyle(.borderedProminent).disabled(searching || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
-                ForEach(items) { item in video(item) }
-                if nextPage != nil { Button("Weitere Ergebnisse") { Task { await search(more: true) } }.disabled(searching) }
-                Divider()
-                Text(account.connected ? account.channel.isEmpty ? "Dein YouTube-Konto" : account.channel : "Dein eigenes YouTube-Konto").font(.headline)
-                Text("Deine Playlists bleiben privat. Gemeinsam geteilt wird nur das ausgewählte Video; private oder gesperrte Videos benötigen auf jedem Gerät eine gültige Berechtigung. Die Anmeldung am Datenkonto meldet den eingebetteten Player nicht automatisch an.").font(.caption).foregroundStyle(.secondary)
-                if account.connected {
-                    Button("Meine Playlists laden") { Task { await account.loadLibrary() } }.disabled(account.busy)
-                    ForEach(account.playlists) { list in Button(list.title,systemImage: "list.bullet") { Task { await account.loadPlaylist(list.id) } } }
-                    ForEach(account.videos) { item in video(item) }
-                    Button("YouTube-Konto trennen",role: .destructive) { Task { await account.disconnect() } }
-                } else {
-                    Button("Bei Google anmelden",systemImage: "person.crop.circle.badge.checkmark") { Task { await account.signIn() } }.disabled(account.busy)
-                    Text("Optional: einmalig Google-OAuth am privaten Server einrichten. Die Einrichtung steht in RELEASE-4.0.0.md im Update-Paket.").font(.caption).foregroundStyle(.secondary)
-                }
-                if let url = account.authURL { Link("Google-Anmeldung im Browser fortsetzen",destination: url) }
-                if let error = account.error { Text(error).font(.footnote).foregroundStyle(.orange) }
+                TextField("YouTube suchen oder Video-Link einfügen",text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .onSubmit { openSearch() }.accessibilityIdentifier("cinema-youtube-query")
+                Button("Suchen / Video öffnen",systemImage: "magnifyingglass") { openSearch() }.buttonStyle(.borderedProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Text("Suche ohne eigenen API-Schlüssel. Öffne ein Video und wähle im Teilen-Menü des eingebauten Browsers „Mit Schatzi schauen“, um es in euren gemeinsamen Player zu übernehmen.").font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    webButton("YouTube",symbol: "play.rectangle",path: "/")
+                    webButton("Meine Abos",symbol: "person.2",path: "/feed/subscriptions")
+                    webButton("Mein Bereich",symbol: "person.crop.circle",path: "/feed/you")
+                }.font(.subheadline)
+                Text("Anmeldung, Abos und YouTube Premium verwaltet die echte YouTube-Webseite. Jedes iPhone verwendet seine eigene Browser-Anmeldung. Der gemeinsame eingebettete Player übernimmt diese Anmeldung nicht automatisch.").font(.caption).foregroundStyle(.secondary)
+                Toggle("Gemeinsamen Raum automatisch verbinden",isOn: $cinema.autoJoin)
+                    .font(.subheadline).accessibilityIdentifier("cinema-auto-join")
+                DisclosureGroup("Optionale API-Playlists") {
+                    VStack(alignment: .leading,spacing: 12) {
+                        Text("Die Websuche und der persönliche YouTube-Bereich oben benötigen keine API-Einrichtung. Nur diese zusätzliche native Playlist-Anzeige verwendet die bisherige optionale Google-OAuth-Konfiguration.").font(.caption).foregroundStyle(.secondary)
+                        if account.connected {
+                            Button("Meine Playlists laden") { Task { await account.loadLibrary() } }.disabled(account.busy)
+                            ForEach(account.playlists) { list in Button(list.title,systemImage: "list.bullet") { Task { await account.loadPlaylist(list.id) } } }
+                            ForEach(account.videos) { item in
+                                Button(item.title,systemImage: "play.circle") { Task { await choose(item.id,item.title) } }
+                            }
+                            Button("API-Konto trennen",role: .destructive) { Task { await account.disconnect() } }
+                        } else { Button("Optionales API-Konto verbinden") { Task { await account.signIn() } }.disabled(account.busy) }
+                        if let url = account.authURL { Link("Google-Anmeldung fortsetzen",destination: url) }
+                        if let error = account.error { Text(error).font(.footnote).foregroundStyle(.orange) }
+                    }.padding(.top,12)
+                }.font(.subheadline)
                 links
                 Button("YouTube deaktivieren",role: .destructive) { consent = false; Task { if cinema.provider == "youtube" { await cinema.leave() }; await account.disconnect() } }.font(.caption)
             }
-        }.loveCard().onChange(of: account.authURL) { _, url in if let url { openURL(url) } }
+        }.loveCard()
+            .sheet(item: $browser) { destination in
+                YouTubeWebBrowser(url: destination.url,together: together) { id,title,both in
+                    browser = nil
+                    TVPresentation.shared.mode = .cinema
+                    Task { await cinema.startYouTube(id: id,title: title,together: both) }
+                }.ignoresSafeArea()
+                    .onAppear { cinema.youtubeBrowsing = true; cinema.youtube.pause() }
+                    .onDisappear { cinema.youtubeBrowsing = false }
+            }
     }
     private var links: some View {
         VStack(alignment: .leading,spacing: 6) {
             Link("YouTube-Nutzungsbedingungen",destination: URL(string: "https://www.youtube.com/t/terms")!)
             Link("Google-Datenschutz",destination: URL(string: "https://policies.google.com/privacy")!)
-            Link("RJ-Love-Datenschutz",destination: URL(string: "https://github.com/Robin9094707/RJAPP/blob/codex/cinema-4.0.0/PRIVACY.md")!)
+            Link("RJ-Love-Datenschutz",destination: URL(string: "https://github.com/Robin9094707/RJAPP/blob/codex/airplay-4.1.0/PRIVACY.md")!)
         }.font(.caption)
     }
-    private func video(_ item: YouTubeResult) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading,spacing: 4) { Text(item.title).font(.subheadline.bold()); Text(item.channel).font(.caption).foregroundStyle(.secondary) }
-            Spacer()
-            Button { TVPresentation.shared.mode = .cinema; Task { await cinema.startYouTube(id: item.id,title: item.title,together: together) } } label: { Image(systemName: "play.circle.fill").font(.title2) }.accessibilityLabel(item.title + " abspielen")
-        }
+    private func webButton(_ title: String,symbol: String,path: String) -> some View {
+        Button(title,systemImage: symbol) { browser = YouTubeWebDestination(url: URL(string: "https://m.youtube.com"+path)!) }.buttonStyle(.bordered)
     }
-    private func search(more: Bool = false) async {
-        guard !searching else { return }; searching = true; defer { searching = false }
-        if let id = YouTubeLink.videoID(query) { TVPresentation.shared.mode = .cinema; await cinema.startYouTube(id: id,title: "YouTube · " + id,together: together); return }
-        guard let api = cinema.api else { return }
-        do {
-            var body: [String: Any] = ["query": query]
-            if more, let nextPage { body["page"] = nextPage }
-            let page = try await api.cinema("youtube/search",body: body,as: YouTubeSearchPage.self)
-            if more { var ids = Set(items.map(\.id)); items += page.items.filter { ids.insert($0.id).inserted } } else { items = page.items }
-            nextPage = page.nextPage; error = nil
-        } catch { self.error = error.localizedDescription }
+    private func openSearch() {
+        if let id = YouTubeLink.videoID(query) { Task { await choose(id,"YouTube · "+id) }; return }
+        var url = URLComponents(string: "https://m.youtube.com/results")!
+        url.queryItems = [.init(name: "search_query",value: query.trimmingCharacters(in: .whitespacesAndNewlines))]
+        if let value = url.url { browser = YouTubeWebDestination(url: value) }
+    }
+    private func choose(_ id: String,_ title: String) async {
+        TVPresentation.shared.mode = .cinema
+        await cinema.startYouTube(id: id,title: title,together: together)
     }
 }
 struct CinemaPlexBrowser: View {
@@ -204,14 +211,32 @@ struct CinemaPlexBrowser: View {
     @State private var plex = CinemaCoordinator.shared.plex
     @Environment(\.openURL) private var openURL
     @State private var query = ""
+    @State private var selectedHome: PlexHomeProfile?
+    @State private var profilePIN = ""
     var body: some View {
         VStack(alignment: .leading,spacing: 16) {
             Text("Deine Plex-Mediathek").font(.headline)
-            Text("Melde dich direkt bei Plex an. Dein Zugang liegt getrennt im Schlüsselbund dieses iPhones. Unterstützt werden eigene Plex-Server und auf iOS direkt abspielbare Dateien. Plex-Streamingangebote und Transcoding sind hier nicht enthalten.").font(.caption).foregroundStyle(.secondary)
+            Text("Melde dich direkt bei Plex an. Dein Konto bleibt privat. Im Kompatibilitätsmodus wandelt dein Plex-Server Videos für iPhone und AirPlay in H.264/AAC um – auch aus anderen Containern und Codecs. Der Server muss Transcoding erlauben und die Quelle unterstützen. Geschützte Plex-Streamingangebote sind nicht enthalten.").font(.caption).foregroundStyle(.secondary)
             if !plex.authenticated {
                 Button("Mit Plex verbinden",systemImage: "person.badge.key.fill") { Task { await plex.signIn() } }.buttonStyle(.borderedProminent).disabled(plex.busy)
             } else {
                 HStack { Button("Server laden") { Task { await plex.loadServers() } }; Spacer(); Button("Trennen",role: .destructive) { Task { if cinema.provider == "plex" { await cinema.leave() }; plex.disconnect() } } }.font(.subheadline)
+                if !plex.profileName.isEmpty { Text("Profil: " + plex.profileName).font(.subheadline.bold()) }
+                if !plex.homeProfiles.isEmpty {
+                    DisclosureGroup(plex.profileRequired ? "Plex-Profil wählen" : "Plex-Profil wechseln") {
+                        ForEach(plex.homeProfiles) { profile in
+                            Button(profile.title,systemImage: profile.protected ? "lock.fill" : "person.crop.circle") {
+                                if profile.protected { selectedHome = profile; profilePIN = "" }
+                                else { Task { if cinema.provider == "plex" { await cinema.leave() }; await plex.switchHomeProfile(profile) } }
+                            }
+                        }
+                        if let profile = selectedHome {
+                            SecureField("PIN für " + profile.title,text: $profilePIN).keyboardType(.numberPad)
+                            Button("Profil entsperren") { Task { if cinema.provider == "plex" { await cinema.leave() }; await plex.switchHomeProfile(profile,pin: profilePIN); profilePIN = ""; selectedHome = nil } }.disabled(profilePIN.count != 4)
+                        }
+                    }
+                }
+                Picker("Wiedergabe",selection: $plex.playbackMode) { ForEach(PlexPlaybackMode.allCases) { Text($0.rawValue).tag($0) } }
                 ForEach(plex.servers) { server in
                     Button { Task { await plex.select(server) } } label: { Label(server.name,systemImage: plex.server?.id == server.id ? "checkmark.circle.fill" : "externaldrive.fill") }
                 }
@@ -237,24 +262,37 @@ struct CinemaPlexBrowser: View {
 }
 struct CinemaTVRemote: View {
     @State private var tv = TVPresentation.shared
+    @State private var together = TVTogetherService.shared
     var body: some View {
         VStack(alignment: .leading,spacing: 16) {
             Label(tv.connected ? "Fernseher verbunden" : "Fernseher verbinden",systemImage: "airplay.video").font(.headline)
-            Text("Für den eigenen TV-Bildschirm: Im iOS-Kontrollzentrum Bildschirm­synchronisierung wählen und Apple TV oder AirPlay-TV verbinden. RJ Love liefert dann eine eigene Vollbildansicht. Für reine Videowiedergabe die AirPlay-Taste am Player verwenden.").font(.footnote).foregroundStyle(.secondary)
-            Picker("TV-Ansicht",selection: $tv.mode) { ForEach(TVMode.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
-                .onChange(of: tv.mode) { _, mode in if mode == .moments { Task { await tv.loadMoments() } } }
-            if tv.mode == .cinema {
-                Toggle("Uhr & Schatzi-Infos neben dem Video",isOn: $tv.showInfo)
-                Text("Die Infos stehen neben dem Player und verdecken das Video nicht. Ausgeschaltet nutzt der Film die gesamte TV-Fläche.").font(.caption).foregroundStyle(.secondary)
-            }
-            if tv.mode == .moments {
-                if let image = tv.image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240).clipShape(RoundedRectangle(cornerRadius: 15)) }
-                HStack { Button("Zurück",systemImage: "backward.end.fill") { tv.advance(-1) }; Spacer(); Button(tv.slideshow ? "Diashow stoppen" : "Diashow starten") { tv.toggleSlideshow() }; Spacer(); Button("Weiter",systemImage: "forward.end.fill") { tv.advance(1) } }.font(.caption)
-                Text("\(tv.moments.isEmpty ? 0 : tv.index+1) / \(tv.moments.count) Momente · Fotos und Live-Photo-Standbilder").font(.caption).foregroundStyle(.secondary)
+            Text("Im iOS-Kontrollzentrum Bildschirm­synchronisierung wählen. RJ Love zeigt eine eigene TV-Oberfläche, dein iPhone bleibt die Fernbedienung. Die AirPlay-Taste am Player ist für direkte Videowiedergabe.").font(.footnote).foregroundStyle(.secondary)
+            Picker("TV-Ansicht",selection: $tv.mode) { ForEach(TVMode.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("tv-mode-picker")
+                .onChange(of: tv.mode) { _, mode in if [.moments,.wall,.dashboard].contains(mode) { Task { await tv.loadMoments() } } }
+            NavigationLink { TVSettingsView() } label: { Label("AirPlay gestalten & Widgets sortieren",systemImage: "slider.horizontal.3") }.buttonStyle(.borderedProminent).accessibilityIdentifier("tv-customize")
+            if tv.mode == .cinema { Toggle("Uhr & Schatzi-Infos neben dem Video",isOn: $tv.showInfo) }
+            if tv.mode == .moments || tv.mode == .wall || tv.mode == .dashboard {
+                if tv.mode == .wall || tv.mode == .dashboard { TVMomentWall(limit: 6).frame(height: 240) }
+                else if let image = tv.image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240).clipShape(RoundedRectangle(cornerRadius: 15)) }
+                HStack {
+                    Button("Zurück",systemImage: "backward.end.fill") { tv.advance(-1) }
+                    Spacer()
+                    Button(tv.slideshow ? "Diashow stoppen" : "Diashow starten") { tv.toggleSlideshow() }
+                    Spacer()
+                    Button("Weiter",systemImage: "forward.end.fill") { tv.advance(1) }
+                }.font(.caption)
+                Text("\(tv.moments.count) Fotos und Live-Photo-Standbilder").font(.caption).foregroundStyle(.secondary)
                 if let error = tv.error { Text(error).font(.footnote).foregroundStyle(.orange) }
             }
-            Text("Der Nachtmodus zeigt eine sehr dunkle, leicht wandernde Uhr. Für die TV-Ansicht bleibt RJ Love geöffnet und das iPhone entsperrt. Reine Plex-Videowiedergabe kann im Hintergrund weiterlaufen. Der Timer pausiert die Wiedergabe; den Fernseher selbst schaltet er nicht aus.").font(.caption).foregroundStyle(.secondary)
-            Text("Videos behalten ihr Seitenverhältnis. Abweichende Filmformate können schwarze Balken haben; das TV-Layout nutzt die gesamte Bildschirmfläche.").font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Zusammen malen",systemImage: "pencil.tip") { tv.mode = .drawing }.accessibilityIdentifier("tv-open-drawing")
+                Spacer()
+                Button("Tic-Tac-Toe",systemImage: "square.grid.3x3") { tv.mode = .game }.accessibilityIdentifier("tv-open-game")
+            }.buttonStyle(.bordered)
+            Text("Live-Ansichten brauchen die geöffnete App. Akku und freigegebene Daten werden im Vordergrund aktualisiert. Plex kann im Hintergrund weiterspielen; eigene Dashboards und Spiele lassen sich bei gesperrter App nicht dauerhaft live halten.").font(.caption).foregroundStyle(.secondary)
         }.loveCard()
+        if tv.mode == .drawing { TVDrawingRemote() }
+        if tv.mode == .game { TVGameRemote() }
+        TVSignalRemote()
     }
 }

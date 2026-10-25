@@ -28,6 +28,10 @@ import UIKit
     var api: APIClient?
     var namespace = ""
     var features: CinemaFeatures?
+    var autoJoin = true { didSet { if !namespace.isEmpty { UserDefaults.standard.set(autoJoin,forKey: "rjlove.cinema.autoJoin."+namespace) } } }
+    var youtubeBrowsing = false
+    private var ignoredRoomID: String?
+    private var discoveryInProgress = false
     private var loop: Task<Void, Never>?
     private var timeObserver: Any?
     private var playerObservation: NSKeyValueObservation?
@@ -42,7 +46,7 @@ import UIKit
             self.playing = playing; self.position = max(0, position)
         }
         youtube.intentChanged = { [weak self] play, time in
-            guard let self, self.foreground, Date.now > self.ignorePlayerEventsUntil, let room = self.room else { return }
+            guard let self, self.foreground, !self.youtubeBrowsing, Date.now > self.ignorePlayerEventsUntil, let room = self.room else { return }
             if room.playing != play {
                 Task { await self.control(play ? "play" : "pause", value: time) }
             } else if abs(room.position + (room.playing ? max(0,Date.now.timeIntervalSince1970-room.serverTime) : 0)-time)>3 {
@@ -57,9 +61,11 @@ import UIKit
         let scope = SHA256.hash(data: Data((base + "|" + user).utf8)).map { String(format: "%02x", $0) }.joined()
         guard namespace != scope else { return }
         reset(); namespace = scope; userID = user; api = app.api.sessionCopy()
+        autoJoin = UserDefaults.standard.object(forKey: "rjlove.cinema.autoJoin."+scope) as? Bool ?? true
         plex.configure(namespace: "rjlove.cinema." + scope)
         YouTubeAccount.shared.configure(namespace: "rjlove.cinema." + scope, api: api)
         TVPresentation.shared.attach(app: app)
+        TVTogetherService.shared.configure(api: app.api,namespace: scope,user: user)
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, self.namespace == scope else { return }
@@ -72,6 +78,8 @@ import UIKit
     func reset() {
         loop?.cancel(); loop = nil; stopLocal(); plex.reset(); YouTubeAccount.shared.reset()
         room = nil; rooms = []; stats = []; api = nil; namespace = ""; userID = ""; features = nil
+        TVTogetherService.shared.reset()
+        ignoredRoomID = nil; youtubeBrowsing = false; discoveryInProgress = false
         TVPresentation.shared.clear()
     }
     func refresh() async {
@@ -85,7 +93,15 @@ import UIKit
     }
     func startYouTube(id: String, title: String, together: Bool) async {
         guard UserDefaults.standard.bool(forKey: "rjlove.youtube.consent.v1") else { error = "Bitte zuerst YouTube aktivieren und die Datenschutzhinweise bestätigen."; return }
-        await begin(provider: "youtube", id: id, title: title, together: together, url: nil)
+        if together, let current = room, current.provider == "youtube", let api {
+            do {
+                let next = try await api.cinema("rooms/\(current.id)/select",body: ["revision":current.revision,"media_id":id,"title":String(title.prefix(250))],as: CinemaRoom.self)
+                apply(next); error = nil
+            } catch { self.error = error.localizedDescription; await refreshSelectedRoom() }
+            return
+        }
+        ignoredRoomID = nil
+        await begin(provider: "youtube", id: id, title: String(title.prefix(250)), together: together, url: nil)
     }
     func startPlex(_ entry: PlexEntry, together: Bool, share: Bool) async {
         guard !busy else { return }
@@ -139,7 +155,7 @@ import UIKit
         }
     }
     func leave() async {
-        let selected = room; room = nil
+        let selected = room; ignoredRoomID = selected?.id; room = nil
         if let selected, let api { _ = try? await api.cinema("rooms/\(selected.id)/leave", body: [:], as: CinemaRoom.self) }
         stopLocal()
     }
@@ -166,7 +182,20 @@ import UIKit
         }
     }
     private func refreshSelectedRoom() async {
-        guard let selected = room, let api, foreground else { return }
+        guard let api, foreground else { return }
+        guard let selected = room else {
+            guard autoJoin, !active, !busy, !discoveryInProgress else { return }
+            discoveryInProgress = true; defer { discoveryInProgress = false }
+            do {
+                rooms = try await api.cinemaRooms()
+                if let candidate = rooms.first(where: { $0.provider == "youtube" && $0.id != ignoredRoomID }),
+                   UserDefaults.standard.bool(forKey: "rjlove.youtube.consent.v1"), !AudioStudioService.shared.hasRecording, !VoiceNoteService.shared.recording {
+                    await join(candidate)
+                }
+            } catch let issue as UpdateRequirement { self.error = issue.localizedDescription }
+            catch { return }
+            return
+        }
         let operation = generation
         do {
             let next = try await api.cinema("rooms/\(selected.id)/heartbeat", body: ["playing": playing], as: CinemaRoom.self)
@@ -180,6 +209,8 @@ import UIKit
     }
     private func apply(_ next: CinemaRoom) {
         let changed = room?.revision != next.revision
+        let changedVideo = provider == "youtube" && mediaID != next.mediaID
+        if changedVideo { mediaID = next.mediaID; title = next.title; youtube.load(next.mediaID); position = 0; playing = false }
         room = next
         sleepUntil = next.sleepUntil.map { Date.now.addingTimeInterval($0 - next.serverTime) }
         if next.closed { TVPresentation.shared.mode = .night; stopLocal(); room = nil; return }
@@ -193,7 +224,7 @@ import UIKit
         let time = max(0, time.isFinite ? time : 0)
         position = time
         if provider == "youtube" {
-            youtube.sync(position: time, playing: play && foreground)
+            youtube.sync(position: time, playing: play && foreground && !youtubeBrowsing)
             if !play { playing = false }
         } else {
             if let player {
@@ -214,7 +245,7 @@ import UIKit
             guard item.status == .failed else { return }
             Task { @MainActor in
                 self?.playing = false
-                self?.error = "Plex kann diese Datei nicht nativ abspielen. Dieses Update unterstützt Direct Play; für andere Codecs die Plex-App verwenden."
+                self?.error = "Plex konnte die Wiedergabe nicht starten. Wähle „Kompatibel (HLS)“ und prüfe Transcoding-Berechtigung, Serverleistung und Netzwerk."
             }
         }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in

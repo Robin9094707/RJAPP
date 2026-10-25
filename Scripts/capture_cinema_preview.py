@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import time
+import urllib.request
 
 
 def run(*args, capture=False, timeout=180):
@@ -22,7 +23,7 @@ try:
     run('xcrun','simctl','bootstatus',device,'-b',timeout=720)
     run('xcrun','simctl','status_bar',device,'override','--time','9:41','--dataNetwork','wifi','--wifiMode','active','--wifiBars','3','--batteryState','charged','--batteryLevel','100')
     run('xcrun','simctl','install',device,'.sim-derived/Build/Products/Debug-iphonesimulator/RJ Love.app')
-    for title,arguments in [('Kino',['--preview-cinema'])]:
+    for title,arguments in [('Kino',['--preview-cinema']),('Kino-TV-Dashboard',['--preview-tv-dashboard']),('Kino-TV-Momentwand',['--preview-tv-wall'])]:
         run('xcrun','simctl','launch',device,'eu.rjuhas.rjlove','--preview',*arguments)
         time.sleep(10)
         run('xcrun','simctl','io',device,'screenshot','Preview-Design-'+title+'.png')
@@ -39,6 +40,12 @@ try:
     time.sleep(1)
     try:
         run('xcodebuild','-project','RJLove.xcodeproj','-scheme','RJLove','-configuration','Debug','-destination','platform=iOS Simulator,id='+device,'-derivedDataPath','.sim-derived','-resultBundlePath','Layout-Cinema.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-only-testing:RJLoveUITests/CinemaFlowTests','test',timeout=900)
+        request=urllib.request.Request('http://127.0.0.1:8787/v1/cinema/tv',headers={'Authorization':'Bearer ui-test-token','X-RJ-App-Version':'4.1.0','X-RJ-Protocol':'5'})
+        with urllib.request.urlopen(request,timeout=10) as response: stage=json.load(response)
+        assert stage['state']['strokes'], 'UI drawing never reached the real backend'
+        assert stage['state']['board'][0]=='X', 'UI game move never reached the real backend'
+        assert any(s['symbol']=='heart' for s in stage['state']['signals']), 'UI signal never reached the real backend'
+        print('Verified persisted UI drawing, game move and love signal.')
     finally:
         backend.terminate();backend.wait(timeout=20);backend_log.close()
         if Path('Layout-Cinema.xcresult').exists():

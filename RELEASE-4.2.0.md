@@ -14,7 +14,7 @@ Beide können Play/Pause und Springen anfordern. Externe Geräte müssen Plex Co
 
 Der Schlaftimer pausiert bzw. beendet den Kino-Raum. Bei externem Plex übernimmt der Python-Server die Timeraktion auch ohne entsperrtes iPhone. Eine ausgeschaltete App kann keine zusätzlichen iOS-Systemrechte erhalten. Ein Apple TV wird nicht ausgeschaltet; dafür stellt HomeKit keine allgemeine öffentliche Steuerung bereit.
 
-Kinozeit zählt bei zwei tatsächlich gemeldeten Streams oder wenn beide ihre Anwesenheit am selben Bildschirm bestätigen. Der Besitzer einer extern beobachteten Plex-Sitzung zählt über deren tatsächlichen Wiedergabestatus. Frische Anwesenheit des Partners ist erforderlich. Der Filmverlauf enthält maximal 100 Einträge in der Ansicht. Statistik und Filmverlauf können mit Bestätigung für beide zurückgesetzt werden. Andere Daten bleiben erhalten.
+Kinozeit zählt bei zwei tatsächlich gemeldeten Streams oder wenn beide ihre Anwesenheit am selben Bildschirm bestätigen. Der Besitzer einer extern beobachteten Plex-Sitzung zählt über deren tatsächlichen Wiedergabestatus. Eine bestätigte Anwesenheit am selben Bildschirm gilt für diesen Film bis zu vier Stunden; mindestens ein tatsächlich laufender Stream bzw. eine frische Plex-Sitzung bleibt erforderlich. Der Filmverlauf enthält maximal 100 Einträge in der Ansicht. Statistik und Filmverlauf können mit Bestätigung für beide zurückgesetzt werden. Andere Daten bleiben erhalten.
 
 ## YouTube
 

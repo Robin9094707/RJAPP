@@ -48,7 +48,11 @@ class Cinema42Tests(unittest.TestCase):
   rooms=self.request('/v1/cinema/rooms',who=1)['rooms'];self.assertEqual(len(rooms),1);room=rooms[0];self.assertEqual(room['media_id'],'42');self.assertTrue(room['details']['external']);self.assertTrue(room['plex_shared']);self.assertNotIn('PRIVATE',json.dumps(rooms))
   self.request('/v1/cinema/rooms/'+room['id']+'/heartbeat',{'playing':False,'same_screen':True},1)
   with self.app.database.connect() as db:db.execute('UPDATE cinema_stats SET accounted=? WHERE room_id=?',(time.time()-5,room['id']))
-  self.assertGreater(self.request('/v1/cinema/stats',who=0)['stats'][0]['seconds'],4);self.request('/v1/cinema/plex/disconnect',{},0);self.assertEqual(self.request('/v1/cinema/rooms',who=1)['rooms'],[])
+  self.assertGreater(self.request('/v1/cinema/stats',who=0)['stats'][0]['seconds'],4)
+  with self.app.database.connect() as db:
+   db.execute('UPDATE cinema_members SET seen=? WHERE room_id=? AND user_id=?',(time.time()-60,room['id'],self.other));db.execute('UPDATE cinema_stats SET accounted=? WHERE room_id=?',(time.time()-4,room['id']))
+  self.assertGreater(self.request('/v1/cinema/stats',who=0)['stats'][0]['seconds'],8)
+  self.request('/v1/cinema/plex/disconnect',{},0);self.assertEqual(self.request('/v1/cinema/rooms',who=1)['rooms'],[])
  def test_server_sleep_timer_does_not_reopen_session(self):
   bridge=self.bridge();data={'MediaContainer':{'Metadata':[{'ratingKey':'42','title':'Movie','User':{'id':'7'},'Player':{'machineIdentifier':'tv','state':'playing'},'Media':[]}]}}
   with patch.object(self.app.cinema,'remote_json',return_value=data),patch.object(self.app.cinema,'_remote_control') as control:

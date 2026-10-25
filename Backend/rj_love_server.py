@@ -2399,6 +2399,7 @@ class CinemaService:
             self._account(db,row,now)
             details=self._media_details(m)|{"external":True,"machine":bridge["machine"],"server_name":bridge["name"],"receiver_id":receiver,
                   "device":str(player.get("title",player.get("product", "Plex")))[:200],"product":str(player.get("product", ""))[:150],
+                  "same_screen_users":self._details(db,room).get("same_screen_users",{}),
                   "state":str(player.get("state", "")),"can_control":"playback" in str(player.get("protocolCapabilities", "")),"owner_presence":True}
             # A receiver's actual timeline is authoritative, with a short settling window after commands.
             if now-bridge.get("last_command",0)>3:
@@ -2453,9 +2454,13 @@ class CinemaService:
         stat = db.execute("SELECT * FROM cinema_stats WHERE room_id=?", (row["id"],)).fetchone()
         people = db.execute("SELECT * FROM cinema_members WHERE room_id=?", (row["id"],)).fetchall()
         if stat:
-            # Both devices must report actual playing, not just room intent.
-            if row["playing"] and not row["closed"] and len(people) >= 2 and all(p["playing"] for p in people):
-                end = min(now, row["expires"], row["sleep_until"] or now, min(p["seen"]+12 for p in people))
+            # A confirmed same-screen viewer may lock their phone. At least one
+            # actual playback source must still be fresh; intent alone never counts.
+            screens=self._details(db,row["id"]).get("same_screen_users",{})
+            deadlines=[max(p["seen"]+12 if p["playing"] else 0,screens.get(p["user_id"],0)) for p in people]
+            sources=[p["seen"]+12 for p in people if p["playing"]]
+            if row["playing"] and not row["closed"] and len(people) >= 2 and sources and all(t>stat["accounted"] for t in deadlines):
+                end = min(now, row["expires"], row["sleep_until"] or now, min(deadlines),max(sources))
                 delta = max(0, min(12, end-stat["accounted"]))
                 db.execute("UPDATE cinema_stats SET seconds=seconds+? WHERE room_id=?", (delta, row["id"]))
             db.execute("UPDATE cinema_stats SET accounted=? WHERE room_id=?", (now, row["id"]))
@@ -2596,7 +2601,11 @@ class CinemaService:
             elif action == "heartbeat":
                 if type(body.get("playing")) is not bool: raise APIError(400,"invalid_playback","Wiedergabestatus fehlt.")
                 details=self._details(db,room)
-                actual=body["playing"] or (body.get("same_screen") is True and bool(row["playing"]))
+                screens=details.get("same_screen_users",{})
+                if body.get("same_screen") is True:screens[user]=min(now+4*3600,row["expires"])
+                else:screens.pop(user,None)
+                details["same_screen_users"]=screens;self._save_details(db,room,details)
+                actual=body["playing"]
                 if details.get("external") and user==row["owner_id"]: actual=bool(row["playing"])
                 db.execute("UPDATE cinema_members SET seen=?,playing=? WHERE room_id=? AND user_id=?",(now,int(actual),room,user))
             elif action == "control":

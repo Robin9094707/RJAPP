@@ -167,7 +167,7 @@ import UIKit
         }
     }
     func leave() async {
-        let selected = room; ignoredRoomID = selected?.id; room = nil
+        let selected = room; ignoredRoomID = selected?.id; room = nil; sameScreen = false
         if let selected, let api { _ = try? await api.cinema("rooms/\(selected.id)/leave", body: [:], as: CinemaRoom.self) }
         stopLocal()
     }

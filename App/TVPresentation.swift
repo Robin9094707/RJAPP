@@ -269,8 +269,12 @@ struct TVInfoPanel: View {
                 VStack(alignment: .leading, spacing: geometry.size.height * 0.04) {
                     Image(systemName: "heart.fill").foregroundStyle(LovePalette.pink)
                     Text(context.date, style: .time).font(.system(size: geometry.size.width * 0.17,weight: .ultraLight,design: .rounded)).monospacedDigit()
-                    Text(tv.app?.partner?.displayName ?? "Schatzi").font(.system(size: geometry.size.width * 0.1,weight: .medium,design: .serif))
-                    Text(tv.app?.partner?.presence?.statusMessage ?? "Ein Abend. Nur für uns.").foregroundStyle(.secondary).lineLimit(4)
+                    Text(cinema.active ? "Unser gemeinsamer Film" : (tv.app?.partner?.displayName ?? "Schatzi")).font(.system(size: geometry.size.width * 0.1,weight: .medium,design: .serif))
+                    if cinema.active {
+                        Text(cinema.title).font(.headline).lineLimit(3)
+                        PlexCinemaInformation(details: cinema.room?.details)
+                        Label(cinema.playing ? "Zusammen mittendrin" : "Zeit für eine kleine Pause",systemImage: cinema.playing ? "play.fill" : "pause.fill").foregroundStyle(.secondary)
+                    } else { Text(tv.app?.partner?.presence?.statusMessage ?? "Ein Abend. Nur für uns.").foregroundStyle(.secondary).lineLimit(4) }
                     Spacer()
                     if let end = cinema.sleepUntil {
                         Label("Bis " + end.formatted(date: .omitted,time: .shortened),systemImage: "moon.zzz.fill").foregroundStyle(.secondary)
@@ -306,3 +310,4 @@ struct TVPreviewView: View {
     }
 }
 #endif
+

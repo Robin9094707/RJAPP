@@ -63,7 +63,7 @@ struct TVDrawingRemote: View {
         VStack(alignment: .leading,spacing: 14) {
             Text("Ein Bild. Von uns beiden.").font(.title2.bold())
             if together.state.epoch.isEmpty { ProgressView("Gemeinsame Zeichenfläche verbinden …").frame(height: 310) }
-            else { TVDrawingSurface(interactive: true,color: color,width: width).frame(height: 310) }
+            else { TVDrawingSurface(interactive: true,color: color,width: width).aspectRatio(16.0/9.0,contentMode: .fit) }
             HStack {
                 ForEach(colors,id: \.self) { value in
                     Button { color = value } label: { Circle().fill(tvColor(value)).frame(width: 28,height: 28).overlay { Circle().stroke(color == value ? Color.primary : .clear,lineWidth: 3) } }.accessibilityLabel("Zeichenfarbe " + value)

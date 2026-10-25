@@ -198,7 +198,7 @@ struct LoveTVScreen: View {
                     TVMomentWall().padding(24)
                 } else if tv.mode == .drawing || tv.mode == .game {
                     HStack(spacing: 24) {
-                        if tv.mode == .drawing { TVDrawingSurface().padding(28) }
+                        if tv.mode == .drawing { TVDrawingSurface().aspectRatio(16.0/9.0,contentMode: .fit).padding(28) }
                         else { TVGameBoard().padding(28) }
                         TVSignalsCard().frame(width: geometry.size.width*0.18).padding(24)
                     }.background(Color(red:0.08,green:0.06,blue:0.12))

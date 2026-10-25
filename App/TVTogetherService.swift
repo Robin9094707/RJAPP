@@ -82,6 +82,6 @@ struct TVTogetherEnvelope: Decodable { let revision: Int; let state: TVTogetherS
             if action == "stroke", body["epoch"] == nil { body["epoch"] = state.epoch }
             let value = try await api.cinema("tv/action",body: body,as: TVTogetherEnvelope.self)
             guard namespace == space else { return }; apply(value); error = nil
-        } catch { if namespace == space { self.error = error.localizedDescription; await refresh() } }
+        } catch { if namespace == space { let message = error.localizedDescription; await refresh(); self.error = message } }
     }
 }

@@ -1,3 +1,7 @@
+# App-Update 4.2.1
+
+Nur die neue IPA über die bestehende App installieren. Server 4.2.0, Konfiguration und Datenordner unverändert behalten. Details: [Release 4.2.1](RELEASE-4.2.1.md).
+
 # RJ Love installieren und aktualisieren
 
 ## Bestehende Installation auf 4.2.0 aktualisieren

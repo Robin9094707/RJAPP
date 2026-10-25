@@ -239,23 +239,45 @@ struct LoveTVScreen: View {
         }
     }
 }
+/// Native tab accessory: it reserves space above the tab bar instead of covering it.
 struct CinemaMiniPlayer: View {
+    @Environment(AppState.self) private var app
     @State private var cinema = CinemaCoordinator.shared
     @State private var tv = TVPresentation.shared
     var body: some View {
-        if cinema.active && !cinema.screenVisible && cinema.foreground {
-            VStack(spacing: 5) {
-                if cinema.provider == "youtube", !(tv.connected && tv.mode == .cinema) {
-                    CinemaPlaybackSurface().frame(height: 200)
-                }
-                HStack {
-                    Image(systemName: "play.tv.fill")
-                    Text(cinema.title).font(.caption).lineLimit(1)
-                    Spacer()
-                    Button { Task { await cinema.control(cinema.playing ? "pause" : "play") } } label: { Image(systemName: cinema.playing ? "pause.fill" : "play.fill") }
-                    Button { Task { await cinema.leave() } } label: { Image(systemName: "xmark") }
-                }.padding(10)
-            }.background(.ultraThinMaterial)
+        HStack(spacing: 10) {
+            Button { app.selectedTab = .cinema } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: cinema.externalPlaybackActive || tv.connected ? "airplay.video" : "film.fill").foregroundStyle(LovePalette.violet)
+                    VStack(alignment:.leading,spacing:2) {
+                        Text(cinema.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(cinema.externalPlaybackActive || tv.connected ? "Auf dem Fernseher · Kino öffnen" : "Gemeinsames Kino öffnen").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }.frame(maxWidth:.infinity,alignment:.leading)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel("Kino öffnen: " + cinema.title)
+            Button { Task { await cinema.control(cinema.playing ? "pause" : "play") } } label: { Image(systemName:cinema.playing ? "pause.fill":"play.fill").frame(width:44,height:44) }.accessibilityLabel(cinema.playing ? "Film pausieren":"Film fortsetzen")
+            Button { cinema.miniPlayerHidden = true } label: { Image(systemName:"chevron.down").frame(width:44,height:44) }.accessibilityLabel("Plex-Leiste ausblenden, Wiedergabe fortsetzen")
+        }.padding(.horizontal,12).accessibilityIdentifier("cinema-tab-accessory")
+    }
+}
+/// The YouTube player stays visible, inside the selected tab's safe area.
+struct CinemaVideoInset: ViewModifier {
+    @Environment(AppState.self) private var app
+    @State private var cinema = CinemaCoordinator.shared
+    @State private var tv = TVPresentation.shared
+    let tab: AppTab
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge:.bottom,spacing:0) {
+            if app.selectedTab == tab && cinema.active && cinema.provider == "youtube" && !cinema.screenVisible && cinema.foreground {
+                VStack(spacing:0) {
+                    if !(tv.connected && tv.mode == .cinema) { CinemaPlaybackSurface().frame(height:180) }
+                    HStack {
+                        Button { app.selectedTab = .cinema } label: { Label(cinema.title,systemImage:"play.rectangle").lineLimit(1).frame(maxWidth:.infinity,alignment:.leading) }
+                        Button { Task { await cinema.control(cinema.playing ? "pause":"play") } } label: { Image(systemName:cinema.playing ? "pause.fill":"play.fill").frame(width:44,height:44) }.accessibilityLabel("YouTube starten oder pausieren")
+                        Button { Task { await cinema.leave() } } label: { Image(systemName:"xmark").frame(width:44,height:44) }.accessibilityLabel("YouTube-Wiedergabe beenden")
+                    }.font(.caption).padding(.horizontal,12)
+                }.background(.regularMaterial)
+            }
         }
     }
 }

@@ -60,6 +60,7 @@ struct MomentGalleryViewer:View {
     @State private var records:[SharedRecord]
     @State private var selection:String
     @State private var detail:SharedRecord?
+    @State private var deletion = MomentDeletion()
     @State private var exportFiles:[URL]=[]
     @State private var exporting=false
     @State private var sharing=false
@@ -75,6 +76,11 @@ struct MomentGalleryViewer:View {
                 ToolbarItem(placement:.cancellationAction){Button("Fertig"){dismiss()}}
                 ToolbarItem(placement:.topBarTrailing){if current?.kind == .moment {Button("Infos",systemImage:"info.circle"){detail=current}}}
                 ToolbarItem(placement:.topBarTrailing){
+                    if let current,current.kind == .moment || current.ownerID == app.me?.id {
+                        Button("Moment löschen",systemImage:"trash",role:.destructive) { deletion.request(current) }.labelStyle(.iconOnly).disabled(exporting || deletion.busy).accessibilityIdentifier("moment-delete")
+                    }
+                }
+                ToolbarItem(placement:.topBarTrailing){
                     Menu {
                         Button("Original teilen",systemImage:"square.and.arrow.up"){Task{await export(save:false)}}
                         Button("In Apple Fotos sichern",systemImage:"square.and.arrow.down"){Task{await export(save:true)}}
@@ -83,11 +89,21 @@ struct MomentGalleryViewer:View {
                 }
             }
             .sheet(item:$detail){MomentDetailView(initialMoment:$0)}
+            .momentDeletionPrompt(deletion) { _ in reconcile() }
+            .onChange(of:app.deletedRecordIDs) { _,_ in reconcile() }
             .sheet(isPresented:$sharing,onDismiss:clearExports){FileShareView(urls:exportFiles)}
             .onDisappear{if !sharing{clearExports()}}
-            .onChange(of:app.records){_,values in let lookup=Dictionary(uniqueKeysWithValues:values.map{($0.id,$0)});records=records.compactMap{record in app.deletedRecordIDs.contains(record.id) ? nil:(lookup[record.id] ?? record)};if records.isEmpty{dismiss()}else if !records.contains(where:{$0.id==selection}){selection=records[0].id}}
+            .onChange(of:app.records) { _,_ in reconcile() }
             .onChange(of:selection){_,_ in message=nil}
         }
+    }
+    private func reconcile() {
+        let previous = records.firstIndex { $0.id == selection } ?? 0
+        let lookup = Dictionary(uniqueKeysWithValues: app.records.map { ($0.id,$0) })
+        records = records.compactMap { app.deletedRecordIDs.contains($0.id) ? nil : (lookup[$0.id] ?? $0) }
+        if records.isEmpty { dismiss() }
+        else if !records.contains(where: { $0.id == selection }) { selection = records[min(previous,records.count-1)].id }
+        if let detail,app.deletedRecordIDs.contains(detail.id) { self.detail = nil }
     }
     private func clearExports(){for file in exportFiles{try? FileManager.default.removeItem(at:file)};exportFiles=[]}
     private func export(save:Bool) async {

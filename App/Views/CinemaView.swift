@@ -41,7 +41,7 @@ struct CinemaView: View {
                 statistics
             }.padding(20)
         }.background(LoveBackground()).navigationTitle("Unser Kino").navigationBarTitleDisplayMode(.inline)
-            .onAppear { cinema.screenVisible = true; cinema.configure(app: app) }
+            .onAppear { cinema.screenVisible = true; cinema.miniPlayerHidden = false; cinema.configure(app: app); if cinema.active { section = cinema.provider == "plex" ? .plex : .youtube } }
             .onDisappear { cinema.screenVisible = false }
             .task { await cinema.refresh() }.refreshable { await cinema.refresh() }
             .toolbar { ToolbarItem(placement: .topBarTrailing) { CinemaAirPlayPicker().frame(width: 40,height: 40).accessibilityLabel("AirPlay-Wiedergabegerät wählen") } }

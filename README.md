@@ -2,7 +2,7 @@
 
 Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widgets und Alltag.
 
-**Aktuell: 4.2.0 (420).** App und Python-Server zusammen aktualisieren. Alle Neuerungen und Grenzen: [Release 4.2.0](RELEASE-4.2.0.md).
+**Aktuelle App: 4.2.1 (421).** Der Server bleibt bei 4.2.0. Momente mit Bestätigung löschen, direkter Kino-Tab und eine ausblendbare native Plex-Leiste: [Release 4.2.1](RELEASE-4.2.1.md).
 
 ## Neu: Unser Kino
 
@@ -20,7 +20,7 @@ Plex-Fernsteuerung setzt einen kompatiblen Empfänger und passende Serverrechte 
 
 Server stoppen, Konfiguration und Datenordner sichern, nur `Backend/rj_love_server.py` ersetzen und neu starten. Konfiguration, Konto-IDs und Datenpfad unverändert behalten. Die neue IPA mit demselben Signierteam, derselben Bundle-ID und identischer App Group über die bestehende App installieren. Die App nicht löschen.
 
-Die Datenbank wird ausschließlich additiv erweitert. Server und App verlangen Version 4.2.0; ältere Apps bekommen vor Änderungen einen Updatehinweis.
+Die Datenbank wird ausschließlich additiv erweitert. Die App benötigt mindestens Server 4.2.0; der Server akzeptiert Apps ab 4.2.0. Beim Update von App 4.2.0 auf 4.2.1 muss der Server nicht ersetzt werden.
 
 ## Installation
 

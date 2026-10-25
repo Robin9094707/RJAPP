@@ -7,6 +7,7 @@ struct MomentsView:View {
     var mapOnOpen=false
     @Environment(AppState.self) private var app
     @State private var gallery:[SharedRecord]=[]
+    @State private var deletion = MomentDeletion()
     @State private var cursor:String?
     @State private var hasMore=true
     @State private var loading=false
@@ -36,7 +37,9 @@ struct MomentsView:View {
             .sheet(isPresented:$picker,onDismiss:{pending=queuedMedia;queuedMedia=nil}){MediaPicker{receive($0)}}
             .fullScreenCover(isPresented:$camera,onDismiss:{pending=queuedMedia;queuedMedia=nil}){MomentCameraView{receive($0)}}
             .sheet(item:$pending){MediaComposer(media:$0,kind:.moment)}
-            .sheet(item:$selected){MomentGalleryViewer(records:gallery,initialID:$0.id)}
+            .fullScreenCover(item:$selected){MomentGalleryViewer(records:gallery,initialID:$0.id)}
+            .momentDeletionPrompt(deletion) { record in gallery.removeAll { $0.id == record.id } }
+            .onChange(of:app.deletedRecordIDs) { _, ids in gallery.removeAll { ids.contains($0.id) } }
             .alert("Unser neues Album",isPresented:$newAlbum){
                 TextField("Albumname",text:$albumName)
                 Button("Anlegen"){Task{if let album=await app.saveRecord(kind:.album,payload:RecordPayload(title:albumName)){albumID=album.id}}}.disabled(albumName.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
@@ -66,7 +69,7 @@ struct MomentsView:View {
                     if gallery.isEmpty && !loading {ContentUnavailableView("Unser nächster Lieblingsmoment",systemImage:"photo.stack.fill",description:Text("Teilt ein Foto, Video oder Live Photo miteinander."))}
                     if mapMode {MomentsAtlasView(records:gallery)}
                     else {ForEach(monthGroups,id:\.key){group in
-                        MomentMonthGrid(date:group.date,records:group.values,side:CGFloat(GalleryMetrics.tileSide(width:Double(geometry.size.width)))){selected=$0}
+                        MomentMonthGrid(date:group.date,records:group.values,side:CGFloat(GalleryMetrics.tileSide(width:Double(geometry.size.width))),onSelect:{selected=$0},onDelete:{deletion.request($0)})
                     }}
                     paginationStatus
                 }.padding(18)
@@ -133,7 +136,8 @@ struct MomentsView:View {
         do {
             let page=try await app.api.galleryPage(cursor:reset ? nil:cursor,query:query,owner:selectedOwnerID,album:albumID)
             guard generation==pageGeneration,!Task.isCancelled else{return}
-            if reset {gallery=page.records}else{let ids=Set(gallery.map(\.id));gallery += page.records.filter{!ids.contains($0.id)}}
+            let visible = page.records.filter { !app.deletedRecordIDs.contains($0.id) }
+            if reset {gallery=visible}else{let ids=Set(gallery.map(\.id));gallery += visible.filter{!ids.contains($0.id)}}
             cursor=page.nextCursor;hasMore=page.hasMore;loading=false
         }catch{if generation==pageGeneration{galleryError=error.localizedDescription;loading=false;hasMore=false}}
     }
@@ -148,11 +152,14 @@ private struct MomentMonthGrid:View {
     let records:[SharedRecord]
     let side:CGFloat
     let onSelect:(SharedRecord)->Void
+    let onDelete:(SharedRecord)->Void
     private var columns:[GridItem]{Array(repeating:GridItem(.fixed(side),spacing:3),count:3)}
     var body:some View {
         VStack(alignment:.leading,spacing:16){
             Text(date.formatted(.dateTime.month(.wide).year())).font(.title3.bold()).frame(maxWidth:.infinity,alignment:.leading).padding(.top,12)
-            LazyVGrid(columns:columns,spacing:3){ForEach(records){record in MomentGridTile(record:record,side:side){onSelect(record)}}}
+            LazyVGrid(columns:columns,spacing:3){ForEach(records){record in MomentGridTile(record:record,side:side){onSelect(record)}
+                .contextMenu { Button("Moment öffnen",systemImage:"arrow.up.left.and.arrow.down.right") { onSelect(record) }; Button("Moment löschen",systemImage:"trash",role:.destructive) { onDelete(record) } }
+                .accessibilityAction(named: Text("Moment löschen")) { onDelete(record) }}}
         }
     }
 }
@@ -176,7 +183,7 @@ struct MomentDetailView: View {
     @State private var editingMetadata=false
     @State private var moment: SharedRecord
     @State private var comment = ""
-    @State private var deleting = false
+    @State private var deletion = MomentDeletion()
     @State private var commentToDelete: MomentComment?
     @State private var saving = false
 
@@ -213,17 +220,12 @@ struct MomentDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Fertig") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(role: .destructive) { deleting = true } label: { Image(systemName: "trash") }
+                    Button("Moment löschen",systemImage:"trash",role: .destructive) { deletion.request(moment) }.labelStyle(.iconOnly).disabled(deletion.busy)
                 }
             }
             .sheet(isPresented:$editingMetadata){MomentMetadataEditor(record:moment)}
             .onChange(of:appState.records){_,records in if let current=records.first(where:{$0.id==moment.id}){moment=current}}
-            .alert("Moment für euch beide löschen?", isPresented: $deleting) {
-                Button("Löschen", role: .destructive) {
-                    Task { if await appState.deleteRecord(moment) { dismiss() } }
-                }
-                Button("Abbrechen", role: .cancel) {}
-            }
+            .momentDeletionPrompt(deletion) { _ in dismiss() }
             .confirmationDialog(
                 "Kommentar wirklich löschen?",
                 isPresented: Binding(

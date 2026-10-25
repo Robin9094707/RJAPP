@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppTab:Hashable {case home,map,together,moments,settings}
+enum AppTab:Hashable {case home,map,together,moments,cinema,settings}
 struct RootView:View {
     @Environment(AppState.self) private var appState
     @ObservedObject private var update=UpdateCoordinator.shared
@@ -45,19 +45,31 @@ struct RootView:View {
 }
 struct MainTabView:View {
     @Environment(AppState.self) private var appState
+    @State private var cinema = CinemaCoordinator.shared
     var body:some View {
         @Bindable var state=appState
         @Bindable var journey=appState.setupJourney
         TabView(selection:$state.selectedTab) {
-            NavigationStack{HomeView()}.tabItem{Label("Wir",systemImage:"heart.fill")}.tag(AppTab.home)
-            NavigationStack{PartnerMapView()}.tabItem{Label("Karte",systemImage:"location.fill")}.tag(AppTab.map)
-            NavigationStack{LoveHubView()}.tabItem{Label("Für uns",systemImage:"person.2.fill")}.tag(AppTab.together)
-            NavigationStack{ExperienceView()}.tabItem{Label("Erleben",systemImage:"sparkles")}.tag(AppTab.moments)
-
+            Tab("Wir",systemImage:"heart.fill",value:AppTab.home) {
+                NavigationStack { HomeView() }.modifier(CinemaVideoInset(tab:.home))
+            }
+            Tab("Für uns",systemImage:"person.2.fill",value:AppTab.together) {
+                NavigationStack { LoveHubView() }.modifier(CinemaVideoInset(tab:.together))
+            }
+            Tab("Erleben",systemImage:"sparkles",value:AppTab.moments) {
+                NavigationStack { ExperienceView() }.modifier(CinemaVideoInset(tab:.moments))
+            }
+            Tab("Karte",systemImage:"location.fill",value:AppTab.map) {
+                NavigationStack { PartnerMapView() }.modifier(CinemaVideoInset(tab:.map))
+            }
+            Tab("Kino",systemImage:"play.tv.fill",value:AppTab.cinema) {
+                NavigationStack { CinemaView() }.modifier(CinemaVideoInset(tab:.cinema))
+            }
         }
-
         .tint(LovePalette.pink)
-        .safeAreaInset(edge: .bottom, spacing: 0) { CinemaMiniPlayer() }
+        .tabBarMinimizeBehavior(.never)
+        .tabViewBottomAccessory(isEnabled: cinema.active && cinema.provider == "plex" && !cinema.screenVisible && cinema.foreground && !cinema.miniPlayerHidden) { CinemaMiniPlayer() }
+        .onChange(of:cinema.mediaID) { _,_ in cinema.miniPlayerHidden = false }
         .task { CinemaCoordinator.shared.configure(app: appState) }
         .onChange(of: appState.me?.id) { _, _ in CinemaCoordinator.shared.configure(app: appState) }
         .sheet(item:$state.notificationDestination,onDismiss:{appState.offerForegroundMoments()}) { route in NotificationDestinationView(route:route).id(route.id) }
@@ -67,7 +79,7 @@ struct MainTabView:View {
         .sheet(isPresented:$state.showingHealthUpgrade,onDismiss:{appState.health.deferExpandedAccess();appState.offerForegroundMoments()}){HealthPermissionsUpgradeView()}
         .sheet(isPresented:$state.showingPoop){NavigationStack{DropPoopView(openComposer:appState.composingPoop).toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingPoop=false}}}}}
         .sheet(isPresented:$state.showingStatus){StatusEditorSheet()}
-        .onChange(of:state.selectedTab){_,tab in if tab == .settings{state.selectedTab = .home;state.showingProfile=true}}
+        .onChange(of:state.selectedTab){_,tab in dismissKeyboard(); if tab == .settings{state.selectedTab = .home;state.showingProfile=true}}
         .sheet(isPresented:$state.showingFartRecorder,onDismiss:{appState.offerForegroundMoments()}){FartRecorderView(autoStart:appState.quickFartRecording)}
         .sheet(isPresented:$state.showingChangelog,onDismiss:{appState.offerForegroundMoments()}){ChangelogView()}
         .sheet(item:$state.pendingSweet,onDismiss:{appState.offerForegroundMoments()}){SweetPlaybackView(record:$0)}
@@ -81,9 +93,11 @@ struct ChangelogView:View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
-                Text("Unsere Bühne.\nNur wir zwei.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 4.1.0").font(.title3.bold())
-                Label("Unser Kino: YouTube, Plex und eine eigene AirPlay-TV-Ansicht",systemImage:"play.tv.fill")
+                Text("Eure Momente.\nAlles im Blick.").font(.system(size:38,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 4.2.1").font(.title3.bold())
+                Label("Momente direkt öffnen und mit Bestätigung für beide löschen",systemImage:"trash")
+                Label("Kino als eigener Tab und eine ausblendbare Plex-Leiste",systemImage:"play.tv.fill")
+                Label("Klare Navigation ohne überlagerte AirPlay-Steuerung",systemImage:"rectangle.bottomthird.inset.filled")
                 Label("Gemeinsam steuern, Schlaftimer und getrennte Medienkonten",systemImage:"person.2.fill")
                 Label("Bark bringt dich direkt zur Nachricht oder zum Kommentar",systemImage:"bell.badge.fill")
                 Label("Kritische Bark-Weckrufe und Wiederholung bis zur Bestätigung",systemImage:"alarm.fill")

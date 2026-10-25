@@ -31,6 +31,7 @@ final class MomentPreviewCache:@unchecked Sendable {
     private let images=NSCache<NSString,UIImage>()
     init(){images.totalCostLimit=24*1024*1024;images.countLimit=100}
     func image(for key:String)->UIImage?{images.object(forKey:key as NSString)}
+    func remove(key:String){images.removeObject(forKey:key as NSString)}
     func save(_ image:UIImage,key:String){images.setObject(image,forKey:key as NSString,cost:Int(image.size.width*image.scale*image.size.height*image.scale*4))}
     func decode(_ encoded:String,key:String) async -> UIImage? {
         if let cached=image(for:key){return cached}

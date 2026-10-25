@@ -282,9 +282,9 @@ final class AppState {
             myStatus = snapshot.myPresence
             if let preferences = snapshot.preferences { applyPreferences(preferences) }
             let snapshotIDs=Set(snapshot.records.map(\.id));let deleted=Set(snapshot.deletedRecordIDs ?? [])
-            deletedRecordIDs=deleted
-            let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deleted.contains($0.id)}
-            records = snapshot.records + history
+            deletedRecordIDs.formUnion(deleted)
+            let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deletedRecordIDs.contains($0.id)}
+            records = snapshot.records.filter { !deletedRecordIDs.contains($0.id) } + history
             dismissRecalledPhotoRequest()
             if fartArchiveVisible { farts = try await api.loadFartArchive() }
             else { farts = snapshot.farts ?? [] }
@@ -426,20 +426,24 @@ final class AppState {
         }
     }
 
-    func deleteRecord(_ record: SharedRecord) async -> Bool {
-        do {
-            try await api.deleteRecord(id: record.id)
-            records.removeAll { $0.id == record.id }
-            alarms.cancel(id: record.id)
-            synchronizeGeofences()
-            updateWidgetSnapshot()
-            persistCache()
-            Haptics.success()
-            return true
-        } catch {
-            alert = AppAlert(title: "Löschen fehlgeschlagen", message: error.localizedDescription)
-            return false
+    func removeRecord(_ record: SharedRecord) async throws {
+        do { try await api.deleteRecord(id: record.id) }
+        catch let issue as APIClientError {
+            if case .server(let status,_) = issue,status == 404 { /* Already removed on the other device. */ }
+            else { throw issue }
         }
+        deletedRecordIDs.insert(record.id)
+        records.removeAll { $0.id == record.id }
+        MomentPreviewCache.shared.remove(key: record.id + record.updatedAt)
+        alarms.cancel(id: record.id)
+        synchronizeGeofences()
+        updateWidgetSnapshot()
+        persistCache()
+        Haptics.success()
+    }
+    func deleteRecord(_ record: SharedRecord) async -> Bool {
+        do { try await removeRecord(record); return true }
+        catch { alert = AppAlert(title: "Löschen fehlgeschlagen",message: error.localizedDescription); return false }
     }
 
     func registerDeviceToken(_ token: String) async {
@@ -786,6 +790,7 @@ final class AppState {
         switch url.host?.lowercased() {
         case "poop", "poop-log": selectedTab = .home;composingPoop=url.host?.lowercased()=="poop-log";showingPoop=true
         case "stop-nearby": nearby.pauseAutomaticSearch(api: api)
+        case "cinema", "plex", "youtube": selectedTab = .cinema
         case "map": selectedTab = .map
         case "together": selectedTab = .together
         case "moments": selectedTab = .moments; experienceSection = .moments

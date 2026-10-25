@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct CinemaHomeCard: View {
+    @Environment(AppState.self) private var app
     @State private var cinema = CinemaCoordinator.shared
     var body: some View {
-        NavigationLink { CinemaView() } label: {
+        Button { app.selectedTab = .cinema } label: {
             VStack(alignment: .leading,spacing: 15) {
                 HStack { LoveIcon(symbol: "popcorn.fill",tint: LovePalette.violet,size: 48); VStack(alignment: .leading,spacing: 4) { LoveEyebrow(text: "Ein Platz neben dir"); Text(cinema.active ? "Unser Kino läuft" : "Unser gemeinsames Kino").font(.title3.bold()) }; Spacer(); Image(systemName: "chevron.right").font(.caption) }
                 if cinema.active {

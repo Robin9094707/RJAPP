@@ -11,7 +11,7 @@ struct ExperienceView: View {
         @Bindable var state = appState
         VStack(spacing: 0) {
             Picker("Erleben", selection: $state.experienceSection) {
-                ForEach(ExperienceSection.allCases) { section in
+                ForEach(ExperienceSection.allCases.filter { $0 != .cinema }) { section in
                     Text(section.rawValue).tag(section)
                 }
             }.pickerStyle(.segmented).padding(.horizontal, 18).padding(.vertical, 10)
@@ -20,11 +20,12 @@ struct ExperienceView: View {
             case .farts: FartStudioView()
             case .love: LovePlayView()
             case .moments: MomentsView()
-            case .cinema: CinemaView()
+            case .cinema: Color.clear.onAppear { appState.experienceSection = .moments; appState.selectedTab = .cinema }
             }
             }.id(state.experienceSection).transition(.opacity)
         }.animation(reduceMotion ? nil : .smooth(duration: 0.25), value: state.experienceSection)
             .background(LoveBackground()).navigationBarTitleDisplayMode(.inline)
+            .onChange(of:appState.experienceSection) { _,_ in dismissKeyboard() }
     }
 }
 struct PuffMascot: View {

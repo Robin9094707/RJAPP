@@ -28,6 +28,8 @@ import UIKit
     var error: String?
     var busy = false
     var screenVisible = false
+    var miniPlayerHidden = false
+    var externalPlaybackActive = false
     var foreground = true
     var userID = ""
     var api: APIClient?
@@ -89,7 +91,7 @@ import UIKit
         loop?.cancel(); loop = nil; stopLocal(); plex.reset(); YouTubeAccount.shared.reset()
         room = nil; rooms = []; stats = []; history = []; sameScreen = false; bridgeConnected = false; bridgeError = nil; lastBridgeCheck = .distantPast; api = nil; namespace = ""; userID = ""; features = nil
         TVTogetherService.shared.reset()
-        ignoredRoomID = nil; youtubeBrowsing = false; discoveryInProgress = false
+        ignoredRoomID = nil; youtubeBrowsing = false; discoveryInProgress = false; miniPlayerHidden = false; externalPlaybackActive = false
         TVPresentation.shared.clear()
     }
     func refresh() async {
@@ -265,6 +267,7 @@ import UIKit
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let player = self.player else { return }
+                self.externalPlaybackActive = player.isExternalPlaybackActive
                 let time = player.currentTime().seconds
                 if time.isFinite { self.position = max(0, time) }
                 let duration = player.currentItem?.duration.seconds ?? 0
@@ -305,7 +308,7 @@ import UIKit
         timeObserver = nil; playerObservation = nil; player?.pause(); player = nil
         for (command, target) in remoteTargets { command.removeTarget(target) }; remoteTargets = []
         if provider == "plex" { MPNowPlayingInfoCenter.default().nowPlayingInfo = nil }
-        provider = ""; mediaID = ""; title = ""; playing = false; position = 0; duration = 0; sleepUntil = nil
+        provider = ""; mediaID = ""; title = ""; externalPlaybackActive = false; playing = false; position = 0; duration = 0; sleepUntil = nil
     }
     private func updateNowPlaying() {
         guard provider == "plex" else { return }

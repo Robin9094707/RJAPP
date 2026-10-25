@@ -86,14 +86,15 @@ private final class PlexHomeXML: NSObject,XMLParserDelegate {
         reset(); self.namespace = namespace
         clientID = KeychainStore.get(namespace + ".plex.client") ?? UUID().uuidString
         try? KeychainStore.set(clientID, for: namespace + ".plex.client")
-        accountToken = KeychainStore.get(namespace + ".plex.token"); token = accountToken; authenticated = accountToken != nil
+        accountToken = KeychainStore.get(namespace + ".plex.token"); token = KeychainStore.get(namespace + ".plex.profile.token") ?? accountToken; authenticated = accountToken != nil
+        profileName = UserDefaults.standard.string(forKey: namespace + ".plex.profile.name") ?? ""
     }
     func reset() {
         pinTask?.cancel(); pinTask = nil; token = nil; accountToken = nil; homeProfiles = []; homeLoaded = false; profileRequired = false; profileName = ""; servers = []; server = nil
         entries = []; connection = nil; authenticated = false; authURL = nil; error = nil; busy = false; namespace = ""
     }
     func disconnect() {
-        KeychainStore.delete(namespace + ".plex.token"); let space = namespace
+        KeychainStore.delete(namespace + ".plex.profile.token"); KeychainStore.delete(namespace + ".plex.token"); let space = namespace
         reset(); configure(namespace: space)
     }
     private func call(_ url: URL, token: String? = nil, method: String = "GET", body: Data? = nil, raw: Bool = false) async throws -> Any {
@@ -150,7 +151,7 @@ private final class PlexHomeXML: NSObject,XMLParserDelegate {
             let result = try PlexHomeXML.parse(data)
             guard namespace == space else { return }
             homeProfiles = result.profiles; homeLoaded = true
-            profileRequired = homeProfiles.count > 1 || homeProfiles.contains { $0.protected }
+            profileRequired = (homeProfiles.count > 1 || homeProfiles.contains { $0.protected }) && KeychainStore.get(namespace + ".plex.profile.token") == nil
             if !profileRequired { profileName = homeProfiles.first?.title ?? "Mein Plex" }
             error = nil
         } catch let issue as APIClientError {
@@ -171,6 +172,8 @@ private final class PlexHomeXML: NSObject,XMLParserDelegate {
             guard let selected = result.token,!selected.isEmpty else { throw APIClientError.transport("Plex hat das Profil nicht entsperrt. PIN prüfen.") }
             guard namespace == space else { return }
             token = selected; profileName = profile.title; profileRequired = false
+            try KeychainStore.set(selected,for: namespace + ".plex.profile.token")
+            UserDefaults.standard.set(profile.title,forKey: namespace + ".plex.profile.name")
             server = nil; connection = nil; entries = []; servers = []; error = nil
             await loadServers()
         } catch { self.error = error.localizedDescription }
@@ -209,6 +212,7 @@ private final class PlexHomeXML: NSObject,XMLParserDelegate {
                 _ = try await call(URL(string: candidate.uri + "/identity")!, token: server.token)
                 guard namespace == space else { return }
                 self.server = server; connection = candidate.uri
+                UserDefaults.standard.set(server.id,forKey: namespace + ".plex.server")
                 await browse("/library/sections"); return
             } catch { continue }
         }
@@ -260,8 +264,13 @@ private final class PlexHomeXML: NSObject,XMLParserDelegate {
         components.queryItems = [URLQueryItem(name: "X-Plex-Token", value: server.token)]
         return components.url!
     }
+    func restoreServer() async {
+        await loadServers()
+        if let id = UserDefaults.standard.string(forKey: namespace + ".plex.server"), let saved = servers.first(where: { $0.id == id }) { await select(saved) }
+    }
     func shareBody() throws -> [String: Any] {
         guard let token, let server, let connection else { throw APIClientError.invalidResponse }
         return ["token": token, "machine_id": server.id, "connection": connection, "seconds": 14400, "mode": playbackMode == .compatible ? "compatible" : "direct"]
     }
 }
+

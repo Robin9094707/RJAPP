@@ -12,6 +12,11 @@ import UIKit
     var room: CinemaRoom?
     var rooms: [CinemaRoom] = []
     var stats: [CinemaStat] = []
+    var history: [CinemaHistory] = []
+    var sameScreen = false
+    var bridgeConnected = false
+    var bridgeError: String?
+    private var lastBridgeCheck = Date.distantPast
     var player: AVPlayer?
     var provider = ""
     var mediaID = ""
@@ -64,6 +69,7 @@ import UIKit
         autoJoin = UserDefaults.standard.object(forKey: "rjlove.cinema.autoJoin."+scope) as? Bool ?? true
         plex.configure(namespace: "rjlove.cinema." + scope)
         YouTubeAccount.shared.configure(namespace: "rjlove.cinema." + scope, api: api)
+        NativeYouTubeService.shared.configure(namespace: scope)
         TVPresentation.shared.attach(app: app)
         TVTogetherService.shared.configure(api: app.api,namespace: scope,user: user)
         loop = Task { [weak self] in
@@ -71,13 +77,17 @@ import UIKit
                 guard let self, self.namespace == scope else { return }
                 await self.refreshSelectedRoom()
                 self.checkSleepTimer()
+                if self.foreground && Date.now.timeIntervalSince(self.lastBridgeCheck)>30 {
+                    self.lastBridgeCheck = .now
+                    await self.refreshPlexBridge()
+                }
                 do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
     }
     func reset() {
         loop?.cancel(); loop = nil; stopLocal(); plex.reset(); YouTubeAccount.shared.reset()
-        room = nil; rooms = []; stats = []; api = nil; namespace = ""; userID = ""; features = nil
+        room = nil; rooms = []; stats = []; history = []; sameScreen = false; bridgeConnected = false; bridgeError = nil; lastBridgeCheck = .distantPast; api = nil; namespace = ""; userID = ""; features = nil
         TVTogetherService.shared.reset()
         ignoredRoomID = nil; youtubeBrowsing = false; discoveryInProgress = false
         TVPresentation.shared.clear()
@@ -86,7 +96,9 @@ import UIKit
         guard let api else { return }
         do {
             features = try await api.cinema("features", as: CinemaFeatures.self)
-            rooms = try await api.cinemaRooms(); stats = try await api.cinemaStats(); error = nil
+            rooms = try await api.cinemaRooms(); stats = try await api.cinemaStats()
+            struct HistoryPage: Decodable { let items: [CinemaHistory] }
+            history = try await api.cinema("history", as: HistoryPage.self).items; error = nil
         } catch {
             self.error = "Medienserver: \(error.localizedDescription) Für gemeinsames Schauen und Suche den neuen Python-Server verwenden. Eure bisherigen Funktionen bleiben verfügbar."
         }
@@ -133,7 +145,7 @@ import UIKit
             else { await control("play") }
         } catch { self.error = error.localizedDescription; stopLocal(); room = nil }
     }
-    func join(_ invitation: CinemaRoom) async {
+    func join(_ invitation: CinemaRoom, localPlayback: Bool = false) async {
         guard let api, !busy else { return }
         if invitation.provider == "youtube" && !UserDefaults.standard.bool(forKey: "rjlove.youtube.consent.v1") { error = "Bitte zuerst YouTube aktivieren und die Datenschutzhinweise bestätigen."; return }
         busy = true; defer { busy = false }
@@ -142,7 +154,7 @@ import UIKit
             let joined = try await api.cinema("rooms/\(invitation.id)/join", body: [:], as: CinemaRoom.self)
             provider = joined.provider; mediaID = joined.mediaID; title = joined.title; room = joined
             if provider == "youtube" { youtube.load(mediaID) }
-            else {
+            else if localPlayback {
                 let url = try await api.cinemaPlayback(joined.id)
                 try installPlayer(url)
             }
@@ -182,14 +194,13 @@ import UIKit
         }
     }
     private func refreshSelectedRoom() async {
-        guard let api, foreground else { return }
+        guard let api, foreground || (provider == "plex" && player != nil) else { return }
         guard let selected = room else {
             guard autoJoin, !active, !busy, !discoveryInProgress else { return }
             discoveryInProgress = true; defer { discoveryInProgress = false }
             do {
                 rooms = try await api.cinemaRooms()
-                if let candidate = rooms.first(where: { $0.provider == "youtube" && $0.id != ignoredRoomID }),
-                   UserDefaults.standard.bool(forKey: "rjlove.youtube.consent.v1"), !AudioStudioService.shared.hasRecording, !VoiceNoteService.shared.recording {
+                if let candidate = rooms.first(where: { $0.id != ignoredRoomID && ($0.provider == "plex" || UserDefaults.standard.bool(forKey: "rjlove.youtube.consent.v1")) }), !AudioStudioService.shared.hasRecording, !VoiceNoteService.shared.recording {
                     await join(candidate)
                 }
             } catch let issue as UpdateRequirement { self.error = issue.localizedDescription }
@@ -198,7 +209,7 @@ import UIKit
         }
         let operation = generation
         do {
-            let next = try await api.cinema("rooms/\(selected.id)/heartbeat", body: ["playing": playing], as: CinemaRoom.self)
+            let next = try await api.cinema("rooms/\(selected.id)/heartbeat", body: ["playing": player != nil || provider == "youtube" ? playing : false, "same_screen": sameScreen], as: CinemaRoom.self)
             guard generation == operation, room?.id == selected.id else { return }
             apply(next)
         } catch {
@@ -210,11 +221,13 @@ import UIKit
     private func apply(_ next: CinemaRoom) {
         let changed = room?.revision != next.revision
         let changedVideo = provider == "youtube" && mediaID != next.mediaID
+        title = next.title
+        if let length = next.details?.duration, length > 0 { duration = length }
         if changedVideo { mediaID = next.mediaID; title = next.title; youtube.load(next.mediaID); position = 0; playing = false }
         room = next
         sleepUntil = next.sleepUntil.map { Date.now.addingTimeInterval($0 - next.serverTime) }
         if next.closed { TVPresentation.shared.mode = .night; stopLocal(); room = nil; return }
-        if provider == "plex", next.ownerID != userID, !next.plexShared { player?.pause(); playing = false; error = "Die Plex-Freigabe ist beendet."; return }
+        if provider == "plex", player != nil, next.ownerID != userID, !next.plexShared { player?.pause(); playing = false; error = "Die Plex-Freigabe ist beendet."; return }
         // A guest needs a user gesture in the embedded YouTube player; autoplay can be blocked by iOS.
         let drift = abs(position - next.position)
         if changed || drift > 3 || next.playing != playing { setPlayback(next.playing, at: next.position) }
@@ -231,6 +244,7 @@ import UIKit
                 if abs(player.currentTime().seconds - time) > 2 { player.seek(to: CMTime(seconds: time, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
                 if play { player.play() } else { player.pause() }
             }
+            if player == nil { playing = play }
             updateNowPlaying()
         }
     }
@@ -257,11 +271,12 @@ import UIKit
                 self.duration = duration.isFinite ? max(0,duration) : 0
                 let actual = player.timeControlStatus == .playing
                 if let room = self.room, self.foreground, Date.now > self.ignorePlayerEventsUntil, actual != room.playing,
-                   player.timeControlStatus == .playing || player.timeControlStatus == .paused {
+                   player.timeControlStatus == .playing {
                     Task { await self.control(actual ? "play" : "pause") }
                 }
                 self.playing = actual
-                self.checkSleepTimer(); self.updateNowPlaying()
+                self.checkSleepTimer()
+                self.updateNowPlaying()
             }
         }
         installRemoteCommands()
@@ -275,6 +290,11 @@ import UIKit
     func setForeground(_ active: Bool) {
         foreground = active
         UIApplication.shared.isIdleTimerDisabled = active && TVPresentation.shared.connected
+        if provider == "plex", let player {
+            if !active { ignorePlayerEventsUntil = .distantFuture }
+            else { ignorePlayerEventsUntil = .now.addingTimeInterval(2) }
+            if playing { player.play() }
+        }
         if !active, provider == "youtube" { youtube.pause(); playing = false }
         if active { checkSleepTimer() }
     }
@@ -290,6 +310,45 @@ import UIKit
     private func updateNowPlaying() {
         guard provider == "plex" else { return }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: "RJ Love · Unser Kino", MPMediaItemPropertyPlaybackDuration: duration, MPNowPlayingInfoPropertyElapsedPlaybackTime: position, MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0]
+    }
+
+    func playOnThisDevice() async {
+        guard provider == "plex", player == nil, let room, let api else { return }
+        do { let url = try await api.cinemaPlayback(room.id); try installPlayer(url); setPlayback(room.playing, at: room.position); error = nil }
+        catch { self.error = error.localizedDescription }
+    }
+    func stopThisDevice() {
+        let saved = room
+        stopLocal()
+        if let saved { provider = saved.provider; mediaID = saved.mediaID; title = saved.title; room = saved; playing = saved.playing; position = saved.position; duration = saved.details?.duration ?? 0 }
+    }
+    func resetStatistics() async {
+        guard let api else { return }
+        struct Result: Decodable { let reset: Bool }
+        do { _ = try await api.cinema("stats/reset",body: ["confirmation":"RESET_CINEMA"],as: Result.self); await refresh() }
+        catch { self.error = error.localizedDescription }
+    }
+    func connectPlexBridge() async {
+        guard let api else { return }
+        struct Result: Decodable { let connected: Bool }
+        do {
+            guard try api.request(path: "",method: "GET").url?.scheme == "https" else { throw APIClientError.transport("Plex-Automatik benötigt HTTPS an eurem RJ-Server.") }
+            bridgeConnected = try await api.cinema("plex/connect",body: plex.shareBody(),as: Result.self).connected
+            bridgeError = nil
+        } catch { bridgeError = error.localizedDescription }
+    }
+    func disconnectPlexBridge() async {
+        guard let api else { return }
+        struct Result: Decodable { let connected: Bool }
+        do { bridgeConnected = try await api.cinema("plex/disconnect",body: [:],as: Result.self).connected; bridgeError = nil }
+        catch { bridgeError = error.localizedDescription }
+    }
+    private func refreshPlexBridge() async {
+        guard let api else { return }
+        struct Status: Decodable { let connected: Bool; let error: String? }
+        if let status = try? await api.cinema("plex/status",as: Status.self) { bridgeConnected = status.connected; bridgeError = status.error }
+        if plex.authenticated && plex.server == nil && !plex.profileRequired { await plex.restoreServer() }
+        if plex.server != nil && !bridgeConnected && UserDefaults.standard.bool(forKey: "rjlove.plex.bridge."+namespace) { await connectPlexBridge() }
     }
     private func installRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
@@ -307,3 +366,4 @@ import UIKit
         remoteTargets.append((center.changePlaybackPositionCommand,target))
     }
 }
+

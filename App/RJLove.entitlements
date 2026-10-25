@@ -6,6 +6,8 @@
 	<string>production</string>
 	<key>com.apple.developer.default-data-protection</key>
 	<string>NSFileProtectionComplete</string>
+	<key>com.apple.developer.homekit</key>
+	<true/>
 	<key>com.apple.developer.healthkit</key>
 	<true/>
 	<key>com.apple.developer.networking.wifi-info</key>
@@ -16,3 +18,4 @@
 	</array>
 </dict>
 </plist>
+

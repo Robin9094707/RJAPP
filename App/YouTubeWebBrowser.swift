@@ -1,49 +1,67 @@
-import SafariServices
+import Observation
 import SwiftUI
+import WebKit
 
-struct YouTubeWebDestination: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-/// The real YouTube website handles sign-in, subscriptions and Premium itself.
-/// Only a video URL explicitly shared by the user crosses into RJ Love.
-struct YouTubeWebBrowser: UIViewControllerRepresentable {
+struct YouTubeWebDestination: Identifiable { let id = UUID(); let url: URL }
+
+/// First-party pages render inside the app. No Safari preview or shared cookies.
+struct YouTubeWebBrowser: View {
     let url: URL
     let together: Bool
     var selected: (String, String, Bool) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(together: together, selected: selected) }
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        let configuration = SFSafariViewController.Configuration()
-        configuration.entersReaderIfAvailable = false
-        let browser = SFSafariViewController(url: url,configuration: configuration)
-        browser.delegate = context.coordinator
-        browser.preferredControlTintColor = .systemPink
-        browser.dismissButtonStyle = .done
-        return browser
-    }
-    func updateUIViewController(_ browser: SFSafariViewController, context: Context) {}
-    @MainActor final class Coordinator: NSObject, SFSafariViewControllerDelegate {
-        let together: Bool
-        let selected: (String, String, Bool) -> Void
-        init(together: Bool,selected: @escaping (String,String,Bool) -> Void) { self.together = together; self.selected = selected }
-        func safariViewController(_ controller: SFSafariViewController,activityItemsFor URL: URL,title: String?) -> [UIActivity] {
-            guard let id = YouTubeLink.videoID(URL.absoluteString) else { return [] }
-            return [YouTubeWatchActivity(id: id,title: title ?? "YouTube",together: together) { [weak self,weak controller] id,title,together in
-                self?.selected(id,title,together)
-                controller?.dismiss(animated: true)
-            }]
-        }
+    @Environment(\.dismiss) private var dismiss
+    @State private var page = YouTubePageState()
+    var body: some View {
+        NavigationStack {
+            YouTubePage(url: url, state: page)
+                .navigationTitle("YouTube").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Fertig") { dismiss() } }
+                    ToolbarItem(placement: .topBarTrailing) { Button { page.webView?.goBack() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("Zurück") }
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(together ? "Dieses Video mit Schatzi schauen" : "Dieses Video abspielen",systemImage: "play.fill") {
+                            guard let id = page.videoID else { return }
+                            page.webView?.evaluateJavaScript("document.querySelectorAll('video').forEach(v=>v.pause())")
+                            selected(id,page.title,together); dismiss()
+                        }.disabled(page.videoID == nil)
+                    }
+                }
+                .safeAreaInset(edge: .bottom) { if let error = page.error { Text(error).font(.caption).padding(10).background(.regularMaterial) } }
+        }.onDisappear { Task { await NativeYouTubeService.shared.refreshCookies() } }
     }
 }
-@MainActor private final class YouTubeWatchActivity: UIActivity {
-    let id: String
-    let videoTitle: String
-    let together: Bool
-    let selected: (String,String,Bool) -> Void
-    init(id: String,title: String,together: Bool,selected: @escaping (String,String,Bool)->Void) { self.id = id; videoTitle = title; self.together = together; self.selected = selected }
-    override var activityType: UIActivity.ActivityType? { .init("eu.rjuhas.rjlove.watch") }
-    override var activityTitle: String? { together ? "Mit Schatzi schauen" : "In RJ Love abspielen" }
-    override var activityImage: UIImage? { UIImage(systemName: "play.tv.fill") }
-    override func canPerform(withActivityItems activityItems: [Any]) -> Bool { true }
-    override func perform() { selected(id,videoTitle,together); activityDidFinish(true) }
+@MainActor @Observable private final class YouTubePageState {
+    var videoID: String?
+    var title = "YouTube"
+    var error: String?
+    weak var webView: WKWebView?
+}
+private struct YouTubePage: UIViewRepresentable {
+    let url: URL
+    let state: YouTubePageState
+    func makeCoordinator() -> Coordinator { Coordinator(state) }
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = NativeYouTubeService.shared.dataStore
+        configuration.allowsInlineMediaPlayback = true; configuration.allowsAirPlayForMediaPlayback = true
+        let view = WKWebView(frame: .zero,configuration: configuration)
+        view.navigationDelegate = context.coordinator; view.allowsBackForwardNavigationGestures = true
+        state.webView = view
+        context.coordinator.observation = view.observe(\.url, options: [.new]) { web, _ in Task { @MainActor in state.videoID = web.url.flatMap { YouTubeLink.videoID($0.absoluteString) }; state.title = web.title ?? "YouTube" } }
+        view.load(URLRequest(url: url)); return view
+    }
+    func updateUIView(_ view: WKWebView, context: Context) {}
+    @MainActor final class Coordinator: NSObject, WKNavigationDelegate {
+        let state: YouTubePageState
+        var observation: NSKeyValueObservation?
+        init(_ state: YouTubePageState) { self.state = state }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { state.title = webView.title ?? "YouTube"; state.videoID = webView.url.flatMap { YouTubeLink.videoID($0.absoluteString) } }
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            guard let url = action.request.url, let host = url.host?.lowercased(), url.scheme == "https",
+                  host == "youtube.com" || host.hasSuffix(".youtube.com") || host == "google.com" || host.hasSuffix(".google.com") || host == "youtu.be" else { decisionHandler(.cancel); return }
+            if action.targetFrame == nil { webView.load(action.request); decisionHandler(.cancel); return }
+            state.error = nil; decisionHandler(.allow)
+        }
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { if (error as NSError).code != NSURLErrorCancelled { state.error = "YouTube konnte nicht geladen werden: " + error.localizedDescription } }
+    }
 }

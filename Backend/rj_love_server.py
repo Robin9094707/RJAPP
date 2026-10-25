@@ -52,8 +52,8 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "4.1.0"
-MINIMUM_APP_VERSION = "4.1.0"
+APP_VERSION = "4.2.0"
+MINIMUM_APP_VERSION = "4.2.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -342,6 +342,7 @@ class Database:
                     room_id TEXT NOT NULL, user_id TEXT NOT NULL, seen REAL NOT NULL,
                     playing INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(room_id,user_id)
                 );
+                CREATE TABLE IF NOT EXISTS cinema_details (room_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS cinema_stats (
                     room_id TEXT PRIMARY KEY, provider TEXT NOT NULL, seconds REAL NOT NULL DEFAULT 0,
                     accounted REAL NOT NULL, created REAL NOT NULL
@@ -2180,6 +2181,7 @@ class RJLoveApplication:
                 self.configure_push_automatically()
 
     def close(self) -> None:
+        self.cinema.bridge_stop.set()
         self.notification_hub.close()
         self._cleanup_stop.set()
         for handler in list(self.logger.handlers):
@@ -2276,6 +2278,159 @@ class CinemaService:
         self.tickets = {}
         self.oauth = {}
         self.tv = TVSharedService(app)
+        self.bridges = {}
+        self.bridge_stop = threading.Event()
+        self.bridge_thread = threading.Thread(target=self._bridge_loop, daemon=True)
+        self.bridge_thread.start()
+
+    @staticmethod
+    def _details(db, room):
+        row=db.execute("SELECT payload FROM cinema_details WHERE room_id=?",(room,)).fetchone()
+        return json.loads(row[0]) if row else {}
+
+    @staticmethod
+    def _save_details(db,room,details):
+        db.execute("INSERT INTO cinema_details VALUES(?,?) ON CONFLICT(room_id) DO UPDATE SET payload=excluded.payload",(room,json.dumps(details)))
+
+    @staticmethod
+    def _media_details(media):
+        first=(media.get("Media") or [{}])[0]
+        return {"summary":str(media.get("summary", ""))[:3000], "year":str(media.get("year", "")),
+                "duration":max(0,float(media.get("duration",0) or 0)/1000),
+                "series":str(media.get("grandparentTitle", ""))[:250], "episode":str(media.get("index", "")),
+                "rating":str(media.get("contentRating", "")), "resolution":str(first.get("videoResolution", "")),
+                "video_codec":str(first.get("videoCodec", "")), "audio_codec":str(first.get("audioCodec", ""))}
+
+    def connect_plex(self,user,body,authorization):
+        token=safe_text(body.get("token"),4096,allow_empty=False)
+        machine=safe_text(body.get("machine_id"),120,allow_empty=False)
+        resources=self.remote_json("https://plex.tv/api/v2/resources?includeHttps=1",token)
+        resource=next((r for r in resources if r.get("clientIdentifier")==machine and "server" in r.get("provides", "").split(",")),None)
+        base=body.get("connection", "")
+        parsed=urlparse(base if isinstance(base,str) else "")
+        if not resource or base not in [c.get("uri") for c in resource.get("connections",[])]:
+            raise APIError(403,"plex_forbidden","Dieser Server gehört nicht zu deiner Plex-Freigabe.")
+        if parsed.scheme!="https" or not (parsed.hostname or "").endswith(".plex.direct") or parsed.username or parsed.password:
+            raise APIError(400,"secure_plex_required","Die Kino-Automatik benötigt eine sichere Plex-Verbindung.")
+        import socket,ipaddress
+        try:
+            addresses={ipaddress.ip_address(v[4][0]) for v in socket.getaddrinfo(parsed.hostname,parsed.port or 443,type=socket.SOCK_STREAM)}
+            if not addresses or any(v.is_loopback or v.is_link_local or v.is_multicast or v.is_unspecified for v in addresses):raise ValueError()
+        except (ValueError,OSError):raise APIError(400,"unsafe_plex_address","Plex-Verbindung nicht zulässig.") from None
+        account=self.remote_json("https://plex.tv/api/v2/user",token)
+        account_id=str(account.get("id", ""))
+        if not account_id:raise APIError(403,"plex_profile_missing","Das Plex-Profil konnte nicht bestätigt werden.")
+        session=hashlib.sha256((authorization or "").removeprefix("Bearer ").encode()).hexdigest()
+        with self.lock:
+            self.bridges[user]={"base":base.rstrip("/"),"token":resource.get("accessToken") or token,"account":account_id,
+                                "session":session,"machine":machine,"name":str(resource.get("name", "Plex"))[:200],
+                                "expires":time.time()+12*3600,"error":None,"last_ok":time.time(),"command":0}
+        return {"connected":True}
+
+    def _bridge_loop(self):
+        while not self.bridge_stop.wait(5):
+            with self.lock: entries=list(self.bridges.items())
+            for user,bridge in entries:
+                if self.bridge_stop.is_set():return
+                try:self._poll_bridge(user,bridge)
+                except Exception:
+                    with self.lock:
+                        if self.bridges.get(user) is bridge:
+                            bridge["error"]="Plex-Sitzung nicht erreichbar. Serverrechte und Fernzugriff prüfen."
+                    if time.time()-bridge["last_ok"]>20:self._close_external(user,bridge)
+            self._check_external_timers()
+
+    def _close_external(self,user,bridge):
+        with self.lock,self.app.database.connect() as db:
+            for row in db.execute("SELECT * FROM cinema_rooms WHERE owner_id=? AND closed=0 AND provider='plex'",(user,)).fetchall():
+                d=self._details(db,row["id"])
+                if d.get("external") and d.get("machine")==bridge["machine"]:
+                    now=time.time();self._account(db,row,now)
+                    db.execute("UPDATE cinema_rooms SET position=?,playing=0,closed=1,updated=?,revision=revision+1 WHERE id=?",(self.position(row,now),now,row["id"]))
+                    self.grants.pop(row["id"],None)
+
+    def _poll_bridge(self,user,bridge):
+        with self.app.database.connect() as db:
+            valid=db.execute("SELECT 1 FROM sessions WHERE token_hash=? AND user_id=? AND expires_at>?",(bridge["session"],user,iso_now())).fetchone()
+        if not valid or bridge["expires"]<=time.time():
+            self._close_external(user,bridge)
+            with self.lock:
+                if self.bridges.get(user) is bridge:self.bridges.pop(user,None)
+            return
+        data=self.remote_json(bridge["base"]+"/status/sessions",bridge["token"])
+        candidates=[]
+        for m in data.get("MediaContainer",{}).get("Metadata",[]):
+            player=m.get("Player",{})
+            if str(m.get("User",{}).get("id", ""))!=bridge["account"]:continue
+            if not re.fullmatch(r"[0-9]+",str(m.get("ratingKey", ""))):continue
+            if player.get("product")=="RJ Love" or str(player.get("machineIdentifier", "")).startswith("rjlove-"):continue
+            if not player.get("machineIdentifier"):continue
+            candidates.append(m)
+        bridge["last_ok"]=time.time();bridge["error"]=None
+        if not candidates:
+            bridge.pop("ignored",None);self._close_external(user,bridge);return
+        # Follow the existing receiver if multiple sessions use the same account.
+        candidates.sort(key=lambda m:(m["Player"].get("machineIdentifier")!=bridge.get("receiver"),m["Player"].get("state")!="playing"))
+        m=candidates[0];player=m["Player"];receiver=str(player["machineIdentifier"])
+        media=str(m["ratingKey"])
+        if bridge.get("ignored")== (receiver,media):return
+        bridge.pop("ignored",None)
+        now=time.time();playing=player.get("state")=="playing"
+        position=max(0,float(m.get("viewOffset",0) or 0)/1000)
+        with self.lock,self.app.database.connect() as db:
+            if self.bridges.get(user) is not bridge:return
+            db.execute("BEGIN IMMEDIATE")
+            row=None
+            for r in db.execute("SELECT * FROM cinema_rooms WHERE owner_id=? AND provider='plex' AND closed=0 ORDER BY updated DESC",(user,)).fetchall():
+                d=self._details(db,r["id"])
+                if d.get("external") and d.get("machine")==bridge["machine"]:
+                    if r["media_id"]==media and d.get("receiver_id")==receiver:row=r
+                    else:
+                        self._account(db,r,now)
+                        db.execute("UPDATE cinema_rooms SET closed=1,playing=0,revision=revision+1 WHERE id=?",(r["id"],));self.grants.pop(r["id"],None)
+            if row is None:
+                room=str(uuid.uuid4())
+                title=" · ".join(filter(None,[str(m.get("grandparentTitle", "")),str(m.get("title", "Plex"))]))[:250]
+                db.execute("INSERT INTO cinema_rooms(id,owner_id,provider,media_id,title,updated,expires) VALUES(?,?,'plex',?,?,?,?)",(room,user,media,title,now,now+12*3600))
+                for person in [user,*self.app.partner_ids(user)]:db.execute("INSERT INTO cinema_members VALUES(?,?,?,0)",(room,person,now if person==user else 0))
+                db.execute("INSERT INTO cinema_stats VALUES(?,'plex',0,?,?)",(room,now,now))
+                row=self._room(db,room,user)
+            room=row["id"]
+            self._account(db,row,now)
+            details=self._media_details(m)|{"external":True,"machine":bridge["machine"],"server_name":bridge["name"],"receiver_id":receiver,
+                  "device":str(player.get("title",player.get("product", "Plex")))[:200],"product":str(player.get("product", ""))[:150],
+                  "state":str(player.get("state", "")),"can_control":"playback" in str(player.get("protocolCapabilities", "")),"owner_presence":True}
+            # A receiver's actual timeline is authoritative, with a short settling window after commands.
+            if now-bridge.get("last_command",0)>3:
+                changed=abs(self.position(row,now)-position)>3 or bool(row["playing"])!=playing
+                db.execute("UPDATE cinema_rooms SET position=?,playing=?,updated=?,revision=revision+? WHERE id=?",(position,int(playing),now,int(changed),room))
+            db.execute("UPDATE cinema_members SET seen=?,playing=? WHERE room_id=? AND user_id=?",(now,int(playing),room,user))
+            self._save_details(db,room,details)
+            parts=(m.get("Media") or [{}])[0].get("Part") or []
+            path=parts[0].get("key", "") if parts else ""
+            if re.fullmatch(r"/library/parts/[0-9]+/[0-9]+/file(?:\.[A-Za-z0-9]+)?",path) and room not in self.grants:
+                self.grants[room]={"url":bridge["base"]+path,"base":bridge["base"],"media_id":media,"mode":"compatible","token":bridge["token"],"expires":min(bridge["expires"],row["expires"]),"id":secrets.token_hex(16)}
+            bridge["receiver"]=receiver
+
+    def _remote_control(self,user,details,action,position=0):
+        bridge=self.bridges.get(user)
+        if not bridge or bridge["expires"]<=time.time():raise APIError(410,"plex_bridge_expired","Plex-Automatik bitte erneut verbinden.")
+        command={"play":"play","pause":"pause","seek":"seekTo","end":"stop"}.get(action)
+        if not command:return
+        bridge["command"]+=1
+        query={"type":"video","commandID":bridge["command"],"X-Plex-Target-Client-Identifier":details["receiver_id"]}
+        if action=="seek":query["offset"]=int(self.number(position,7*86400)*1000)
+        request=urllib.request.Request(bridge["base"]+"/player/playback/"+command+"?"+urlencode(query),headers={"X-Plex-Token":bridge["token"],"X-Plex-Client-Identifier":"rjlove-cinema-server","X-Plex-Target-Client-Identifier":details["receiver_id"]})
+        try:
+            with urllib.request.urlopen(request,timeout=8) as response:
+                if response.status!=200:raise OSError()
+        except OSError:raise APIError(502,"plex_remote_unsupported","Dieses Plex-Gerät nimmt keine Fernsteuerung an. Plex Companion am Abspielgerät prüfen; neuere mobile Plex-Apps unterstützen es teilweise nicht.") from None
+        bridge["last_command"]=time.time()
+
+    def _check_external_timers(self):
+        with self.lock,self.app.database.connect() as db:
+            for row in db.execute("SELECT * FROM cinema_rooms WHERE closed=0 AND sleep_until IS NOT NULL AND sleep_until<=?",(time.time(),)).fetchall():
+                self._account(db,row,time.time())
 
     @staticmethod
     def number(value, maximum, minimum=0):
@@ -2305,6 +2460,13 @@ class CinemaService:
                 db.execute("UPDATE cinema_stats SET seconds=seconds+? WHERE room_id=?", (delta, row["id"]))
             db.execute("UPDATE cinema_stats SET accounted=? WHERE room_id=?", (now, row["id"]))
         if not row["closed"] and (now >= row["expires"] or (row["sleep_until"] and now >= row["sleep_until"])):
+            detail=self._details(db,row["id"])
+            if detail.get("external"):
+                bridge=self.bridges.get(row["owner_id"])
+                try:self._remote_control(row["owner_id"],detail,"pause")
+                except APIError:
+                    if bridge:bridge["error"]="Der Schlaftimer konnte das Plex-Gerät nicht pausieren."
+                if bridge:bridge["ignored"]=(detail.get("receiver_id"),row["media_id"])
             db.execute("UPDATE cinema_rooms SET position=?,playing=0,closed=1,revision=revision+1,updated=? WHERE id=?", (self.position(row, now), now, row["id"]))
             self.grants.pop(row["id"], None)
             row = db.execute("SELECT * FROM cinema_rooms WHERE id=?", (row["id"],)).fetchone()
@@ -2316,7 +2478,8 @@ class CinemaService:
                 "title": row["title"], "position": self.position(row, now), "playing": bool(row["playing"]),
                 "revision": row["revision"], "server_time": now, "sleep_until": row["sleep_until"],
                 "closed": bool(row["closed"]), "members": members, "joined": user in members,
-                "plex_shared": row["id"] in self.grants and self.grants[row["id"]]["expires"] > now}
+                "plex_shared": row["id"] in self.grants and self.grants[row["id"]]["expires"] > now,
+                "details": self._details(db, row["id"])}
 
     def get(self, user, path, query):
         if path == "/v1/cinema/tv": return self.tv.get(user,query.get("after",[None])[0])
@@ -2324,9 +2487,9 @@ class CinemaService:
         with self.lock, self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             if path == "/v1/cinema/features":
-                return {"version": 2, "youtube_web": True, "plex_transcode": True, "tv_together": True, "youtube_search": bool(os.environ.get("RJ_YOUTUBE_API_KEY") or self.app.config.get("cinema", {}).get("youtube_api_key")), "plex_sharing": True}
+                return {"version": 3, "plex_bridge": True, "youtube_native": True, "youtube_web": True, "plex_transcode": True, "tv_together": True, "youtube_search": bool(os.environ.get("RJ_YOUTUBE_API_KEY") or self.app.config.get("cinema", {}).get("youtube_api_key")), "plex_sharing": True}
             if path == "/v1/cinema/rooms":
-                stale = now-30*86400
+                stale = now-3650*86400
                 db.execute("DELETE FROM cinema_members WHERE room_id IN (SELECT id FROM cinema_rooms WHERE expires<?)",(stale,))
                 db.execute("UPDATE cinema_rooms SET title='',media_id='' WHERE expires<?",(stale,))
                 self.grants = {k:v for k,v in self.grants.items() if v["expires"]>now}
@@ -2336,6 +2499,12 @@ class CinemaService:
                 return {"rooms": [self._wire(db, r, user, now) for row in rows
                                    if user in [row["owner_id"], *self.app.partner_ids(row["owner_id"])]
                                    for r in [self._account(db, row, now)] if not r["closed"]]}
+            if path == "/v1/cinema/history":
+                rows = db.execute("SELECT r.id,r.provider,r.title,r.media_id,s.seconds,s.created FROM cinema_stats s JOIN cinema_rooms r ON r.id=s.room_id WHERE r.owner_id IN ("+",".join("?" for _ in [user,*self.app.partner_ids(user)])+") AND s.seconds>0 ORDER BY s.created DESC LIMIT 100", [user,*self.app.partner_ids(user)]).fetchall()
+                return {"items": [dict(r) for r in rows]}
+            if path == "/v1/cinema/plex/status":
+                bridge = self.bridges.get(user)
+                return {"connected": bool(bridge and bridge["expires"]>now), "error": bridge.get("error") if bridge else None}
             if path == "/v1/cinema/stats":
                 for row in db.execute("SELECT * FROM cinema_rooms WHERE closed=0").fetchall():
                     self._account(db, row, now)
@@ -2349,6 +2518,20 @@ class CinemaService:
 
     def post(self, user, path, body, authorization):
         if path == "/v1/cinema/tv/action": return self.tv.action(user,body)
+        if path == "/v1/cinema/plex/connect": return self.connect_plex(user, body, authorization)
+        if path == "/v1/cinema/plex/disconnect":
+            with self.lock:
+                bridge=self.bridges.pop(user,None)
+                if bridge:self._close_external(user,bridge)
+            return {"connected": False}
+        if path == "/v1/cinema/stats/reset":
+            if body.get("confirmation") != "RESET_CINEMA": raise APIError(400,"confirmation_required","Bitte das Zurücksetzen bestätigen.")
+            with self.lock,self.app.database.connect() as db:
+                ids=[user,*self.app.partner_ids(user)]
+                rooms=[r[0] for r in db.execute("SELECT id FROM cinema_rooms WHERE owner_id IN ("+",".join("?" for _ in ids)+")",ids)]
+                for room in rooms:
+                    db.execute("UPDATE cinema_stats SET seconds=0,accounted=? WHERE room_id=?",(time.time(),room))
+            return {"reset": True}
         if path in {"/v1/cinema/youtube/connect", "/v1/cinema/youtube/claim", "/v1/cinema/youtube/refresh"}:
             return self.youtube_oauth(user, path.rsplit("/",1)[-1], body, authorization)
         if path == "/v1/cinema/youtube/search":
@@ -2378,7 +2561,7 @@ class CinemaService:
                     self.grants.pop(old["id"], None)
                 room = str(uuid.uuid4())
                 db.execute("INSERT INTO cinema_rooms(id,owner_id,provider,media_id,title,updated,expires) VALUES(?,?,?,?,?,?,?)", (room,user,provider,media,title,now,now+12*3600))
-                for member in ([user,*self.app.partner_ids(user)] if provider=="youtube" else [user]):
+                for member in ([user,*self.app.partner_ids(user)] if provider in {"youtube","plex"} else [user]):
                     db.execute("INSERT INTO cinema_members VALUES(?,?,?,0)",(room,member,now if member==user else 0))
                 db.execute("INSERT INTO cinema_stats VALUES(?,?,0,?,?)", (room,provider,now,now))
                 return self._wire(db, self._room(db,room,user),user,now)
@@ -2397,6 +2580,9 @@ class CinemaService:
             elif action == "leave":
                 db.execute("DELETE FROM cinema_members WHERE room_id=? AND user_id=?",(room,user))
                 if user == row["owner_id"]:
+                    details=self._details(db,room)
+                    bridge=self.bridges.get(user)
+                    if bridge and details.get("external"):bridge["ignored"]=(details.get("receiver_id"),row["media_id"])
                     self.grants.pop(room,None)
                     db.execute("UPDATE cinema_rooms SET playing=0,closed=1,revision=revision+1 WHERE id=?",(room,))
             elif action == "select":
@@ -2409,11 +2595,17 @@ class CinemaService:
                 db.execute("UPDATE cinema_members SET playing=0 WHERE room_id=?",(room,))
             elif action == "heartbeat":
                 if type(body.get("playing")) is not bool: raise APIError(400,"invalid_playback","Wiedergabestatus fehlt.")
-                db.execute("UPDATE cinema_members SET seen=?,playing=? WHERE room_id=? AND user_id=?",(now,int(body["playing"]),room,user))
+                details=self._details(db,room)
+                actual=body["playing"] or (body.get("same_screen") is True and bool(row["playing"]))
+                if details.get("external") and user==row["owner_id"]: actual=bool(row["playing"])
+                db.execute("UPDATE cinema_members SET seen=?,playing=? WHERE room_id=? AND user_id=?",(now,int(actual),room,user))
             elif action == "control":
                 if type(body.get("revision")) is not int or body["revision"] != row["revision"]:
                     raise APIError(409,"stale_room","Der andere hat gerade etwas geändert. Bitte erneut versuchen.")
                 command = body.get("action")
+                details = self._details(db,room)
+                if details.get("external") and command in {"play","pause","seek","end"}:
+                    self._remote_control(row["owner_id"],details,command,body.get("position",self.position(row,now)))
                 position = self.position(row,now)
                 playing, sleep_until, closed = row["playing"], row["sleep_until"], 0
                 if command in {"play","pause","seek"}:
@@ -2423,6 +2615,8 @@ class CinemaService:
                     seconds = self.number(body.get("seconds",0),12*3600)
                     sleep_until = now+seconds if seconds else None
                 elif command == "end":
+                    bridge=self.bridges.get(row["owner_id"])
+                    if bridge and details.get("external"):bridge["ignored"]=(details.get("receiver_id"),row["media_id"])
                     playing, closed = 0,1
                     self.grants.pop(room,None)
                 elif command == "revoke":
@@ -2561,6 +2755,10 @@ class CinemaService:
         with self.lock,self.app.database.connect() as db:
             row = self._room(db,room,user)
             if row["closed"] or time.time() >= row["expires"]: raise APIError(410,"room_closed","Dieser Abend ist beendet.")
+            metadata=data["MediaContainer"]["Metadata"][0]
+            detail=self._details(db,room)
+            detail.update(self._media_details(metadata))
+            self._save_details(db,room,detail)
             self.grants[room] = {"url":base.rstrip("/")+path,"base":base.rstrip("/"),"media_id":media_id,"mode":mode,"token":access,"expires":min(time.time()+duration,row["expires"]),"id":secrets.token_hex(16)}
             return self._wire(db,row,user,time.time())
 
@@ -4455,4 +4653,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 

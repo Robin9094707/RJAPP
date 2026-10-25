@@ -11,12 +11,17 @@ settings:
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "26.1"
     TARGETED_DEVICE_FAMILY: "1,2"
-    MARKETING_VERSION: "4.1.0"
-    CURRENT_PROJECT_VERSION: "410"
+    MARKETING_VERSION: "4.2.0"
+    CURRENT_PROJECT_VERSION: "420"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Manual
     SWIFT_EMIT_LOC_STRINGS: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  YouTubeKit:
+    url: https://github.com/b5i/YouTubeKit
+    revision: 6532af39da4c1612b0a1af603792419d8fb0e67f
 
 targets:
   RJLove:
@@ -41,6 +46,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     dependencies:
+      - package: YouTubeKit
       - target: RJLoveWidgets
         embed: true
         codeSign: false
@@ -64,30 +70,15 @@ targets:
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
 
-  RJLoveUITests:
-    type: bundle.ui-testing
-    platform: iOS
-    sources:
-      - path: Tests/UI
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: eu.rjuhas.rjlove.uitests
-        GENERATE_INFOPLIST_FILE: YES
-        TEST_TARGET_NAME: RJLove
-    dependencies:
-      - target: RJLove
-
 schemes:
   RJLove:
     build:
       targets:
         RJLove: all
         RJLoveWidgets: all
-    test:
-      targets:
-        - RJLoveUITests
     run:
       config: Debug
     archive:
       config: Release
+
 

@@ -9,6 +9,7 @@ struct SigningProfile {
     let development: Bool?
     let expires: Date?
     let found: Bool
+    var homeKit: Bool = false
     static let current = inspect()
     static func inspect() -> SigningProfile {
         let id = Bundle.main.bundleIdentifier ?? "eu.rjuhas.rjlove"
@@ -24,7 +25,7 @@ struct SigningProfile {
             applicationID: entitlements["application-identifier"] as? String,
             environment: entitlements["aps-environment"] as? String,
             development: entitlements["get-task-allow"] as? Bool,
-            expires: dictionary["ExpirationDate"] as? Date, found: true)
+            expires: dictionary["ExpirationDate"] as? Date, found: true, homeKit: entitlements["com.apple.developer.homekit"] as? Bool == true)
     }
     var pushEnvironment: String {
         if environment == "development" { return "sandbox" }
@@ -53,3 +54,4 @@ struct SigningProfile {
         UserDefaults.standard.removeObject(forKey: NotificationCoordinator.deviceTokenKey)
     }
 }
+

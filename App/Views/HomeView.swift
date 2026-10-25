@@ -21,6 +21,8 @@ struct HomeView: View {
                 header
                 connection
                 HomeShortcutsView()
+                CinemaHomeCard()
+                HomeKitDashboardCard()
                 if EveningPlaylistService.shared.active {EveningPlayerHomeCard()}
                 DailyJournalHomeCard()
                 ForEach(appState.homeLayout.cards) { card in
@@ -87,7 +89,7 @@ struct HomeView: View {
                     if card.size == .large { Text(detail).font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(card.size == .large ? 18 : 14).background(LovePalette.surface,in:RoundedRectangle(cornerRadius:24))
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(card.size == .large ? 18 : 14).loveGlass(in:RoundedRectangle(cornerRadius:24))
         }.buttonStyle(.plain)
     }
 
@@ -218,7 +220,7 @@ struct HomeView: View {
                 Text(title).font(.subheadline.bold()).foregroundStyle(.primary)
                 Text(detail).font(.caption2).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
-                .background(LovePalette.surface,in:RoundedRectangle(cornerRadius:24))
+                .loveGlass(in:RoundedRectangle(cornerRadius:24))
         }.buttonStyle(.plain)
     }
     private func milestoneCard(_ record: SharedRecord) -> some View {
@@ -330,4 +332,5 @@ private struct WakeComposerView: View {
         .presentationDetents([.medium, .large])
     }
 }
+
 

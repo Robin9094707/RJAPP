@@ -50,6 +50,8 @@
 	<string>Für Fotowünsche öffnet RJ Love sichtbar die Kamera und nimmt ohne Countdown ein Foto auf. Bei aktiver Nahsuche verwendet iOS die Kamera optional zur Kalibrierung des Richtungspfeils; dabei werden keine Bilder gespeichert oder geteilt.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>RJ Love liest nach deiner Auswahl Aktivität, Schlafphasen, Vitalwerte und Körpermessungen wie Gewicht, Temperatur und Blutdruck. Welche Zusammenfassungen Raphaela oder Robin sehen darf, legst du getrennt in der App fest.</string>
+	<key>NSHomeKitUsageDescription</key>
+	<string>Auf deinen Wunsch zeigt RJ Love Kameras aus deinem oder einem mit dir geteilten Apple-Home-Zuhause. Es werden keine Kameraaufnahmen auf den RJ-Server geladen.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>RJ Love verbindet sich auf Wunsch direkt mit deinem privaten Python-Server im lokalen Netzwerk.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -123,3 +125,4 @@
 	</dict>
 </dict>
 </plist>
+

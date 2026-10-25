@@ -10,7 +10,8 @@ struct CinemaView: View {
     @State private var tv = TVPresentation.shared
     @State private var section: CinemaSection = .youtube
     @State private var together = true
-    @State private var sharePlex = false
+    @State private var sharePlex = true
+    @State private var confirmReset = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -23,7 +24,7 @@ struct CinemaView: View {
                 if section != .television {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Zusammen schauen", isOn: $together).accessibilityIdentifier("cinema-together")
-                        Text(together ? "YouTube verbindet euch automatisch im selben Raum. Ihr könnt beide starten, pausieren, springen und das nächste Video auswählen." : "Nur für dich. Es wird kein gemeinsamer Raum angelegt und keine gemeinsame Schauzeit gezählt.")
+                        Text(together ? "Euer gemeinsamer Raum ist standardmäßig aktiv. Beide können steuern; bei Plex startet die zusätzliche Wiedergabe auf dem zweiten iPhone erst auf Wunsch." : "Nur für dich. Es wird kein gemeinsamer Raum angelegt und keine gemeinsame Schauzeit gezählt.")
                             .font(.caption).foregroundStyle(.secondary)
                         if section == .plex && together {
                             Toggle("Diesen Film für maximal 4 Stunden freigeben", isOn: $sharePlex)
@@ -73,11 +74,23 @@ struct CinemaView: View {
     }
     private var statistics: some View {
         VStack(alignment: .leading,spacing: 12) {
-            LoveSectionTitle("Unsere Kinozeit",subtitle: "Nur wenn beide Geräte Wiedergabe melden")
+            LoveSectionTitle("Unsere Kinozeit",subtitle: "Zwei Streams oder ausdrücklich bestätigtes Schauen am selben Bildschirm")
             if cinema.stats.isEmpty { Text("Euer erster gemeinsamer Abend wartet noch.").font(.subheadline).foregroundStyle(.secondary) }
             ForEach(cinema.stats) { item in
                 HStack { Text(item.provider == "youtube" ? "YouTube" : "Plex"); Spacer(); Text("\(Int(item.seconds / 60)) Min · \(item.evenings) Abende").monospacedDigit() }.font(.subheadline)
             }
+            if !cinema.history.isEmpty {
+                DisclosureGroup("Unsere Filme & Videos") {
+                    ForEach(cinema.history) { item in
+                        HStack(alignment: .top) { Image(systemName: item.provider == "plex" ? "film" : "play.rectangle"); VStack(alignment: .leading,spacing: 3) { Text(item.title).font(.subheadline); Text(Date(timeIntervalSince1970:item.created).formatted(date: .abbreviated,time: .omitted) + " · \(Int(item.seconds/60)) Min gemeinsam").font(.caption).foregroundStyle(.secondary) }; Spacer() }.padding(.vertical,5)
+                    }
+                }
+            }
+            Button("Kino-Statistik zurücksetzen",role: .destructive) { confirmReset = true }.font(.caption)
+                .confirmationDialog("Gemeinsame Kinozeit und Filmstatistik für euch beide zurücksetzen?",isPresented: $confirmReset,titleVisibility: .visible) {
+                    Button("Ja, Statistik für beide zurücksetzen",role: .destructive) { Task { await cinema.resetStatistics() } }
+                    Button("Abbrechen",role: .cancel) {}
+                } message: { Text("Eure Momente, Nachrichten und anderen Daten bleiben erhalten. Neue Kinozeit wird anschließend wieder gezählt.") }
             Text("Näherungswerte: Puffern, Werbung, Verbindungsabbrüche und iOS-Hintergrundpausen können die Synchronität und Erfassung beeinflussen.").font(.caption).foregroundStyle(.secondary)
         }.loveCard()
     }
@@ -95,9 +108,20 @@ struct CinemaNowPlayingView: View {
                 Button("Beenden",role: .destructive) { Task { await cinema.leave() } }.font(.caption)
             }
             Text(cinema.title).font(.headline).lineLimit(3)
+            if cinema.provider == "plex" {
+                PlexCinemaInformation(details: cinema.room?.details)
+                if cinema.player == nil {
+                    Label(cinema.room?.details?.external == true ? "Plex läuft auf dem verbundenen Abspielgerät" : "Du steuerst euren gemeinsamen Film",systemImage: "appletv.fill").font(.subheadline)
+                    Button("Auch auf diesem iPhone abspielen",systemImage: "iphone.and.play.circle") { Task { await cinema.playOnThisDevice() } }.buttonStyle(.borderedProminent).disabled(cinema.room?.plexShared != true)
+                } else if cinema.room != nil {
+                    Button("Nur mitsteuern · diesen Stream beenden",systemImage: "tv") { cinema.stopThisDevice() }.font(.caption)
+                }
+                Toggle("Ich schaue am selben Bildschirm mit",isOn: $cinema.sameScreen).font(.subheadline)
+                Text("Aktiviere dies, wenn ihr gemeinsam vor einem Fernseher sitzt. Sonst zählt eure Kinozeit nur bei zwei laufenden Streams. Der Schlaftimer pausiert die Wiedergabe; Apple TV wird dadurch nicht ausgeschaltet.").font(.caption).foregroundStyle(.secondary)
+            }
             if tv.connected && tv.mode == .cinema {
                 Label("Das Video läuft auf eurem Fernseher",systemImage: "tv.fill").frame(maxWidth: .infinity).padding(24).background(.black.opacity(0.08),in: RoundedRectangle(cornerRadius: 18))
-            } else {
+            } else if cinema.provider != "plex" || cinema.player != nil {
                 CinemaPlaybackSurface().frame(minHeight: 200,idealHeight: 230).clipShape(RoundedRectangle(cornerRadius: 18))
             }
             HStack(spacing: 28) {
@@ -132,6 +156,7 @@ struct CinemaYouTubeBrowser: View {
     let together: Bool
     @State private var cinema = CinemaCoordinator.shared
     @State private var account = YouTubeAccount.shared
+    @State private var native = NativeYouTubeService.shared
     @AppStorage("rjlove.youtube.consent.v1") private var consent = false
     @State private var query = ""
     @State private var browser: YouTubeWebDestination?
@@ -145,32 +170,30 @@ struct CinemaYouTubeBrowser: View {
                 TextField("YouTube suchen oder Video-Link einfügen",text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit { openSearch() }.accessibilityIdentifier("cinema-youtube-query")
                 Button("Suchen / Video öffnen",systemImage: "magnifyingglass") { openSearch() }.buttonStyle(.borderedProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Text("Suche ohne eigenen API-Schlüssel. Öffne ein Video und wähle im Teilen-Menü des eingebauten Browsers „Mit Schatzi schauen“, um es in euren gemeinsamen Player zu übernehmen.").font(.caption).foregroundStyle(.secondary)
+                Text("Native Videosuche ohne API-Schlüssel. Tippe auf ein Ergebnis, um es direkt abzuspielen. Deine eigene YouTube-Anmeldung und Abos bleiben auf diesem iPhone.").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     webButton("YouTube",symbol: "play.rectangle",path: "/")
-                    webButton("Meine Abos",symbol: "person.2",path: "/feed/subscriptions")
-                    webButton("Mein Bereich",symbol: "person.crop.circle",path: "/feed/you")
+                    Button("Meine Abos",systemImage: "person.2") { Task { await native.subscriptions() } }.buttonStyle(.bordered)
+                    webButton("Anmelden",symbol: "person.crop.circle",path: "/signin")
                 }.font(.subheadline)
-                Text("Anmeldung, Abos und YouTube Premium verwaltet die echte YouTube-Webseite. Jedes iPhone verwendet seine eigene Browser-Anmeldung. Der gemeinsame eingebettete Player übernimmt diese Anmeldung nicht automatisch.").font(.caption).foregroundStyle(.secondary)
+                Text("Anmelden öffnet YouTube direkt in der App. Google kann Anmeldungen in eingebetteten Ansichten einschränken. Kontoinhalte und Premium bleiben an dein Konto gebunden; der gemeinsame Player kann bei geschützten Videos eine eigene Freigabe verlangen.").font(.caption).foregroundStyle(.secondary)
                 Toggle("Gemeinsamen Raum automatisch verbinden",isOn: $cinema.autoJoin)
                     .font(.subheadline).accessibilityIdentifier("cinema-auto-join")
-                DisclosureGroup("Optionale API-Playlists") {
-                    VStack(alignment: .leading,spacing: 12) {
-                        Text("Die Websuche und der persönliche YouTube-Bereich oben benötigen keine API-Einrichtung. Nur diese zusätzliche native Playlist-Anzeige verwendet die bisherige optionale Google-OAuth-Konfiguration.").font(.caption).foregroundStyle(.secondary)
-                        if account.connected {
-                            Button("Meine Playlists laden") { Task { await account.loadLibrary() } }.disabled(account.busy)
-                            ForEach(account.playlists) { list in Button(list.title,systemImage: "list.bullet") { Task { await account.loadPlaylist(list.id) } } }
-                            ForEach(account.videos) { item in
-                                Button(item.title,systemImage: "play.circle") { Task { await choose(item.id,item.title) } }
-                            }
-                            Button("API-Konto trennen",role: .destructive) { Task { await account.disconnect() } }
-                        } else { Button("Optionales API-Konto verbinden") { Task { await account.signIn() } }.disabled(account.busy) }
-                        if let url = account.authURL { Link("Google-Anmeldung fortsetzen",destination: url) }
-                        if let error = account.error { Text(error).font(.footnote).foregroundStyle(.orange) }
-                    }.padding(.top,12)
-                }.font(.subheadline)
+                if native.busy { ProgressView("YouTube lädt …") }
+                if let error = native.error { Text(error).font(.caption).foregroundStyle(.secondary) }
+                ForEach(native.results) { item in
+                    Button { Task { await choose(item.id,item.title) } } label: {
+                        HStack(spacing: 12) {
+                            AsyncImage(url: URL(string: "https://i.ytimg.com/vi/"+item.id+"/mqdefault.jpg")) { image in image.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.12) }.frame(width: 100,height: 58).clipped().clipShape(RoundedRectangle(cornerRadius: 10))
+                            VStack(alignment: .leading,spacing: 4) { Text(item.title).font(.subheadline.bold()).lineLimit(3); Text(item.channel).font(.caption).foregroundStyle(.secondary) }; Spacer(minLength: 0)
+                        }
+                    }.buttonStyle(.plain)
+                }
+                if native.hasMore { Button("Weitere Videos") { Task { await native.more() } }.disabled(native.busy) }
+                Button("YouTube direkt in der App öffnen",systemImage: "play.rectangle") { browser = YouTubeWebDestination(url: URL(string: "https://m.youtube.com/")!) }.font(.caption)
+                if native.signedIn { Button("YouTube-Konto auf diesem iPhone abmelden",role: .destructive) { Task { await native.signOut() } }.font(.caption) }
                 links
-                Button("YouTube deaktivieren",role: .destructive) { consent = false; Task { if cinema.provider == "youtube" { await cinema.leave() }; await account.disconnect() } }.font(.caption)
+                Button("YouTube deaktivieren",role: .destructive) { consent = false; Task { if cinema.provider == "youtube" { await cinema.leave() }; await account.disconnect(); await native.signOut() } }.font(.caption)
             }
         }.loveCard()
             .sheet(item: $browser) { destination in
@@ -195,9 +218,7 @@ struct CinemaYouTubeBrowser: View {
     }
     private func openSearch() {
         if let id = YouTubeLink.videoID(query) { Task { await choose(id,"YouTube · "+id) }; return }
-        var url = URLComponents(string: "https://m.youtube.com/results")!
-        url.queryItems = [.init(name: "search_query",value: query.trimmingCharacters(in: .whitespacesAndNewlines))]
-        if let value = url.url { browser = YouTubeWebDestination(url: value) }
+        Task { await native.search(query.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
     private func choose(_ id: String,_ title: String) async {
         TVPresentation.shared.mode = .cinema
@@ -220,7 +241,7 @@ struct CinemaPlexBrowser: View {
             if !plex.authenticated {
                 Button("Mit Plex verbinden",systemImage: "person.badge.key.fill") { Task { await plex.signIn() } }.buttonStyle(.borderedProminent).disabled(plex.busy)
             } else {
-                HStack { Button("Server laden") { Task { await plex.loadServers() } }; Spacer(); Button("Trennen",role: .destructive) { Task { if cinema.provider == "plex" { await cinema.leave() }; plex.disconnect() } } }.font(.subheadline)
+                HStack { Button("Server laden") { Task { await plex.loadServers() } }; Spacer(); Button("Trennen",role: .destructive) { Task { await cinema.disconnectPlexBridge(); UserDefaults.standard.set(false,forKey: "rjlove.plex.bridge."+cinema.namespace); if cinema.provider == "plex" { await cinema.leave() }; plex.disconnect() } } }.font(.subheadline)
                 if !plex.profileName.isEmpty { Text("Profil: " + plex.profileName).font(.subheadline.bold()) }
                 if !plex.homeProfiles.isEmpty {
                     DisclosureGroup(plex.profileRequired ? "Plex-Profil wählen" : "Plex-Profil wechseln") {
@@ -238,9 +259,14 @@ struct CinemaPlexBrowser: View {
                 }
                 Picker("Wiedergabe",selection: $plex.playbackMode) { ForEach(PlexPlaybackMode.allCases) { Text($0.rawValue).tag($0) } }
                 ForEach(plex.servers) { server in
-                    Button { Task { await plex.select(server) } } label: { Label(server.name,systemImage: plex.server?.id == server.id ? "checkmark.circle.fill" : "externaldrive.fill") }
+                    Button { Task { await cinema.disconnectPlexBridge(); await plex.select(server); UserDefaults.standard.set(true,forKey: "rjlove.plex.bridge."+cinema.namespace); await cinema.connectPlexBridge() } } label: { Label(server.name,systemImage: plex.server?.id == server.id ? "checkmark.circle.fill" : "externaldrive.fill") }
                 }
                 if plex.server != nil {
+                    Label(cinema.bridgeConnected ? "Plex-Kino-Automatik verbunden" : "Kino-Automatik noch nicht verbunden",systemImage: cinema.bridgeConnected ? "person.2.wave.2.fill" : "link").font(.subheadline)
+                    Text("Wenn du in Plex auf diesem Server einen Film startest, erscheint er für euch beide. Die Verbindung gilt bis zu 12 Stunden und wird beim Öffnen erneuert. Nach einem Server-Neustart RJ Love einmal öffnen. Nicht jeder Plex-Client erlaubt Fernsteuerung.").font(.caption).foregroundStyle(.secondary)
+                    if !cinema.bridgeConnected { Button("Plex-Automatik verbinden") { UserDefaults.standard.set(true,forKey: "rjlove.plex.bridge."+cinema.namespace); Task { await cinema.connectPlexBridge() } } }
+                    else { Button("Automatik trennen") { UserDefaults.standard.set(false,forKey: "rjlove.plex.bridge."+cinema.namespace); Task { await cinema.disconnectPlexBridge() } }.font(.caption) }
+                    if let error = cinema.bridgeError { Text(error).font(.caption).foregroundStyle(.orange) }
                     HStack { Button("Bibliotheken",systemImage: "square.grid.2x2") { Task { await plex.browse("/library/sections") } }; Spacer(); Text(plex.server?.name ?? "").font(.caption).foregroundStyle(.secondary) }
                     TextField("Auf deinem Plex-Server suchen",text: $query).textFieldStyle(.roundedBorder).onSubmit { Task { await plex.browse("/hubs/search",query: query) } }
                     ForEach(plex.entries) { item in
@@ -255,7 +281,7 @@ struct CinemaPlexBrowser: View {
                 }
             }
             if plex.busy || cinema.busy { ProgressView() }
-            if let url = plex.authURL { Link("Plex-Anmeldung im Browser fortsetzen",destination: url) }
+            if let url = plex.authURL { Link("Plex-Anmeldung fortsetzen",destination: url) }
             if let error = plex.error { Text(error).font(.footnote).foregroundStyle(.orange) }
         }.loveCard().onChange(of: plex.authURL) { _, url in if let url { openURL(url) } }
     }
@@ -296,3 +322,4 @@ struct CinemaTVRemote: View {
         TVSignalRemote()
     }
 }
+

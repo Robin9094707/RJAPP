@@ -15,8 +15,9 @@ struct CinemaRoom: Decodable, Identifiable {
     let members: [String]
     let joined: Bool
     let plexShared: Bool
+    let details: PlexCinemaDetails?
     enum CodingKeys: String, CodingKey {
-        case id, provider, title, position, playing, revision, closed, members, joined
+        case id, provider, title, position, playing, revision, closed, members, joined, details
         case ownerID = "owner_id", mediaID = "media_id", serverTime = "server_time"
         case sleepUntil = "sleep_until", plexShared = "plex_shared"
     }
@@ -73,4 +74,31 @@ enum YouTubeLink {
         guard let id, id.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression) != nil else { return nil }
         return id
     }
+}
+
+
+struct PlexCinemaDetails: Decodable {
+    let summary: String?
+    let year: String?
+    let duration: Double?
+    let series: String?
+    let rating: String?
+    let resolution: String?
+    let videoCodec: String?
+    let audioCodec: String?
+    let external: Bool?
+    let device: String?
+    let product: String?
+    let serverName: String?
+    enum CodingKeys: String, CodingKey {
+        case summary, year, duration, series, rating, resolution, external, device, product
+        case videoCodec = "video_codec", audioCodec = "audio_codec", serverName = "server_name"
+    }
+}
+struct CinemaHistory: Decodable, Identifiable {
+    let id: String
+    let provider: String
+    let title: String
+    let seconds: Double
+    let created: Double
 }

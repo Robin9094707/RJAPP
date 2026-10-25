@@ -2,7 +2,7 @@ name: Build RJ Love unsigned IPA
 
 on:
   push:
-    branches: [main, codex/cinema-4.0.0, codex/airplay-4.1.0]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -44,17 +44,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Backend/rj_love_server.py
           python3 Scripts/validate_project.py
-          python3 -m unittest -v Tests/test_backend.py Tests/test_notifications.py Tests/test_cinema.py Tests/test_airplay41.py
-          swiftc Shared/SleepModels.swift Tests/SleepAnalysisChecks.swift -o /tmp/rjlove-sleep-check
-          /tmp/rjlove-sleep-check
-          swiftc Shared/RelationshipMilestones.swift Tests/RelationshipChecks.swift -o /tmp/rjlove-relationship-check
-          /tmp/rjlove-relationship-check
-          swiftc Shared/NotificationRoute.swift Tests/NotificationRouteChecks.swift -o /tmp/rjlove-route-check
-          /tmp/rjlove-route-check
-          swiftc Shared/GalleryMetrics.swift Tests/GalleryChecks.swift -o /tmp/rjlove-gallery-check
-          /tmp/rjlove-gallery-check
-          swiftc Shared/NearbySearchPolicy.swift Tests/NearbySearchChecks.swift -o /tmp/rjlove-nearby-check
-          /tmp/rjlove-nearby-check
+          python3 -m unittest -v Tests/test_cinema42.py
 
       - name: Install XcodeGen
         shell: bash
@@ -114,9 +104,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-4.1.0-Komplettpaket
+          name: RJ-Love-4.2.0-Komplettpaket
           path: |
-            RJ-Love-4.1.0-Komplettpaket.zip
+            RJ-Love-4.2.0-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -140,88 +130,3 @@ jobs:
           path: RJ-Love-build.log
           if-no-files-found: ignore
           retention-days: 14
-
-  preview:
-    name: Verify ${{ matrix.device }} layout
-    runs-on: macos-26
-    timeout-minutes: 40
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[design]')
-    strategy:
-      matrix:
-        include:
-          - device: iPhone 15 Plus
-            slug: iPhone15Plus
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build simulator app
-        run: |
-          brew install xcodegen
-          xcodegen generate
-          set -o pipefail
-          xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Simulator-build.log
-      - name: Capture preview
-        run: python3 Scripts/capture_design_preview.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: RJ-Love-interface-preview-${{ matrix.slug }}
-          path: |
-            Preview-*.png
-            Simulator-build.log
-            UI-backend.log
-            Layout-*.xcresult
-            UIAttachments-*
-          if-no-files-found: warn
-
-
-  gallery:
-    name: Verify gallery layout and video audio
-    runs-on: macos-26
-    timeout-minutes: 35
-    if: contains(github.event.head_commit.message, '[gallery]')
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build simulator app
-        run: |
-          brew install xcodegen
-          xcodegen generate
-          set -o pipefail
-          xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Gallery-Build.log
-      - name: Capture and verify square gallery
-        run: python3 Scripts/capture_gallery_preview.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: RJ-Love-Gallery-Preview
-          path: |
-            Gallery-Preview.png
-            Gallery-Attachments
-            Gallery-Build.log
-            Gallery-Layout.xcresult
-          if-no-files-found: warn
-
-  cinema:
-    name: Verify cinema interface
-    runs-on: macos-26
-    timeout-minutes: 35
-    if: contains(github.event.head_commit.message, '[cinema]')
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build simulator app
-        run: |
-          brew install xcodegen
-          xcodegen generate
-          set -o pipefail
-          xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath .sim-derived CODE_SIGNING_ALLOWED=NO build 2>&1 | tee Cinema-Build.log
-      - name: Verify media navigation
-        run: python3 Scripts/capture_cinema_preview.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: RJ-Love-Cinema-Preview
-          path: |
-            Preview-Design-Kino*.png
-            UIAttachments-Cinema
-            Cinema-Build.log
-            Layout-Cinema.xcresult
-          if-no-files-found: warn

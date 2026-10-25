@@ -17,9 +17,9 @@ struct UpdateRequirement: Error, LocalizedError, Equatable {
     var errorDescription: String? { message }
 }
 enum RJVersion {
-    static let minimumServer = "3.9.2"
+    static let minimumServer = "4.1.0"
     static let protocolVersion = 5
-    static var app: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "4.0.0" }
+    static var app: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "4.1.0" }
     static func older(_ lhs: String, than rhs: String) -> Bool {
         let a = lhs.split(separator: ".").compactMap { Int($0) }
         let b = rhs.split(separator: ".").compactMap { Int($0) }

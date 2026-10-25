@@ -1,8 +1,10 @@
+Aktuelles Update: [AirPlay-Bühne, schlüsselfreie YouTube-Websuche und Plex-Transcoding 4.1.0](RELEASE-4.1.0.md). App und Server müssen für dieses Update beide auf 4.1.0 stehen; bestehende Daten und Signatur-IDs behalten.
+
 Aktuelles Update: [Unser Kino, AirPlay, YouTube und Plex 4.0.0](RELEASE-4.0.0.md). Die bisherigen Daten und Protokoll 5 bleiben erhalten. Server 4.0.0 akzeptiert weiterhin App 3.9.2/3.9.3.
 
 Aktuelles Update: [Automatische UWB-Nahsuche und Video-Ton 3.9.3](RELEASE-3.9.3.md). Server 3.9.2 bleibt gültig. Vorhandene Daten und Bark-/ntfy-Kopplungen behalten.
 
-# RJ Love 4.0.0
+# RJ Love 4.1.0
 
 Aktuelles Update: [Direkte Bark-Links, versteckte Fotowünsche und Tastatursteuerung 3.9.1](RELEASE-3.9.1.md). Server und beide Apps gemeinsam aktualisieren; Konfiguration und Daten behalten.
 

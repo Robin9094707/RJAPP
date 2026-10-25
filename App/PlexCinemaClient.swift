@@ -34,6 +34,30 @@ struct PlexEntry: Identifiable {
     var playable: Bool { ["movie", "episode", "clip", "track"].contains(type) }
 }
 
+struct PlexHomeProfile: Identifiable {
+    let id: String
+    let title: String
+    let protected: Bool
+}
+enum PlexPlaybackMode: String,CaseIterable,Identifiable {
+    case compatible = "Kompatibel (HLS)", direct = "Original (Direct Play)"
+    var id: String { rawValue }
+}
+private final class PlexHomeXML: NSObject,XMLParserDelegate {
+    var profiles: [PlexHomeProfile] = []
+    var token: String?
+    func parser(_ parser: XMLParser,didStartElement elementName: String,namespaceURI: String?,qualifiedName qName: String?,attributes: [String:String]) {
+        if let token = attributes["authenticationToken"] ?? attributes["authToken"] { self.token = token }
+        if elementName.lowercased() == "user",let id = attributes["id"] {
+            profiles.append(PlexHomeProfile(id: id,title: attributes["title"] ?? attributes["username"] ?? "Plex-Profil",protected: ["1","true"].contains(attributes["protected"] ?? "0")))
+        }
+    }
+    static func parse(_ data: Data) throws -> PlexHomeXML {
+        let value = PlexHomeXML(); let parser = XMLParser(data: data); parser.delegate = value
+        guard parser.parse() else { throw APIClientError.invalidResponse }; return value
+    }
+}
+
 @MainActor @Observable final class PlexCinemaClient {
     var servers: [PlexServer] = []
     var server: PlexServer?
@@ -43,6 +67,12 @@ struct PlexEntry: Identifiable {
     var busy = false
     var error: String?
     var authURL: URL?
+    var homeProfiles: [PlexHomeProfile] = []
+    var profileName = ""
+    var profileRequired = false
+    var playbackMode: PlexPlaybackMode = .compatible
+    private var homeLoaded = false
+    private var accountToken: String?
     var path = "/library/sections"
     var hasMore = false
     private var offset = 0
@@ -56,19 +86,19 @@ struct PlexEntry: Identifiable {
         reset(); self.namespace = namespace
         clientID = KeychainStore.get(namespace + ".plex.client") ?? UUID().uuidString
         try? KeychainStore.set(clientID, for: namespace + ".plex.client")
-        token = KeychainStore.get(namespace + ".plex.token"); authenticated = token != nil
+        accountToken = KeychainStore.get(namespace + ".plex.token"); token = accountToken; authenticated = accountToken != nil
     }
     func reset() {
-        pinTask?.cancel(); pinTask = nil; token = nil; servers = []; server = nil
+        pinTask?.cancel(); pinTask = nil; token = nil; accountToken = nil; homeProfiles = []; homeLoaded = false; profileRequired = false; profileName = ""; servers = []; server = nil
         entries = []; connection = nil; authenticated = false; authURL = nil; error = nil; busy = false; namespace = ""
     }
     func disconnect() {
         KeychainStore.delete(namespace + ".plex.token"); let space = namespace
         reset(); configure(namespace: space)
     }
-    private func call(_ url: URL, token: String? = nil, method: String = "GET", body: Data? = nil) async throws -> Any {
+    private func call(_ url: URL, token: String? = nil, method: String = "GET", body: Data? = nil, raw: Bool = false) async throws -> Any {
         var request = URLRequest(url: url); request.httpMethod = method; request.httpBody = body; request.timeoutInterval = 15
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(raw ? "application/xml" : "application/json", forHTTPHeaderField: "Accept")
         request.setValue("RJ Love", forHTTPHeaderField: "X-Plex-Product")
         request.setValue(clientID, forHTTPHeaderField: "X-Plex-Client-Identifier")
         request.setValue(RJVersion.app, forHTTPHeaderField: "X-Plex-Version")
@@ -76,9 +106,9 @@ struct PlexEntry: Identifiable {
         request.setValue(token, forHTTPHeaderField: "X-Plex-Token")
         if body != nil { request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type") }
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIClientError.transport("Plex-Anmeldung oder Serverzugriff fehlgeschlagen.")
-        }
+        guard let http = response as? HTTPURLResponse else { throw APIClientError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw APIClientError.server(status: http.statusCode,message: "Plex-Zugriff fehlgeschlagen (HTTP \(http.statusCode)). Anmeldung, Profil-PIN und Serverberechtigung prüfen.") }
+        if raw { return data }
         return try JSONSerialization.jsonObject(with: data)
     }
     func signIn() async {
@@ -102,7 +132,7 @@ struct PlexEntry: Identifiable {
                         if let token = result?["authToken"] as? String, !token.isEmpty {
                             guard self.namespace == space else { return }
                             try KeychainStore.set(token, for: space + ".plex.token")
-                            self.token = token; self.authenticated = true; self.authURL = nil
+                            self.token = token; self.accountToken = token; self.homeLoaded = false; self.authenticated = true; self.authURL = nil
                             await self.loadServers(); return
                         }
                     } catch is CancellationError { return }
@@ -112,8 +142,47 @@ struct PlexEntry: Identifiable {
             }
         } catch { self.error = error.localizedDescription }
     }
+    func loadHomeProfiles() async {
+        guard let accountToken else { return }
+        let space = namespace
+        do {
+            guard let data = try await call(URL(string: "https://plex.tv/api/home/users")!,token: accountToken,raw: true) as? Data else { throw APIClientError.invalidResponse }
+            let result = try PlexHomeXML.parse(data)
+            guard namespace == space else { return }
+            homeProfiles = result.profiles; homeLoaded = true
+            profileRequired = homeProfiles.count > 1 || homeProfiles.contains { $0.protected }
+            if !profileRequired { profileName = homeProfiles.first?.title ?? "Mein Plex" }
+            error = nil
+        } catch let issue as APIClientError {
+            if case .server(let status,_) = issue, [403,404].contains(status) {
+                homeLoaded = true; profileRequired = false; homeProfiles = []
+            } else { error = issue.localizedDescription }
+        } catch { self.error = error.localizedDescription }
+    }
+    func switchHomeProfile(_ profile: PlexHomeProfile,pin: String = "") async {
+        guard let accountToken else { return }
+        if profile.protected && (pin.count != 4 || !pin.allSatisfy(\.isNumber)) { error = "Bitte die vierstellige Plex-Profil-PIN eingeben."; return }
+        busy = true; defer { busy = false }
+        let space = namespace
+        do {
+            var form = URLComponents(); form.queryItems = [.init(name: "pin",value: pin)]
+            guard let data = try await call(URL(string: "https://plex.tv/api/home/users/\(profile.id)/switch")!,token: accountToken,method: "POST",body: Data((form.percentEncodedQuery ?? "").utf8),raw: true) as? Data else { throw APIClientError.invalidResponse }
+            let result = try PlexHomeXML.parse(data)
+            guard let selected = result.token,!selected.isEmpty else { throw APIClientError.transport("Plex hat das Profil nicht entsperrt. PIN prüfen.") }
+            guard namespace == space else { return }
+            token = selected; profileName = profile.title; profileRequired = false
+            server = nil; connection = nil; entries = []; servers = []; error = nil
+            await loadServers()
+        } catch { self.error = error.localizedDescription }
+    }
+    func chooseAnotherProfile() {
+        server = nil; connection = nil; entries = []; servers = []
+        token = nil; profileRequired = true
+    }
+
     func loadServers() async {
-        guard let token else { return }
+        if !homeLoaded { await loadHomeProfiles() }
+        guard homeLoaded,!profileRequired,let token else { return }
         let space = namespace; busy = true; defer { busy = false }
         do {
             let resources = try await call(URL(string: "https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1")!, token: token) as? [[String: Any]] ?? []
@@ -168,7 +237,16 @@ struct PlexEntry: Identifiable {
         } catch { self.error = error.localizedDescription }
     }
     func media(_ entry: PlexEntry) async throws -> URL {
-        guard let base = connection, let server else { throw APIClientError.invalidResponse }
+        guard let base = connection,let server,!profileRequired else { throw APIClientError.invalidResponse }
+        if playbackMode == .compatible && entry.type != "track" {
+            guard entry.id.allSatisfy(\.isNumber),!entry.id.isEmpty else { throw APIClientError.invalidResponse }
+            let sessionID = UUID().uuidString
+            let profile = "add-transcode-target(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec=h264&audioCodec=aac&replace=true)"
+            var url = URLComponents(string: base+"/video/:/transcode/universal/start.m3u8")!
+            let values: [String:String] = ["path":"/library/metadata/"+entry.id,"mediaIndex":"0","partIndex":"0","protocol":"hls","directPlay":"0","directStream":"0","fastSeek":"1","offset":"0","videoResolution":"1920x1080","maxVideoBitrate":"12000","videoQuality":"90","audioBoost":"100","subtitles":"burn","session":sessionID,"X-Plex-Platform":"iOS","X-Plex-Product":"RJ Love","X-Plex-Client-Identifier":clientID,"X-Plex-Client-Profile-Extra":profile,"X-Plex-Token":server.token]
+            url.queryItems = values.map { URLQueryItem(name: $0.key,value: $0.value) }
+            guard let result = url.url else { throw APIClientError.invalidResponse }; return result
+        }
         var item = entry
         if item.part == nil {
             let value = try await call(URL(string: base + "/library/metadata/" + item.id)!, token: server.token) as? [String: Any]
@@ -184,6 +262,6 @@ struct PlexEntry: Identifiable {
     }
     func shareBody() throws -> [String: Any] {
         guard let token, let server, let connection else { throw APIClientError.invalidResponse }
-        return ["token": token, "machine_id": server.id, "connection": connection, "seconds": 14400]
+        return ["token": token, "machine_id": server.id, "connection": connection, "seconds": 14400, "mode": playbackMode == .compatible ? "compatible" : "direct"]
     }
 }

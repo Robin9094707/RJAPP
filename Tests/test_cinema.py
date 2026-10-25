@@ -21,23 +21,23 @@ class CinemaTests(unittest.TestCase):
     def room(self, token, provider="youtube", media="dQw4w9WgXcQ"):
         return self.request("/v1/cinema/rooms","POST",{"provider":provider,"media_id":media,"title":"Unser Abend"},token)[1]
 
-    def test_old_app_and_data_unchanged(self):
+    def test_data_unchanged_and_additive_tables(self):
         token=self.login()
-        original=self.request("/v1/bootstrap",token=token,version="3.9.3")[1]
+        original=self.request("/v1/bootstrap",token=token,version="4.1.0")[1]
         self.room(token)
-        after=self.request("/v1/bootstrap",token=token,version="3.9.3")[1]
+        after=self.request("/v1/bootstrap",token=token,version="4.1.0")[1]
         for key in ["records","me","partners","preferences"]:self.assertEqual(original[key],after[key])
-        self.assertEqual(SERVER.MINIMUM_APP_VERSION,"3.9.2")
+        self.assertEqual(SERVER.MINIMUM_APP_VERSION,"4.1.0")
         self.assertEqual(SERVER.PROTOCOL_VERSION,5)
-        # An old binary can still open the same DB, including unknown new tables.
+        # Reopening the existing DB retains legacy data alongside the new tables.
         SERVER.Database(self.app.database.path)
-        self.assertEqual(self.request("/v1/bootstrap",token=token,version="3.9.3")[0],200)
+        self.assertEqual(self.request("/v1/bootstrap",token=token,version="4.1.0")[0],200)
 
     def test_auth_and_explicit_membership(self):
         robin=self.login();partner=self.login("raphaela","raphaela-test-password")
         self.assertEqual(self.request_error("/v1/cinema/rooms")[0],401)
         room=self.room(robin);path="/v1/cinema/rooms/"+room["id"]
-        self.assertEqual(self.request_error(path+"/control","POST",{"revision":1,"action":"play"},partner)[0],403)
+        self.assertEqual(len(room["members"]),2) # The partner is automatically a member in 4.1.
         guest=self.request(path+"/join","POST",{},partner)[1]
         self.assertTrue(guest["joined"]);self.assertEqual(len(guest["members"]),2)
         changed=self.request(path+"/control","POST",{"revision":1,"action":"play","position":32},partner)[1]
@@ -51,7 +51,7 @@ class CinemaTests(unittest.TestCase):
         room=self.room(token);path="/v1/cinema/rooms/"+room["id"]+"/control"
         for bad in [-1,100000,float("inf"),True,"300"]:
             self.assertEqual(self.request_error(path,"POST",{"revision":1,"action":"timer","seconds":bad},token)[0],400)
-        timed=self.request(path,"POST",{"revision":1,"action":"timer","seconds":3600},token)[1]
+        timed=self.request(path,"POST",{"revision":1,"action":"timer","seconds":3600,"mode":"direct"},token)[1]
         self.assertAlmostEqual(timed["sleep_until"]-timed["server_time"],3600,delta=1)
 
     def test_expired_room_cannot_resume(self):
@@ -88,7 +88,7 @@ class CinemaTests(unittest.TestCase):
         base="https://192-168-1-2.machine.plex.direct:32400"
         resources=[{"clientIdentifier":"machine","provides":"server","accessToken":"private-owner-token","connections":[{"uri":base}]}]
         metadata={"MediaContainer":{"Metadata":[{"Media":[{"Part":[{"key":"/library/parts/99/123/file.mp4"}]}]}]}}
-        body={"token":"secret","machine_id":"machine","connection":base,"seconds":3600}
+        body={"token":"secret","machine_id":"machine","connection":base,"seconds":3600,"mode":"direct"}
         original_resolve = socket.getaddrinfo
         def resolve(host,*args,**kwargs):
             if host == "192-168-1-2.machine.plex.direct": return [(2,1,6,"",("192.168.1.2",32400))]

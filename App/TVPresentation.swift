@@ -3,15 +3,44 @@ import Observation
 import SwiftUI
 import UIKit
 
-enum TVMode: String, CaseIterable, Identifiable {
-    case ambient = "Unser Wir", moments = "Momente", cinema = "Kino", night = "Nacht"
+enum TVMode: String, Codable, CaseIterable, Identifiable {
+    case ambient = "Unser Wir", dashboard = "Dashboard", moments = "Momente", wall = "Momentwand", cinema = "Kino", drawing = "Zusammen malen", game = "Tic-Tac-Toe", night = "Nacht"
     var id: String { rawValue }
+    var networkID: String {
+        switch self { case .ambient: return "ambient"; case .dashboard: return "dashboard"; case .moments: return "moments"; case .wall: return "wall"; case .cinema: return "cinema"; case .drawing: return "drawing"; case .game: return "game"; case .night: return "night" }
+    }
 }
 @MainActor @Observable final class TVPresentation {
     static let shared = TVPresentation()
     var connected = false
-    var mode: TVMode = .ambient
-    var showInfo = false
+    var mode: TVMode = .ambient {
+        didSet {
+            saveLayout()
+            if mode == .wall || mode == .dashboard { loadWall() }
+            if ![.wall,.dashboard,.moments].contains(mode) { slideshow = false; slideTask?.cancel() }
+            if sharedEnabled,!applyingSharedMode,!layoutKey.isEmpty,mode != oldValue {
+                let value = mode.networkID
+                Task { await TVTogetherService.shared.action("mode",values: ["mode":value]) }
+            }
+        }
+    }
+    private var applyingSharedMode = false
+    func acceptRemote(_ mode: TVMode) {
+        guard self.mode != mode else { return }
+        applyingSharedMode = true; self.mode = mode; applyingSharedMode = false
+        if [.moments,.wall,.dashboard].contains(mode) { Task { await self.loadMoments() } }
+    }
+    var showInfo = false { didSet { saveLayout() } }
+    var theme: TVTheme = .light { didSet { saveLayout() } }
+    var widgets: [TVWidgetKind] = [.clock,.mine,.partner,.location,.moments,.signals] { didSet { saveLayout() } }
+    var includeOwnLocation = false { didSet { saveLayout() } }
+    var showPartnerLocation = true { didSet { saveLayout() } }
+    var wallCount = 6 { didSet { saveLayout(); loadWall() } }
+    var fillPhotos = false { didSet { saveLayout() } }
+    var sharedEnabled = true { didSet { saveLayout() } }
+    var wallImages: [String:UIImage] = [:]
+    private var wallTask: Task<Void,Never>?
+    private var layoutKey = ""
     var app: AppState?
     var moments: [SharedRecord] = []
     var index = 0
@@ -21,21 +50,69 @@ enum TVMode: String, CaseIterable, Identifiable {
     private var loadTask: Task<Void, Never>?
     private var slideTask: Task<Void, Never>?
     private var generation = UUID()
-    func attach(app: AppState) { self.app = app }
-    func clear() { generation = UUID(); app = nil; moments = []; image = nil; index = 0; slideshow = false; loadTask?.cancel(); slideTask?.cancel(); mode = .ambient }
+    func attach(app: AppState) {
+        self.app = app
+        applyingSharedMode = true; defer { applyingSharedMode = false }
+        layoutKey = "rjlove.tv.layout." + CinemaCoordinator.shared.namespace
+        if let data = UserDefaults.standard.data(forKey: layoutKey),let saved = try? JSONDecoder().decode(TVSavedLayout.self,from: data) {
+            mode = saved.mode; theme = saved.theme; widgets = saved.widgets.isEmpty ? [.clock] : saved.widgets
+            includeOwnLocation = saved.includeOwnLocation; showPartnerLocation = saved.showPartnerLocation
+            wallCount = [4,6,9,12].contains(saved.wallCount) ? saved.wallCount : 6
+            fillPhotos = saved.fillPhotos; showInfo = saved.showInfo; sharedEnabled = saved.sharedEnabled
+        }
+    }
+    private func saveLayout() {
+        guard !layoutKey.isEmpty else { return }
+        let saved = TVSavedLayout(mode: mode,theme: theme,widgets: widgets,includeOwnLocation: includeOwnLocation,showPartnerLocation: showPartnerLocation,wallCount: wallCount,fillPhotos: fillPhotos,showInfo: showInfo,sharedEnabled: sharedEnabled)
+        if let data = try? JSONEncoder().encode(saved) { UserDefaults.standard.set(data,forKey: layoutKey) }
+    }
+    func loadWall() {
+        wallTask?.cancel()
+        guard let app,!moments.isEmpty else { return }
+        let wanted = (0..<min(wallCount,moments.count)).map { moments[(index+$0)%moments.count] }
+        let ids = Set(wanted.map(\.id)); wallImages = wallImages.filter { ids.contains($0.key) }
+        wallTask = Task { [weak self] in
+            for record in wanted {
+                guard let self,!Task.isCancelled,self.app === app else { return }
+                if self.wallImages[record.id] != nil { continue }
+                if let encoded = record.payload.posterBase64 ?? record.payload.imageBase64,
+                   let image = await MomentPreviewCache.shared.decode(encoded,key: "tv-wall-"+record.id) {
+                    self.wallImages[record.id] = image; continue
+                }
+                do {
+                    let file = try await app.api.momentImageFile(record)
+                    defer { try? FileManager.default.removeItem(at: file) }
+                    let data = MediaPicker.Coordinator.poster(file: file)
+                    if let data,let image = UIImage(data: data),!Task.isCancelled { self.wallImages[record.id] = image }
+                } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+            }
+        }
+    }
+    func clear() {
+        layoutKey = ""; wallTask?.cancel(); wallImages = [:]; generation = UUID(); app = nil; moments = []; image = nil; index = 0
+        slideshow = false; loadTask?.cancel(); slideTask?.cancel(); mode = .ambient
+        theme = .light; widgets = [.clock,.mine,.partner,.location,.moments,.signals]
+        includeOwnLocation = false; showPartnerLocation = true; wallCount = 6; fillPhotos = false; showInfo = false; sharedEnabled = true
+    }
     func loadMoments() async {
         guard let app else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview") {
+            moments = app.records.filter { $0.kind == .moment && $0.payload.mediaKind != "video" }
+            index = 0; showMoment(); loadWall(); return
+        }
+        #endif
         do {
             let values = try await app.api.recordArchive(kind: .moment)
             guard self.app === app else { return }
             // Video moments remain available in the existing native evening playlist.
             moments = values.filter { $0.payload.mediaKind != "video" }
-            index = min(index, max(0,moments.count-1)); showMoment(); error = nil
+            index = min(index, max(0,moments.count-1)); showMoment(); loadWall(); error = nil
         } catch { self.error = error.localizedDescription }
     }
     func advance(_ delta: Int) {
         guard !moments.isEmpty else { return }
-        index = (index + delta + moments.count) % moments.count; showMoment()
+        index = (index + delta + moments.count) % moments.count; showMoment(); loadWall()
     }
     func showMoment() {
         loadTask?.cancel(); image = nil
@@ -115,7 +192,17 @@ struct LoveTVScreen: View {
         GeometryReader { geometry in
             ZStack {
                 Color.black
-                if tv.mode == .cinema, cinema.active {
+                if tv.mode == .dashboard {
+                    TVDashboard()
+                } else if tv.mode == .wall {
+                    TVMomentWall().padding(24)
+                } else if tv.mode == .drawing || tv.mode == .game {
+                    HStack(spacing: 24) {
+                        if tv.mode == .drawing { TVDrawingSurface().aspectRatio(16.0/9.0,contentMode: .fit).padding(28) }
+                        else { TVGameBoard().padding(28) }
+                        TVSignalsCard().frame(width: geometry.size.width*0.18).padding(24)
+                    }.background(Color(red:0.08,green:0.06,blue:0.12))
+                } else if tv.mode == .cinema, cinema.active {
                     HStack(spacing: 0) {
                         CinemaPlaybackSurface(external: true)
                             .frame(width: tv.showInfo ? geometry.size.width * 0.75 : geometry.size.width, height: geometry.size.height)
@@ -129,7 +216,7 @@ struct LoveTVScreen: View {
                     ambient(size: geometry.size)
                 }
             }.frame(width: geometry.size.width, height: geometry.size.height)
-        }.ignoresSafeArea().preferredColorScheme(.dark)
+        }.ignoresSafeArea().preferredColorScheme(tv.mode == .dashboard && tv.theme == .light ? .light : .dark)
     }
     private func ambient(size: CGSize) -> some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -195,3 +282,27 @@ struct TVInfoPanel: View {
         }.background(Color(white: 0.025))
     }
 }
+
+#if DEBUG
+struct TVPreviewView: View {
+    @Environment(AppState.self) private var app
+    var wall = false
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            GeometryReader { geometry in
+                let width = min(geometry.size.width,geometry.size.height*16/9)
+                LoveTVScreen().frame(width: 1280,height: 720)
+                    .scaleEffect(width/1280)
+                    .frame(width: width,height: width*9/16)
+                    .position(x: geometry.size.width/2,y: geometry.size.height/2)
+            }
+        }.task {
+            CinemaCoordinator.shared.configure(app: app)
+            TVPresentation.shared.sharedEnabled = false
+            TVPresentation.shared.mode = wall ? .wall : .dashboard
+            await TVPresentation.shared.loadMoments()
+        }
+    }
+}
+#endif

@@ -12,7 +12,9 @@ struct RootView:View {
             case .restoring:ProgressView(appState.connectionMessage).padding(30)
             case .authenticated:
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--preview-cinema") {NavigationStack{CinemaView()}}
+                if ProcessInfo.processInfo.arguments.contains("--preview-tv-dashboard") {TVPreviewView()}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-tv-wall") {TVPreviewView(wall:true)}
+                else if ProcessInfo.processInfo.arguments.contains("--preview-cinema") {NavigationStack{CinemaView()}}
                 else if ProcessInfo.processInfo.arguments.contains("--verify-video-audio") {VideoAudioVerificationView()}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-instant-gallery") {NavigationStack{InstantGalleryView()}.fullScreenCover(item:Binding(get:{appState.pendingPhotoRequest},set:{appState.pendingPhotoRequest=$0})){InstantCameraView(request:$0)}}
                 else if ProcessInfo.processInfo.arguments.contains("--preview-gallery") {NavigationStack{MomentsView()}}
@@ -79,8 +81,8 @@ struct ChangelogView:View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
-                Text("Ein Film.\nEin Abend mit dir.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 4.0.0").font(.title3.bold())
+                Text("Unsere Bühne.\nNur wir zwei.").font(.system(size:38,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 4.1.0").font(.title3.bold())
                 Label("Unser Kino: YouTube, Plex und eine eigene AirPlay-TV-Ansicht",systemImage:"play.tv.fill")
                 Label("Gemeinsam steuern, Schlaftimer und getrennte Medienkonten",systemImage:"person.2.fill")
                 Label("Bark bringt dich direkt zur Nachricht oder zum Kommentar",systemImage:"bell.badge.fill")

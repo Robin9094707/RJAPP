@@ -52,8 +52,8 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "4.0.0"
-MINIMUM_APP_VERSION = "3.9.2"
+APP_VERSION = "4.1.0"
+MINIMUM_APP_VERSION = "4.1.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -329,6 +329,8 @@ class Database:
             db.execute("PRAGMA synchronous=NORMAL")
             db.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS tv_shared_state (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL,payload TEXT NOT NULL,updated REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS tv_action_ids (id TEXT PRIMARY KEY,user_id TEXT NOT NULL,created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS cinema_rooms (
                     id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, provider TEXT NOT NULL,
                     media_id TEXT NOT NULL, title TEXT NOT NULL, position REAL NOT NULL DEFAULT 0,
@@ -2185,6 +2187,82 @@ class RJLoveApplication:
             self.logger.removeHandler(handler)
 
 
+class TVSharedService:
+    """One shared canvas/game for this private partner server; no location copies."""
+    def __init__(self, app):
+        self.app = app
+
+    @staticmethod
+    def empty():
+        return {"epoch":str(uuid.uuid4()),"strokes":[],"signals":[],"board":[""]*9,"turn":"X","players":{},"winner":"","mode":""}
+
+    def load(self, db):
+        row=db.execute("SELECT * FROM tv_shared_state WHERE id=1").fetchone()
+        if not row:
+            state=self.empty();db.execute("INSERT INTO tv_shared_state VALUES(1,1,?,?)",(json.dumps(state),time.time()))
+            return state,1
+        return json.loads(row["payload"]),row["revision"]
+
+    def get(self, user, after=None):
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE");state,revision=self.load(db)
+            return {"revision":revision,"state":None if str(revision)==after else state,"server_time":time.time()}
+
+    def action(self,user,body):
+        identity=body.get("id")
+        try:uuid.UUID(identity)
+        except (ValueError,TypeError,AttributeError):raise APIError(400,"invalid_action","Ungültige TV-Aktion.")
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE");state,revision=self.load(db)
+            duplicate=db.execute("SELECT user_id FROM tv_action_ids WHERE id=?",(identity,)).fetchone()
+            if duplicate and duplicate["user_id"]!=user:raise APIError(409,"action_exists","Diese TV-Aktion ist bereits vergeben.")
+            if duplicate:
+                return {"revision":revision,"state":state,"server_time":time.time()}
+            action=body.get("action")
+            if action in {"clear","new_game","move"} and (type(body.get("revision")) is not int or body["revision"]!=revision):
+                raise APIError(409,"stale_tv","Die gemeinsame Bühne wurde gerade geändert. Bitte erneut versuchen.")
+            if action=="mode":
+                mode=body.get("mode")
+                if mode not in {"ambient","dashboard","moments","wall","cinema","drawing","game","night"}:raise APIError(400,"invalid_mode","Ungültige Bühnenansicht.")
+                state["mode"]=mode
+            elif action=="stroke":
+                if body.get("epoch")!=state["epoch"]:raise APIError(409,"stale_canvas","Die Zeichenfläche wurde inzwischen geleert.")
+                points=body.get("points")
+                if not isinstance(points,list) or not 2<=len(points)<=128:raise APIError(400,"invalid_stroke","Ein Zeichenstrich benötigt 2 bis 128 Punkte.")
+                cleaned=[]
+                for point in points:
+                    if not isinstance(point,list) or len(point)!=2:raise APIError(400,"invalid_stroke","Ungültige Zeichenkoordinate.")
+                    cleaned.append([CinemaService.number(point[0],1),CinemaService.number(point[1],1)])
+                color=body.get("color","")
+                if not isinstance(color,str) or not re.fullmatch(r"#[0-9a-fA-F]{6}",color):raise APIError(400,"invalid_color","Ungültige Zeichenfarbe.")
+                width=CinemaService.number(body.get("width",4),20,1)
+                state["strokes"]=(state["strokes"]+[{"id":identity,"owner":user,"points":cleaned,"color":color,"width":width}])[-250:]
+            elif action=="clear":
+                state["strokes"]=[];state["epoch"]=str(uuid.uuid4())
+            elif action=="signal":
+                symbol=body.get("symbol")
+                if symbol not in {"heart","kiss","hug","star","wave"}:raise APIError(400,"invalid_signal","Unbekanntes Signal.")
+                state["signals"]=([s for s in state["signals"] if s["created"]>time.time()-300]+[{"id":identity,"owner":user,"symbol":symbol,"created":time.time()}])[-15:]
+            elif action=="new_game":
+                others=self.app.partner_ids(user)
+                state.update(board=[""]*9,turn="X",players={"X":user,"O":others[0] if others else user},winner="",mode="game")
+            elif action=="move":
+                index=body.get("index")
+                if type(index) is not int or not 0<=index<9:raise APIError(400,"invalid_move","Ungültiges Spielfeld.")
+                if state["winner"] or state["players"].get(state["turn"])!=user or state["board"][index]:raise APIError(409,"invalid_turn","Du bist nicht am Zug oder dieses Feld ist bereits belegt.")
+                state["board"][index]=state["turn"]
+                lines=[(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
+                if any(state["board"][a] and state["board"][a]==state["board"][b]==state["board"][c] for a,b,c in lines):state["winner"]=state["turn"]
+                elif all(state["board"]):state["winner"]="draw"
+                else:state["turn"]="O" if state["turn"]=="X" else "X"
+            else:raise APIError(400,"invalid_action","Unbekannte TV-Aktion.")
+            revision+=1;now=time.time()
+            db.execute("UPDATE tv_shared_state SET revision=?,payload=?,updated=? WHERE id=1",(revision,json.dumps(state),now))
+            db.execute("INSERT INTO tv_action_ids VALUES(?,?,?)",(identity,user,now))
+            db.execute("DELETE FROM tv_action_ids WHERE created<?",(now-86400,))
+            return {"revision":revision,"state":state,"server_time":now}
+
+
 class CinemaService:
     """Additive v4 subsystem. No changes to legacy records, config or protocol.
 
@@ -2197,6 +2275,7 @@ class CinemaService:
         self.grants = {}
         self.tickets = {}
         self.oauth = {}
+        self.tv = TVSharedService(app)
 
     @staticmethod
     def number(value, maximum, minimum=0):
@@ -2240,11 +2319,12 @@ class CinemaService:
                 "plex_shared": row["id"] in self.grants and self.grants[row["id"]]["expires"] > now}
 
     def get(self, user, path, query):
+        if path == "/v1/cinema/tv": return self.tv.get(user,query.get("after",[None])[0])
         now = time.time()
         with self.lock, self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             if path == "/v1/cinema/features":
-                return {"version": 1, "youtube_search": bool(os.environ.get("RJ_YOUTUBE_API_KEY") or self.app.config.get("cinema", {}).get("youtube_api_key")), "plex_sharing": True}
+                return {"version": 2, "youtube_web": True, "plex_transcode": True, "tv_together": True, "youtube_search": bool(os.environ.get("RJ_YOUTUBE_API_KEY") or self.app.config.get("cinema", {}).get("youtube_api_key")), "plex_sharing": True}
             if path == "/v1/cinema/rooms":
                 stale = now-30*86400
                 db.execute("DELETE FROM cinema_members WHERE room_id IN (SELECT id FROM cinema_rooms WHERE expires<?)",(stale,))
@@ -2268,6 +2348,7 @@ class CinemaService:
         raise APIError(404, "not_found", "Medienfunktion nicht gefunden.")
 
     def post(self, user, path, body, authorization):
+        if path == "/v1/cinema/tv/action": return self.tv.action(user,body)
         if path in {"/v1/cinema/youtube/connect", "/v1/cinema/youtube/claim", "/v1/cinema/youtube/refresh"}:
             return self.youtube_oauth(user, path.rsplit("/",1)[-1], body, authorization)
         if path == "/v1/cinema/youtube/search":
@@ -2283,6 +2364,13 @@ class CinemaService:
                 title = safe_text(body.get("title", "Unser Filmabend"), 250)
                 if provider not in {"youtube", "plex"} or (provider == "youtube" and not re.fullmatch(r"[A-Za-z0-9_-]{11}", media)):
                     raise APIError(400, "invalid_media", "Ungültige Medienauswahl.")
+                if provider == "youtube":
+                    candidates=db.execute("SELECT * FROM cinema_rooms WHERE provider='youtube' AND closed=0 ORDER BY updated DESC").fetchall()
+                    for existing in candidates:
+                        existing=self._account(db,existing,now)
+                        if existing["closed"]:continue
+                        db.execute("UPDATE cinema_rooms SET media_id=?,title=?,position=0,playing=0,updated=?,revision=revision+1 WHERE id=?",(media,title,now,existing["id"]))
+                        return self._wire(db,self._room(db,existing["id"],user),user,now)
                 previous = db.execute("SELECT * FROM cinema_rooms WHERE owner_id=? AND closed=0", (user,)).fetchall()
                 for old in previous:
                     self._account(db, old, now)
@@ -2290,7 +2378,8 @@ class CinemaService:
                     self.grants.pop(old["id"], None)
                 room = str(uuid.uuid4())
                 db.execute("INSERT INTO cinema_rooms(id,owner_id,provider,media_id,title,updated,expires) VALUES(?,?,?,?,?,?,?)", (room,user,provider,media,title,now,now+12*3600))
-                db.execute("INSERT INTO cinema_members VALUES(?,?,?,0)", (room,user,now))
+                for member in ([user,*self.app.partner_ids(user)] if provider=="youtube" else [user]):
+                    db.execute("INSERT INTO cinema_members VALUES(?,?,?,0)",(room,member,now if member==user else 0))
                 db.execute("INSERT INTO cinema_stats VALUES(?,?,0,?,?)", (room,provider,now,now))
                 return self._wire(db, self._room(db,room,user),user,now)
             parts = path.split("/")
@@ -2310,6 +2399,14 @@ class CinemaService:
                 if user == row["owner_id"]:
                     self.grants.pop(room,None)
                     db.execute("UPDATE cinema_rooms SET playing=0,closed=1,revision=revision+1 WHERE id=?",(room,))
+            elif action == "select":
+                if row["provider"]!="youtube":raise APIError(400,"wrong_provider","Dieser Raum enthält kein YouTube-Video.")
+                if type(body.get("revision")) is not int or body["revision"]!=row["revision"]:raise APIError(409,"stale_room","Der andere hat gerade ein Video gewählt.")
+                media=safe_text(body.get("media_id"),11,allow_empty=False)
+                if not re.fullmatch(r"[A-Za-z0-9_-]{11}",media):raise APIError(400,"invalid_media","Ungültiges YouTube-Video.")
+                title=safe_text(body.get("title","YouTube"),250)
+                db.execute("UPDATE cinema_rooms SET media_id=?,title=?,position=0,playing=0,updated=?,revision=revision+1 WHERE id=?",(media,title,now,room))
+                db.execute("UPDATE cinema_members SET playing=0 WHERE room_id=?",(room,))
             elif action == "heartbeat":
                 if type(body.get("playing")) is not bool: raise APIError(400,"invalid_playback","Wiedergabestatus fehlt.")
                 db.execute("UPDATE cinema_members SET seen=?,playing=? WHERE room_id=? AND user_id=?",(now,int(body["playing"]),room,user))
@@ -2343,7 +2440,7 @@ class CinemaService:
                 token = secrets.token_urlsafe(32)
                 session = hashlib.sha256((authorization or "").removeprefix("Bearer ").encode()).hexdigest()
                 self.tickets = {k:v for k,v in self.tickets.items() if v["expires"] > now}
-                self.tickets[token] = {"room":room,"user":user,"session":session,"expires":min(grant["expires"],now+4*3600)}
+                self.tickets[token] = {"room":room,"user":user,"session":session,"expires":min(grant["expires"],now+4*3600),"routes":{},"session_id":str(uuid.uuid4()),"root":None,"grant_id":grant["id"]}
                 return {"path":"/cinema-media/"+token}
             else: raise APIError(404,"not_found","Medienfunktion nicht gefunden.")
             return self._wire(db,self._room(db,room,user),user,now)
@@ -2456,65 +2553,122 @@ class CinemaService:
             parts = data["MediaContainer"]["Metadata"][0]["Media"][0]["Part"]
             part = parts[0]
             path = part["key"]
-            if len(parts)!=1 or not re.fullmatch(r"/library/parts/[0-9]+/[0-9]+/file(?:\.[A-Za-z0-9]+)?",path): raise ValueError()
+            if not re.fullmatch(r"/library/parts/[0-9]+/[0-9]+/file(?:\.[A-Za-z0-9]+)?",path): raise ValueError()
         except (KeyError,IndexError,TypeError,ValueError):
             raise APIError(422,"unsupported_plex","Diese Plex-Datei kann nicht direkt geteilt werden.") from None
+        mode=body.get("mode","compatible")
+        if mode not in {"compatible","direct"}:raise APIError(400,"invalid_mode","Ungültiger Plex-Wiedergabemodus.")
         with self.lock,self.app.database.connect() as db:
             row = self._room(db,room,user)
             if row["closed"] or time.time() >= row["expires"]: raise APIError(410,"room_closed","Dieser Abend ist beendet.")
-            self.grants[room] = {"url":base.rstrip("/")+path,"token":access,"expires":min(time.time()+duration,row["expires"]),"id":secrets.token_hex(16)}
+            self.grants[room] = {"url":base.rstrip("/")+path,"base":base.rstrip("/"),"media_id":media_id,"mode":mode,"token":access,"expires":min(time.time()+duration,row["expires"]),"id":secrets.token_hex(16)}
             return self._wire(db,row,user,time.time())
 
-    def stream(self, handler, ticket):
-        now = time.time()
-        with self.lock,self.app.database.connect() as db:
-            value = self.tickets.get(ticket)
-            grant = self.grants.get(value["room"]) if value else None
-            row = db.execute("SELECT * FROM cinema_rooms WHERE id=?",(value["room"],)).fetchone() if value else None
-            member = db.execute("SELECT 1 FROM cinema_members WHERE room_id=? AND user_id=?",(value["room"],value["user"])).fetchone() if value else None
-            session = db.execute("SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?",(value["session"],iso_now())).fetchone() if value else None
-            if not value or not grant or not row or not member or not session or row["closed"] or min(value["expires"],grant["expires"],row["expires"],row["sleep_until"] or row["expires"])<=now:
+    @staticmethod
+    def transcode_url(base,media_id,session_id):
+        profile="add-transcode-target(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec=h264&audioCodec=aac&replace=true)"
+        values={"path":"/library/metadata/"+media_id,"mediaIndex":0,"partIndex":0,"protocol":"hls","directPlay":0,"directStream":0,
+                "fastSeek":1,"offset":0,"videoResolution":"1920x1080","maxVideoBitrate":12000,"videoQuality":90,"audioBoost":100,
+                "subtitles":"burn","session":session_id,"X-Plex-Platform":"iOS","X-Plex-Product":"RJ Love","X-Plex-Client-Identifier":"rjlove-"+session_id,
+                "X-Plex-Client-Profile-Extra":profile}
+        return base+"/video/:/transcode/universal/start.m3u8?"+urlencode(values)
+
+    def _active_ticket(self,ticket,now):
+        with self.app.database.connect() as db:
+            value=self.tickets.get(ticket)
+            grant=self.grants.get(value["room"]) if value else None
+            row=db.execute("SELECT * FROM cinema_rooms WHERE id=?",(value["room"],)).fetchone() if value else None
+            member=db.execute("SELECT 1 FROM cinema_members WHERE room_id=? AND user_id=?",(value["room"],value["user"])).fetchone() if value else None
+            session=db.execute("SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?",(value["session"],iso_now())).fetchone() if value else None
+            if not value or not grant or not row or not member or not session or row["closed"] or value.get("grant_id",grant["id"])!=grant["id"] or min(value["expires"],grant["expires"],row["expires"],row["sleep_until"] or row["expires"])<=now:
                 raise APIError(410,"share_expired","Die Freigabe wurde beendet.")
-            grant = dict(grant)
-        headers = {"X-Plex-Token":grant["token"],"Accept-Encoding":"identity"}
-        requested_range = handler.headers.get("Range")
-        if requested_range:
-            if not re.fullmatch(r"bytes=\d*-\d*",requested_range): raise APIError(416,"invalid_range","Ungültiger Medienbereich.")
-            headers["Range"] = requested_range
-        # Redirects could expose the Plex token to an untrusted destination.
+            return value,dict(grant)
+
+    def _hls_playlist(self,text,current_url,ticket,value,grant,initial):
+        from urllib.parse import urljoin,urlsplit,urlunsplit
+        import posixpath
+        base=urlsplit(grant["base"])
+        def link(uri):
+            if len(uri)>8192:raise APIError(502,"invalid_hls","Plex liefert eine ungültige Playlist.")
+            target=urlsplit(urljoin(current_url,uri))
+            decoded=unquote(target.path)
+            normalized=posixpath.normpath(decoded)
+            if target.scheme!=base.scheme or target.netloc!=base.netloc or target.username or target.password or target.fragment or normalized!=decoded:
+                raise APIError(502,"unsafe_hls","Plex liefert einen nicht freigegebenen Medienpfad.")
+            match=re.fullmatch(r"/video/:/transcode/universal/session/([A-Za-z0-9_-]+)/(.+)",decoded)
+            if not match:raise APIError(502,"unsafe_hls","Die Playlist verweist nicht auf die freigegebene Plex-Sitzung.")
+            root="/video/:/transcode/universal/session/"+match.group(1)+"/"
+            with self.lock:
+                if value.get("root") and value["root"]!=root:raise APIError(502,"unsafe_hls","Plex-Sitzung stimmt nicht überein.")
+                value["root"]=root
+                # Remove any credential supplied in a provider-generated URL. Our private header is authoritative.
+                query=[(k,v) for k,vals in parse_qs(target.query,keep_blank_values=True).items() if k.lower()!="x-plex-token" for v in vals]
+                if any(k.lower() in {"path","url","file","mediaindex","partindex"} for k,v in query):raise APIError(502,"unsafe_hls","Unerwarteter Plex-Medienparameter.")
+                url=urlunsplit((target.scheme,target.netloc,target.path,urlencode(query),""))
+                route=hashlib.sha256(url.encode()).hexdigest()[:32]
+                if len(value["routes"])>=20000 and route not in value["routes"]:raise APIError(502,"hls_limit","Die Plex-Sitzung enthält zu viele Segmente.")
+                value["routes"][route]=url
+            return (ticket+"/" if initial else "")+route
+        lines=[]
+        for line in text.splitlines():
+            if line.startswith("#"):
+                line=re.sub(r'URI="([^"\r\n]+)"',lambda m:'URI="'+link(m.group(1))+'"',line)
+            elif line.strip():line=link(line.strip())
+            lines.append(line)
+        return ("\n".join(lines)+"\n").encode()
+
+    def stream(self,handler,ticket,route=None):
+        with self.lock:
+            value,grant=self._active_ticket(ticket,time.time())
+            if route:
+                upstream_url=value.get("routes",{}).get(route)
+                if not upstream_url:raise APIError(404,"segment_missing","Dieses Mediensegment ist nicht freigegeben.")
+            elif grant.get("mode")=="compatible":
+                upstream_url=self.transcode_url(grant["base"],grant["media_id"],value["session_id"])
+            else:upstream_url=grant["url"]
+        is_playlist=urlparse(upstream_url).path.endswith(".m3u8")
+        headers={"X-Plex-Token":grant["token"],"Accept-Encoding":"identity","X-Plex-Product":"RJ Love","X-Plex-Client-Identifier":"rjlove-"+value.get("session_id","direct")}
+        requested_range=handler.headers.get("Range")
+        if requested_range and not is_playlist:
+            if not re.fullmatch(r"bytes=\d*-\d*",requested_range):raise APIError(416,"invalid_range","Ungültiger Medienbereich.")
+            headers["Range"]=requested_range
         class NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self,*args,**kwargs): return None
+            def redirect_request(self,*args,**kwargs):return None
         try:
-            upstream = urllib.request.build_opener(NoRedirect()).open(urllib.request.Request(grant["url"],headers=headers,method=handler.command),timeout=15)
+            upstream=urllib.request.build_opener(NoRedirect()).open(urllib.request.Request(upstream_url,headers=headers,method="GET" if is_playlist else handler.command),timeout=25)
         except urllib.error.HTTPError as exc:
-            raise APIError(416 if exc.code==416 else 502,"plex_stream_failed","Plex kann diese Datei gerade nicht wiedergeben.") from None
-        except OSError:
-            raise APIError(502,"plex_stream_failed","Der Plex-Server ist nicht erreichbar.") from None
+            raise APIError(416 if exc.code==416 else 502,"plex_stream_failed","Plex kann diese Datei nicht bereitstellen. Transcoding-Berechtigung, Formate und Serverleistung prüfen.") from None
+        except OSError:raise APIError(502,"plex_stream_failed","Der Plex-Server ist nicht erreichbar.") from None
         with upstream:
+            if is_playlist:
+                data=upstream.read(2*1024*1024+1)
+                if len(data)>2*1024*1024:raise APIError(502,"hls_limit","Die Plex-Playlist ist zu groß.")
+                try:text=data.decode("utf-8-sig")
+                except UnicodeDecodeError:raise APIError(502,"invalid_hls","Plex liefert keine gültige Playlist.") from None
+                if not text.startswith("#EXTM3U"):raise APIError(502,"invalid_hls","Plex liefert keine gültige HLS-Playlist.")
+                data=self._hls_playlist(text,upstream_url,ticket,value,grant,route is None)
+                with self.lock:self._active_ticket(ticket,time.time())
+                handler.send_response(200);handler.send_header("Content-Type","application/vnd.apple.mpegurl");handler.send_header("Content-Length",str(len(data)))
+                handler.send_header("Cache-Control","no-store");handler.end_headers()
+                if handler.command!="HEAD":handler.wfile.write(data)
+                return
             handler.send_response(upstream.status)
             for key in ["Content-Type","Content-Length","Content-Range","Accept-Ranges"]:
-                if upstream.headers.get(key): handler.send_header(key,upstream.headers[key])
-            handler.send_header("Cache-Control","no-store")
-            handler.send_header("Connection","close")
-            handler.end_headers();handler.close_connection=True
-            if handler.command == "HEAD": return
+                if upstream.headers.get(key):handler.send_header(key,upstream.headers[key])
+            handler.send_header("Cache-Control","no-store");handler.send_header("Connection","close");handler.end_headers();handler.close_connection=True
+            if handler.command=="HEAD":return
             try:
-                checked = 0.0
+                checked=0.0
                 while True:
-                    if time.time()-checked > 1:
-                        with self.app.database.connect() as db:
-                            row = db.execute("SELECT * FROM cinema_rooms WHERE id=?",(value["room"],)).fetchone()
-                            member = db.execute("SELECT 1 FROM cinema_members WHERE room_id=? AND user_id=?",(value["room"],value["user"])).fetchone()
-                            session = db.execute("SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?",(value["session"],iso_now())).fetchone()
-                        checked = time.time()
-                        if not row or row["closed"] or not member or not session: break
-                    with self.lock:
-                        current = self.grants.get(value["room"])
-                        if not current or current["id"]!=grant["id"] or min(value["expires"],current["expires"],row["sleep_until"] or row["expires"])<=time.time(): break
-                    data = upstream.read(128*1024)
-                    if not data: break
+                    if time.time()-checked>1:
+                        with self.lock:
+                            try:self._active_ticket(ticket,time.time())
+                            except APIError:break
+                        checked=time.time()
+                    data=upstream.read(128*1024)
+                    if not data:break
                     handler.wfile.write(data)
-            except (BrokenPipeError,ConnectionResetError): pass
+            except (BrokenPipeError,ConnectionResetError):pass
 
 
 class RJLoveRequestHandler(BaseHTTPRequestHandler):
@@ -2816,7 +2970,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/cinema-oauth/youtube":
                 self.app.cinema.oauth_callback(self, query); return
             if path.startswith("/cinema-media/"):
-                self.app.cinema.stream(self, path.rsplit("/",1)[-1]); return
+                stream_parts=path.split("/")
+                if len(stream_parts) not in {3,4}:raise APIError(404,"not_found","Medienpfad nicht gefunden.")
+                self.app.cinema.stream(self,stream_parts[2],stream_parts[3] if len(stream_parts)==4 else None); return
             if path.startswith("/v1/cinema/"):
                 self.send_json(200, self.app.cinema.get(self.current_user(), path, query)); return
             if path == "/v1/navigation":

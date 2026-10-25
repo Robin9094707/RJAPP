@@ -10,8 +10,9 @@
 
 Die neue `rj_love_server.py` ersetzen und den bisherigen Server neu starten. Konfiguration, Datenverzeichnis, Bark-Kopplung und ntfy-Einstellungen behalten. IPA 3.9.1 (391) wie bisher signieren und auf beiden iPhones installieren. Keine neuen Python-Abhängigkeiten und keine zusätzliche Bark-Einrichtung.
 
-Bark bekommt einen `rjlove://open?...`-Link. Bark unterstützt das Öffnen fremder App-Schemes über den `url`-Parameter. Für Browser/ntfy gibt es zusätzlich `https://love.rjuhas.eu/open?target=...`: Die Seite versucht die App zu öffnen und zeigt einen manuellen Öffnen-Knopf. iOS kann dafür eine Bestätigung verlangen; eine garantierte lautlose Sofortweiterleitung lässt sich ohne signierte Universal-Link-Zuordnung nicht versprechen. Die Seite enthält keine Nachrichtentexte, Zugangsdaten oder automatisch ausgeführten Kontoaktionen.
+Bark bekommt einen `rjlove://open?...`-Link. Bark unterstützt das Öffnen fremder App-Schemes über den `url`-Parameter. Für Browser/ntfy gibt es zusätzlich `https://love.example.com/open?target=...`: Die Seite versucht die App zu öffnen und zeigt einen manuellen Öffnen-Knopf. iOS kann dafür eine Bestätigung verlangen; eine garantierte lautlose Sofortweiterleitung lässt sich ohne signierte Universal-Link-Zuordnung nicht versprechen. Die Seite enthält keine Nachrichtentexte, Zugangsdaten oder automatisch ausgeführten Kontoaktionen.
 
 Bereits zugestellte Bark-Mitteilungen behalten ihre alten Links. Neue Mitteilungen verwenden die Ziele aus diesem Update. Bereits sichtbare ältere Fotowunsch-Mitteilungen auf dem iPhone können nicht rückwirkend unsichtbar gemacht werden.
 
 Die umfassende Einrichtung von Bark, ntfy, Ruhezeiten und privaten Webhooks steht weiter in [RELEASE-3.9.md](RELEASE-3.9.md). Die normalen Python-Regressionstests werden um Fotowunsch-Unterdrückung, Linkziele, Kontoschutz, alte/gelöschte Beiträge und gezielten Kommentarabruf ergänzt. Ein Swift-Check prüft gültige und ungültige App-Links. Kompilierung, IPA-/Widget-Versionen und Paketintegrität werden im GitHub-Workflow geprüft. Den Wechsel aus der installierten Bark-App und die Tastatur abschließend auf dem iPhone testen.
+

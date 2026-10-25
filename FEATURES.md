@@ -1,3 +1,7 @@
+# Neu in 4.2.0
+
+Gemeinsames Plex-Kino mit Sitzungsbeobachtung, optionalem zweitem iPhone-Stream, Fernsteuerung kompatibler Empfänger, erweiterten Filminformationen, Kinozeit und bestätigtem Statistik-Reset. Native YouTube-Suche ohne eigenen API-Schlüssel und direkte YouTube-Ansicht innerhalb der App. Optionale Apple-Home-Auswahl mit Kameraansichten sowie gläserne Dashboard-Karten. Funktionsgrenzen: [Release 4.2.0](RELEASE-4.2.0.md).
+
 > Aktuell: [Version 3.1 – Fotos, Startseite, Schlafbalance und UWB](RELEASE-3.1.md). Für App 3.1 zuerst den Python-Server auf 3.1 aktualisieren; Konfiguration und Daten behalten.
 
 > Aktueller Funktionsstand 3.0 und Systemgrenzen: [RELEASE-3.0.md](RELEASE-3.0.md). Walkie-Talkie und die eigene Face-ID-Sperre sind entfernt.
@@ -36,3 +40,4 @@ Recorder mit fester Aufnahme-/Sendeaktion, Schnitt vor und nach dem Teilen und 4
 - Momentkarte mit gruppierten Markern und verfügbaren Original-Aufnahmeorten.
 - Drop-Poop: privates Thronarchiv, Liste/Karte, bewusste Ortsfreigabe, Schnellzugriff, Widget, Kontrollzentrum und Kurzbefehl.
 - Optionale Startseitenkarte und Widget für volle Beziehungsmonate, laufenden Monat, Monatstag und Jahrestag.
+

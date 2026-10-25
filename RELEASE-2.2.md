@@ -32,11 +32,11 @@ Die „Cloud“ ist euer eigener Python-Server. Es wird kein iCloud-Konto benöt
 ```text
 rjlove_data/
   rjlove.sqlite3
-  media/duftpost/robin/2026/10/<Aufnahme-UUID>/
+  media/duftpost/konto_1/2026/10/<Aufnahme-UUID>/
     original.m4a
     edit-0002-<Bearbeitungs-UUID>.m4a
     metadata.json
-  media/duftpost/raphaela/2026/10/<Aufnahme-UUID>/...
+  media/duftpost/konto_2/2026/10/<Aufnahme-UUID>/...
   backups/RJ-Love-<UTC-Zeit>-<Kennung>.tar.gz
 ```
 
@@ -50,3 +50,4 @@ python3 rj_love_server.py --backup /sicherer/pfad/RJ-Love.tar.gz
 ```
 
 Das Archiv enthält einen konsistenten SQLite-Snapshot, alle Mediendateien, `rjapp_config.json` und `BACKUP.json`. Es enthält private Daten und Zugangskonfiguration, deshalb an einem geschützten Ort aufbewahren. Das Archiv ist nicht zusätzlich verschlüsselt. Ein extern referenzierter APNs-Privatschlüssel wird nicht automatisch kopiert und muss separat gesichert werden. Wiederherstellen: Server stoppen, Konfiguration und `rjlove_data` gemeinsam zurückkopieren, `data_directory` kontrollieren, Server starten. Für regelmäßige Backups diesen Befehl im eigenen Server-Scheduler eintragen.
+

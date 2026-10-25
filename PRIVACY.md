@@ -1,3 +1,11 @@
+# Datenschutz-Ergänzung 4.2.0
+
+Die Plex-Automatik übermittelt nach Verbindung Profil-Zugangstoken an euren eigenen HTTPS-Server. Er prüft die Serverberechtigung und beobachtet nur passende Sitzungen. Tokens werden ausschließlich befristet im Arbeitsspeicher gehalten, nicht in Datenbank oder Konfiguration. Titel, Filmdetails, Kinozeiten und bestätigte Anwesenheit am selben Bildschirm liegen in eurer eigenen Datenbank. Die Anwesenheitsbestätigung gilt pro Film höchstens vier Stunden; mindestens eine frische Wiedergabequelle ist erforderlich. Beide können Kino-Statistiken mit Bestätigung zurücksetzen.
+
+Die native YouTube-Suche verwendet YouTubeKit und kommuniziert direkt mit YouTube. Google erhält dabei die üblichen Verbindungs- und Suchinformationen. Anmeldungscookies werden in einem getrennten WebKit-Speicher pro RJ-Zugang auf diesem iPhone gehalten und nicht zum RJ-Server übertragen. Die Abmeldung entfernt diesen WebKit-Speicher. Ein gemeinsamer Kino-Raum teilt Videoauswahl und Wiedergabestand mit dem Partner, aber keine Google-Anmeldedaten.
+
+Apple Home ist optional. Erst die Aktivierung fordert die iOS-Freigabe an. Die App zeigt ausschließlich Häuser und Kameras an, die das Apple-Konto bereits nutzen darf. Kameravorschauen und Live-Ansichten gehen nicht an euren RJ-Server. Live-Kameras stoppen beim Verlassen oder Sperren. Die Auswahl des Hauses wird lokal gespeichert.
+
 ## Ergänzung 3.9 · Bark und ntfy
 
 Der je Konto gewählte externe Push-Dienst und Apple APNs erhalten auf ausdrücklichen Wunsch vollständige Benachrichtigungsinhalte. Bark-Symbole sind öffentlich; Bildvorschauen verwenden HMAC-signierte, auf genau einen Datensatz begrenzte Links mit einem Tag Gültigkeit. Ein Zurückrufen sperrt weitere Abrufe auf eurem Server, löscht aber keine bereits heruntergeladenen Bark-Kopien. Jeder sieht nur seine eigenen Geräteschlüssel, Topic-/Zugangsdaten und privaten Automations-Webhook. Partner sehen den gewählten Dienst und den aktiven Ruhetext/-zeitraum, keine Zugangsschlüssel. Ruhezeiten werden serverseitig durchgesetzt, auch für direkte Bark-Aufrufe. Details: [RELEASE-3.9.md](RELEASE-3.9.md).
@@ -52,7 +60,7 @@ Die nachfolgenden Abschnitte beschreiben die bisherigen Datenformate und Aufbewa
 
 # Datenschutz — RJ Love 3.0
 
-RJ Love ist für Robin und Raphaela vorgesehen. Kein Tracking-SDK, keine Werbung und keine Analyseplattform. Inhalte sind nicht Ende-zu-Ende-verschlüsselt; der Betreiber eures eigenen Servers kann sie lesen. HTTPS schützt die Übertragung.
+RJ Love ist für RJ und Partner vorgesehen. Kein Tracking-SDK, keine Werbung und keine Analyseplattform. Inhalte sind nicht Ende-zu-Ende-verschlüsselt; der Betreiber eures eigenen Servers kann sie lesen. HTTPS schützt die Übertragung.
 
 ## Einrichtung und Freigaben
 
@@ -120,3 +128,4 @@ YouTube-Räume verbinden beide Partner automatisch, wenn die Funktion aktiviert 
 AirPlay-Layouts werden lokal je RJ-Server und RJ-Benutzer gespeichert. Eigene Akkuinformationen werden direkt am Gerät beobachtet. Standort-Widgets verwenden vorhandene Freigaben und zeigen den letzten Datenzeitpunkt; sie fordern keinen zusätzlichen Standortzugriff an. Die gemeinsam gespeicherte Bühne enthält Modus, Zeichnungen, Spielstand und Signale in zusätzlichen Tabellen, keine neuen Standortkopien. Zeichnungen bleiben bis zum Leeren bzw. innerhalb der Grenze von 250 jüngsten Strichabschnitten erhalten. Aktions-IDs werden nach 24 Stunden, Signale bei weiteren Signalen nach fünf Minuten bzw. 15 Einträgen bereinigt.
 
 Plex-Home-PINs werden ausschließlich zur Online-Prüfung an Plex übermittelt und nicht gespeichert. Die aktuelle Profilberechtigung wird nur im Arbeitsspeicher verwendet; Bibliothekszugriff und Filmfreigaben richten sich nach diesem Profil. Beim gemeinsamen Transcoding vermittelt der private RJ-Server auch Playlists und Videosegmente. Konto-/Profil-Tokens bleiben vom Partner getrennt. Details: [Release 4.1.0](RELEASE-4.1.0.md).
+

@@ -1,3 +1,7 @@
+# Aktueller Server: 4.2.0
+
+Zusammen mit App 4.2.0 verwenden. Nur die Python-Datei ersetzen, bestehende Konfiguration und den Datenordner behalten. Zusätzlich zu den bisherigen Daten gibt es die additive Tabelle `cinema_details`. Plex-Automatik benötigt eine sichere, vom RJ-Server erreichbare Plex-Verbindung und Sitzungsrechte. Tokens bleiben höchstens zwölf Stunden im Arbeitsspeicher. Details: [Release 4.2.0](../RELEASE-4.2.0.md).
+
 # Neuer Einzeldatei-Server
 
 `python3 rj_love_server.py` (Python 3.11+). Beim ersten Start wird die lokale Konfiguration mit zwei zufälligen Zugangsdaten erzeugt. Einstellungen prüfen, Passwörter notieren, erneut starten. Kein pip notwendig.
@@ -15,3 +19,4 @@ Bark: Eine vorhandene `bark-public-apns.p8` im Datenordner oder `bark.private_ke
 ## Update 4.1.0
 
 App und Server erfordern nun jeweils mindestens 4.1.0. Alte Apps erhalten HTTP 426 mit den bekannten Kompatibilitätsdaten und zeigen die Update-Ansicht. Bisherige Daten und Konfiguration behalten. Zusätzlich: `tv_shared_state`, `tv_action_ids`, `/v1/cinema/tv` und `/v1/cinema/tv/action`; gemeinsame Plex-Freigaben können HLS-Playlists/Segmente vermitteln. Einrichtung und Einschränkungen siehe [RELEASE-4.1.0.md](../RELEASE-4.1.0.md).
+

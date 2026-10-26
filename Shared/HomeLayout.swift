@@ -63,16 +63,18 @@ struct HomeLayout: Codable, Hashable, Sendable {
     var theme: String = "rose"
     var title: String = "Euer kleines Wir."
     var shortcuts:[HomeShortcut]=HomeShortcut.standard
+    var actions:[HomeShortcut]=HomeShortcut.standardActions
     var tabs: [HomeShortcut] = HomeShortcut.standardTabs
     var layoutVersion = 2
     static let standard = HomeLayout()
-    enum CodingKeys:String,CodingKey {case cards,theme,title,shortcuts,tabs,layoutVersion}
+    enum CodingKeys:String,CodingKey {case cards,theme,title,shortcuts,tabs,layoutVersion,actions}
     init(){}
     init(from decoder:Decoder)throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         cards=try c.decodeIfPresent([HomeCard].self,forKey:.cards) ?? HomeCardKind.allCases.map{HomeCard(kind:$0)}
         theme=try c.decodeIfPresent(String.self,forKey:.theme) ?? "rose"
         title=try c.decodeIfPresent(String.self,forKey:.title) ?? "Euer kleines Wir."
+        actions=try c.decodeIfPresent([HomeShortcut].self,forKey:.actions) ?? HomeShortcut.standardActions
         tabs=try c.decodeIfPresent([HomeShortcut].self,forKey:.tabs) ?? HomeShortcut.standardTabs
         layoutVersion=try c.decodeIfPresent(Int.self,forKey:.layoutVersion) ?? 0
         if layoutVersion < 2 {

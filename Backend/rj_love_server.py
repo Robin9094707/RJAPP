@@ -115,16 +115,19 @@ def compatibility_info() -> dict[str, Any]:
             "update_url": "https://github.com/Robin9094707/RJAPP/actions"}
 
 
-QUICK_ACTIONS={"home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap"}
+QUICK_ACTIONS={"wake","home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap"}
 
 def default_shortcuts():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/shortcut/"+action)),"action":action,"title":title} for action,title in [("moments","Momente"),("captureMoment","Aufnehmen"),("playlist","Unser Abend"),("instant","BeReal"),("status","Mein Status"),("journal","Unser Tag")]]
 
 
+def default_actions():
+    return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/action/"+action)),"action":action,"title":title} for action,title in [("nearby","Dich finden"),("messenger","Ein paar Worte"),("wake","Sanft wecken"),("status","Mein Gefühl")]]
+
 def default_tabs():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/tab/"+action)),"action":action,"title":title} for action,title in [("home","Wir"),("together","Für uns"),("experience","Erleben"),("map","Karte")]]
 
-BACKUP_KEYS = {"tv.layout","cinema.autoJoin","rjlove.homekit.enabled","rjlove.homekit.home","rjlove.homekit.camera","rjlove.evening-auto","rjlove.instant-enabled","rjlove.sweet-autoplay","rjlove.keyboard-dismiss-after-send","rjlove.fart-locations","rjlove.live-auto-resume","rjlove.live-battery","rjlove.live-thoughts","rjlove.live-status","rjlove.live-action","rjlove.nearby-auto","rjlove.nearby-background","rjlove.sleep-goal-hours","rjlove.location-sharing","rjlove.background-location","rjlove.photo-location","rjlove.health-sharing","rjlove.share-activity","rjlove.share-sleep","rjlove.share-vitals","rjlove.share-wifi-name","rjlove.status-message"}
+BACKUP_KEYS = {"tv.layout","cinema.autoJoin","rjlove.homekit.enabled","rjlove.homekit.home","rjlove.homekit.camera","rjlove.evening-auto","rjlove.instant-enabled","rjlove.sweet-autoplay","rjlove.keyboard-dismiss-after-send","rjlove.fart-locations","rjlove.live-enabled","rjlove.live-auto-resume","rjlove.live-battery","rjlove.live-thoughts","rjlove.live-status","rjlove.live-action","rjlove.nearby-auto","rjlove.nearby-background","rjlove.sleep-goal-hours","rjlove.location-sharing","rjlove.background-location","rjlove.photo-location","rjlove.health-sharing","rjlove.share-activity","rjlove.share-sleep","rjlove.share-vitals","rjlove.share-wifi-name","rjlove.status-message"}
 
 
 def record_payload_wire(kind,payload):
@@ -2151,9 +2154,10 @@ class RJLoveApplication:
                 dashboard["cards"] = [{"kind": k, "size": "large"} for k in ("shortcuts","cinema","homeKit","eveningPlayer","dailyJournal") if k not in existing] + dashboard["cards"]
                 dashboard["layoutVersion"] = 2
             dashboard.setdefault("tabs", default_tabs())
+            dashboard.setdefault("actions", default_actions())
             return {"dashboard":dashboard,"revision":row["revision"]}
         cards = ["shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
-        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts(),"tabs":default_tabs(),"layoutVersion":2}, "revision": 0}
+        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts(),"tabs":default_tabs(),"layoutVersion":2,"actions":default_actions()}, "revision": 0}
 
     def bootstrap(self, user_id: str, compact_media=False) -> dict[str, Any]:
         day = self.local_day()
@@ -3911,7 +3915,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         revision = body.get("revision")
         if set(body) != {"dashboard", "revision"} or isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
             raise APIError(400, "invalid_preferences", "Startseiten-Einstellungen sind ungültig.")
-        if not isinstance(dashboard, dict) or not {"cards","theme","title"}.issubset(dashboard) or set(dashboard)-{"cards","theme","title","shortcuts","tabs","layoutVersion"}:
+        if not isinstance(dashboard, dict) or not {"cards","theme","title"}.issubset(dashboard) or set(dashboard)-{"cards","theme","title","shortcuts","tabs","layoutVersion","actions"}:
             raise APIError(400, "invalid_dashboard", "Die Startseite ist ungültig.")
         cards = dashboard["cards"]
         allowed = {"shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop"}
@@ -3934,17 +3938,27 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 except (ValueError,TypeError,AttributeError):raise APIError(400,"invalid_shortcut","Schnellzugriff-ID ungültig.")
                 if item["id"] in seen_ids or not isinstance(item["action"],str) or item["action"] not in QUICK_ACTIONS:raise APIError(400,"invalid_shortcut","Schnellzugriff doppelt oder unbekannt.")
                 seen_ids.add(item["id"]);item["title"]=safe_text(item["title"],24,allow_empty=False)
+        actions=dashboard.get("actions",default_actions())
+        if not isinstance(actions,list) or len(actions)>12:raise APIError(400,"invalid_actions","Höchstens zwölf Schnellaktionen sind möglich.")
+        action_ids=set()
+        for item in actions:
+            if not isinstance(item,dict) or set(item)!={"id","action","title"} or not isinstance(item["action"],str) or item["action"] not in QUICK_ACTIONS:raise APIError(400,"invalid_action","Schnellaktion ungültig.")
+            try:uuid.UUID(item["id"])
+            except (ValueError,TypeError,AttributeError):raise APIError(400,"invalid_action","Schnellaktion ungültig.")
+            if item["id"] in action_ids:raise APIError(400,"invalid_action","Schnellaktion doppelt.")
+            action_ids.add(item["id"]);item["title"]=safe_text(item["title"],24,allow_empty=False)
+        dashboard["actions"]=actions
         tabs = dashboard.get("tabs", default_tabs())
         if not isinstance(tabs,list) or not 1 <= len(tabs) <= 5:
             raise APIError(400,"invalid_tabs","Wähle eine bis fünf Schaltflächen.")
-        seen_tabs=set()
+        seen_tabs=set();seen_tab_ids=set()
         for tab in tabs:
-            if not isinstance(tab,dict) or set(tab)!={"id","action","title"} or tab.get("action") not in QUICK_ACTIONS:
+            if not isinstance(tab,dict) or set(tab)!={"id","action","title"} or not isinstance(tab.get("action"),str) or tab["action"] not in QUICK_ACTIONS:
                 raise APIError(400,"invalid_tabs","Ungültige Schaltfläche.")
             try: uuid.UUID(tab["id"])
             except (ValueError,TypeError,AttributeError): raise APIError(400,"invalid_tabs","Ungültige Schaltfläche.")
-            if tab["action"] in seen_tabs: raise APIError(400,"invalid_tabs","Jedes Ziel nur einmal auswählen.")
-            seen_tabs.add(tab["action"]);tab["title"]=safe_text(tab["title"],24,allow_empty=False)
+            if tab["action"] in seen_tabs or tab["id"] in seen_tab_ids: raise APIError(400,"invalid_tabs","Jedes Ziel nur einmal auswählen.")
+            seen_tabs.add(tab["action"]);seen_tab_ids.add(tab["id"]);tab["title"]=safe_text(tab["title"],24,allow_empty=False)
         dashboard["tabs"]=tabs;dashboard["layoutVersion"]=2
         dashboard["title"] = safe_text(dashboard["title"], 80, allow_empty=False)
         with self.app.database.connect() as db:

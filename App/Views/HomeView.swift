@@ -65,9 +65,7 @@ struct HomeView: View {
         case .partner:
             if card.size == .compact { HStack { PartnerAvatar(name: partnerName, size: 38); Text(partnerName).font(.headline); Spacer(); BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState) }.loveCard().onTapGesture{appState.showingPartnerProfile=true} }
             else { partnerCard }
-        case .quickActions:
-            if card.size == .compact { HStack { Button("Dich finden") { showingNearby = true }; Spacer(); Button("Wecken") { showingWakeComposer = true }; Spacer(); Button("Status") { showingStatusEditor = true } }.font(.subheadline.bold()).loveCard() }
-            else { quickActions }
+        case .quickActions:HomeShortcutsView(shortcuts:appState.homeLayout.actions,title:"Deine Schnellaktionen",compact:card.size == .compact)
         case .studio:
             if card.size == .compact { Button { appState.selectedTab = .moments; appState.experienceSection = .farts } label: { Label("Duftstudio öffnen", systemImage: "wind").frame(maxWidth: .infinity, alignment: .leading).padding(16).loveGlass(in: RoundedRectangle(cornerRadius: 24)) }.buttonStyle(.plain) }
             else { studioSpotlight }
@@ -213,24 +211,6 @@ struct HomeView: View {
         }.loveCard()
     }
 
-    private var quickActions: some View {
-        LazyVGrid(columns: typeSize.isAccessibilitySize ? [GridItem(.flexible())] : [GridItem(.adaptive(minimum: 145))], spacing: 12) {
-            action("Dich finden", "Ganz in eurer Nähe", "location.north.circle.fill", LovePalette.cyan) { showingNearby = true }
-            action("Ein paar Worte", "Euer privater Chat", "bubble.left.and.bubble.right.fill", LovePalette.violet) { appState.selectedTab = .together }
-            action("Sanft wecken", "Ein lieber Weckruf", "sunrise.fill", LovePalette.coral) { showingWakeComposer = true }
-            action("Mein Gefühl", "Lass mich teilhaben", "face.smiling", LovePalette.pink) { showingStatusEditor = true }
-        }
-    }
-    private func action(_ title: String, _ detail: String, _ symbol: String, _ tint: Color, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 11) {
-                LoveIcon(symbol:symbol,tint:tint)
-                Text(title).font(.subheadline.bold()).foregroundStyle(.primary)
-                Text(detail).font(.caption2).foregroundStyle(.secondary)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
-                .loveGlass(in:RoundedRectangle(cornerRadius:24))
-        }.buttonStyle(.plain)
-    }
     private func milestoneCard(_ record: SharedRecord) -> some View {
         HStack(spacing: 18) {
             Image(systemName: "calendar.badge.heart").font(.largeTitle).foregroundStyle(LovePalette.pink)
@@ -277,7 +257,7 @@ struct HomeView: View {
         }.loveCard()
     }
 }
-private struct WakeComposerView: View {
+struct WakeComposerView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @State private var message = "Guten Morgen, mein Schatz 💗"

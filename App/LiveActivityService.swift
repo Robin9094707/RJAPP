@@ -108,8 +108,9 @@ final class LiveActivityService {
         })
     }
 
-    func stop() async {
-        enabled=false;UserDefaults.standard.set(false,forKey:"rjlove.live-enabled")
+    func restoreEnabledPreference() {enabled=UserDefaults.standard.bool(forKey:"rjlove.live-enabled")}
+    func stop(preservingPreference:Bool=false) async {
+        if !preservingPreference {enabled=false;UserDefaults.standard.set(false,forKey:"rjlove.live-enabled")}
         tokenTasks.forEach { $0.cancel() }; tokenTasks=[]
         let activities=Activity<ConnectionActivityAttributes>.activities
         isRunning=false

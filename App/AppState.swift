@@ -239,7 +239,7 @@ final class AppState {
         CinemaCoordinator.shared.reset()
         EveningPlaylistService.shared.stop()
         nearby.stop(api: api)
-        await liveActivity.stop()
+        await liveActivity.stop(preservingPreference:true)
         await api.logout()
         KeychainStore.delete(Self.tokenKey)
         phase = .setup

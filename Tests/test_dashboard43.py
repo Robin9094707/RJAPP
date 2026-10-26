@@ -25,8 +25,15 @@ class Dashboard43Tests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.request('/v1/settings',{'values':{'token':'secret'},'revision':1},0)
         self.assertEqual(error.exception.code,400)
+        note=self.request('/v1/records',{'id':str(server.uuid.uuid4()),'kind':'note','payload':{'title':'Bestehende Notiz','text':'bleibt erhalten'}},0)
+        before=self.request('/v1/bootstrap',who=0)
+        bark=self.app.notification_hub.settings(self.user)
         server.Database(self.app.database.path)
         self.assertEqual(self.request('/v1/settings',who=0),one)
+        after=self.request('/v1/bootstrap',who=0)
+        for key in ('me','partners','records'):self.assertEqual(before[key],after[key])
+        self.assertEqual(self.app.notification_hub.settings(self.user),bark)
+        self.assertIn(note['id'],[r['id'] for r in after['records']])
 
     def test_documents_upload_share_favorite_retention_and_deeplink(self):
         folder=self.request('/v1/documents/folders',{'name':'Unterlagen'},0)['folders'][0]['id']
@@ -63,6 +70,8 @@ class Dashboard43Tests(unittest.TestCase):
         value=self.request('/v1/preferences',who=0)
         self.assertEqual(value['dashboard']['title'],'Meine Seite')
         self.assertIn('homeKit',[c['kind'] for c in value['dashboard']['cards']])
+        self.assertEqual(len(value['dashboard']['actions']),4)
+        value['dashboard']['actions']=[]
         value['dashboard']['cards']=[]
         value['dashboard']['tabs']=[{'id':server.default_tabs()[0]['id'],'action':'documents','title':'Meine Dateien'}]
         saved=self.request('/v1/preferences',value,0)

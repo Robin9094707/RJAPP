@@ -92,6 +92,7 @@ struct HomeKitDashboardCard:View {
         let feed=HomeCameraFeed(profile:accessory.cameraProfiles?.first);feeds[accessory.uniqueIdentifier]=feed;return feed
     }
     func stopAll() { for feed in feeds.values { feed.stop() } }
+    func muteAll() { for feed in feeds.values {feed.muteForInterruption()} }
 }
 
 @MainActor @Observable final class HomeCameraFeed:NSObject,HMCameraStreamControlDelegate,HMCameraSnapshotControlDelegate {
@@ -128,6 +129,10 @@ struct HomeKitDashboardCard:View {
             self.stop();self.error="Die Kamera antwortet nicht. Prüfe Home-Freigabe, Netzwerk und die Zahl gleichzeitiger Streams."
         }
     }
+    func muteForInterruption() {
+        speaking=false;listening=false
+        profile?.streamControl?.cameraStream?.updateAudioStreamSetting(.muted) {_ in}
+    }
     func stop() {
         timeout?.cancel();timeout=nil
         profile?.streamControl?.cameraStream?.updateAudioStreamSetting(.muted) { _ in }
@@ -150,6 +155,7 @@ struct HomeKitDashboardCard:View {
                 }
             }
             guard live,profile?.streamControl?.cameraStream === stream else { return }
+            guard UIApplication.shared.applicationState == .active else {muteForInterruption();return}
             listening=listen || talk;speaking=talk;error=nil
         } catch { self.error=error.localizedDescription }
     }
@@ -196,7 +202,7 @@ struct HomeCameraTile:View {
             }
             if let error=feed.error { Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true) }
         }.task { feed.retain(viewer,autoplay:autoplay) }.onDisappear { feed.release(viewer) }
-        .onChange(of:phase) { _,value in if value != .active { feed.stop() } else if autoplay { feed.start() } }
+        .onChange(of:phase) { _,value in if value == .background {feed.stop()} else if value == .inactive {feed.muteForInterruption()} else if autoplay {feed.start()} }
         .fullScreenCover(isPresented:$fullscreen) { HomeCameraFullscreen(accessory:accessory,feed:feed) }
     }
 }
@@ -215,7 +221,7 @@ private struct HomeCameraFullscreen:View {
         }.safeAreaInset(edge:.bottom) {
             VStack(spacing:10) { cameraControls(feed:feed);if let error=feed.error {Text(error).font(.caption)} }.padding().frame(maxWidth:.infinity).background(.ultraThinMaterial)
         }.preferredColorScheme(.dark).task {feed.retain(viewer,autoplay:true)}.onDisappear {feed.release(viewer);Task { await feed.audio(listen:false,talk:false) }}
-        .onChange(of:phase) { _,phase in if phase != .active {feed.stop()} }
+        .onChange(of:phase) { _,phase in if phase == .background {feed.stop()} else if phase == .inactive {feed.muteForInterruption()} }
     }
 }
 @MainActor @ViewBuilder private func cameraSurface(feed:HomeCameraFeed)->some View {

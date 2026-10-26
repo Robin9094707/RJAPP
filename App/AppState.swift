@@ -177,9 +177,10 @@ final class AppState {
     func refreshNearbySearch() async {
         await nearby.reconcile(api:api,partnerAvailable:phase == .authenticated && partner != nil)
     }
-    func prepareToLeaveForeground(){nearby.prepareForBackground();HomeCameraSessions.shared.stopAll();Task {await SettingsBackup.shared.sync(app:self)}}
+    func prepareToLeaveForeground(){nearby.prepareForBackground();HomeCameraSessions.shared.muteAll();Task {await SettingsBackup.shared.sync(app:self)}}
 
     func deactivateForeground() {
+        HomeCameraSessions.shared.stopAll()
         if phase == .authenticated {Task {try? await api.reportActivity(mode:"inactive")}}
         location.enterBackground()
         studio.finishRecording()

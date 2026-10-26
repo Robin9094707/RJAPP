@@ -81,7 +81,7 @@ struct MainTabView:View {
             dismissKeyboard()
             if tab == .settings { state.showingProfile=true;state.selectedTab=visibleTabs.first ?? .home }
             else if !visibleTabs.contains(tab) {
-                switch tab {case .cinema:extraDestination = .cinema;case .map:extraDestination = .map;case .together:extraDestination = .together;case .moments:extraDestination = .experience;case .home:extraDestination = .home;case .shortcut(let action):extraDestination=action;case .settings:break}
+                switch tab {case .cinema:extraDestination = .cinema;case .map:extraDestination = .map;case .together:extraDestination = .together;case .moments:extraDestination = .experience;case .home:break;case .shortcut(let action):extraDestination=action;case .settings:break}
                 state.selectedTab=visibleTabs.first ?? .home
             }
         }

@@ -35,10 +35,10 @@ import SwiftUI
         enabled=false;UserDefaults.standard.set(false,forKey:"rjlove.homekit.enabled")
         manager?.delegate=nil;manager=nil;homes=[];message=nil
     }
-    func homeManagerDidUpdateHomes(_ manager:HMHomeManager) { reload() }
-    func homeManagerDidUpdateAuthorization(_ manager:HMHomeManager) { reload() }
-    func homeManager(_ manager:HMHomeManager,didAdd home:HMHome) { reload() }
-    func homeManager(_ manager:HMHomeManager,didRemove home:HMHome) { reload() }
+    nonisolated func homeManagerDidUpdateHomes(_ manager:HMHomeManager) { Task {@MainActor in self.reload()} }
+    nonisolated func homeManagerDidUpdateAuthorization(_ manager:HMHomeManager) { Task {@MainActor in self.reload()} }
+    nonisolated func homeManager(_ manager:HMHomeManager,didAdd home:HMHome) { Task {@MainActor in self.reload()} }
+    nonisolated func homeManager(_ manager:HMHomeManager,didRemove home:HMHome) { Task {@MainActor in self.reload()} }
     private func reload() {
         guard let manager else { return }
         guard manager.authorizationStatus.contains(.authorized) else {
@@ -153,16 +153,25 @@ struct HomeKitDashboardCard:View {
             listening=listen || talk;speaking=talk;error=nil
         } catch { self.error=error.localizedDescription }
     }
-    func cameraStreamControlDidStartStream(_ cameraStreamControl:HMCameraStreamControl) {
-        guard !viewers.isEmpty,HomeKitDashboard.shared.enabled else { stop();return }
-        timeout?.cancel();source=cameraStreamControl.cameraStream;live=true;connecting=false;error=nil
-        cameraStreamControl.cameraStream?.updateAudioStreamSetting(.muted) { _ in }
+    nonisolated func cameraStreamControlDidStartStream(_ control:HMCameraStreamControl) {
+        Task {@MainActor in
+            guard self.connecting,!self.viewers.isEmpty,HomeKitDashboard.shared.enabled else {return}
+            self.timeout?.cancel();self.source=control.cameraStream;self.live=true;self.connecting=false;self.error=nil
+            control.cameraStream?.updateAudioStreamSetting(.muted) {_ in}
+        }
     }
-    func cameraStreamControl(_ control:HMCameraStreamControl,didStopStreamWithError issue:Error?) {
-        timeout?.cancel();live=false;connecting=false;speaking=false;listening=false;source=profile?.snapshotControl?.mostRecentSnapshot;error=issue?.localizedDescription
+    nonisolated func cameraStreamControl(_ control:HMCameraStreamControl,didStopStreamWithError issue:Error?) {
+        Task {@MainActor in
+            self.timeout?.cancel();self.live=false;self.connecting=false;self.speaking=false;self.listening=false
+            self.source=self.profile?.snapshotControl?.mostRecentSnapshot;self.error=issue?.localizedDescription
+        }
     }
-    func cameraSnapshotControl(_ control:HMCameraSnapshotControl,didTake snapshot:HMCameraSnapshot?,error:Error?) { if !live {source=snapshot;self.error=error?.localizedDescription} }
-    func cameraSnapshotControlDidUpdateMostRecentSnapshot(_ control:HMCameraSnapshotControl) { if !live {source=control.mostRecentSnapshot} }
+    nonisolated func cameraSnapshotControl(_ control:HMCameraSnapshotControl,didTake snapshot:HMCameraSnapshot?,error:Error?) {
+        Task {@MainActor in if !self.live {self.source=snapshot;self.error=error?.localizedDescription}}
+    }
+    nonisolated func cameraSnapshotControlDidUpdateMostRecentSnapshot(_ control:HMCameraSnapshotControl) {
+        Task {@MainActor in if !self.live {self.source=control.mostRecentSnapshot}}
+    }
 }
 
 struct HomeCameraTile:View {

@@ -51,7 +51,8 @@ struct DocumentsView:View {
     @State private var library=DocumentLibrary()
     @State private var loading=true
     @State private var busy=false
-    @State private var progress=0.0
+    @State private var progress:Double?=nil
+    @State private var transferLabel:String?
     @State private var error:String?
     @State private var query=""
     @State private var importing=false
@@ -75,7 +76,7 @@ struct DocumentsView:View {
                             Text("\(library.folders.count) Ordner · \(library.files.count) Dateien").font(.caption.bold()).foregroundStyle(LovePalette.blue)
                         }.loveCard()
                     }
-                    if busy {VStack(alignment:.leading,spacing:8) {ProgressView(value:progress);Text("Datei wird übertragen …").font(.caption)}.loveCard()}
+                    if let transferLabel {VStack(alignment:.leading,spacing:8) {ProgressView(value:progress);Text(transferLabel).font(.caption)}.loveCard()}
                     if let error {VStack(alignment:.leading,spacing:8) {Text(error).font(.subheadline).foregroundStyle(.orange);Button("Erneut laden") {Task {await load()}}}.loveCard()}
                     if loading {ProgressView("Eure Dokumente laden …").frame(maxWidth:.infinity)}
                     if folderID == nil,query.isEmpty,!library.favorites.isEmpty {
@@ -165,7 +166,7 @@ struct DocumentsView:View {
     }
     private func remove(kind:String,id:String) async {busy=true;defer {busy=false};do {try await app.api.removeDocument(kind:kind,id:id);await load()} catch {self.error=error.localizedDescription}}
     private func upload(_ file:URL) async {
-        busy=true;progress=0;defer {busy=false;try? FileManager.default.removeItem(at:file.deletingLastPathComponent())}
+        busy=true;progress=0;transferLabel="Datei wird hochgeladen …";defer {busy=false;transferLabel=nil;try? FileManager.default.removeItem(at:file.deletingLastPathComponent())}
         var asset:String?
         do {
             let type=UTType(filenameExtension:file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
@@ -179,7 +180,7 @@ struct DocumentsView:View {
             if let asset {_ = try? await app.api.execute(try app.api.request(path:"/v1/assets/"+asset,method:"DELETE"),as:EmptyResponse.self)}
         }
     }
-    private func open(_ file:SharedDocument) async {busy=true;defer {busy=false};do {preview=DocumentPreviewItem(url:try await app.api.documentFile(file));error=nil} catch {self.error=error.localizedDescription}}
+    private func open(_ file:SharedDocument) async {busy=true;progress=nil;transferLabel="Dokument wird geladen …";defer {busy=false;transferLabel=nil};do {preview=DocumentPreviewItem(url:try await app.api.documentFile(file));error=nil} catch {self.error=error.localizedDescription}}
 }
 private struct DocumentPreviewItem:Identifiable {let id=UUID();let url:URL}
 private struct DocumentQuickLook:UIViewControllerRepresentable {

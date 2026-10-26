@@ -18,13 +18,20 @@ struct HomeShortcutsView:View {
         }
     }
     private func tile(_ shortcut:HomeShortcut)->some View {
-        VStack(spacing:9){Image(systemName:shortcut.action.symbol).font(.title3).foregroundStyle(LovePalette.pink);Text(shortcut.title).font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2).frame(minHeight:30)}.frame(maxWidth:.infinity,minHeight:75).padding(10).background(LovePalette.surface,in:RoundedRectangle(cornerRadius:20))
+        VStack(spacing:9){Image(systemName:shortcut.action.symbol).font(.title3).foregroundStyle(LovePalette.pink);Text(shortcut.title).font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2).frame(minHeight:30)}.frame(maxWidth:.infinity,minHeight:75).padding(10).loveGlass(in:RoundedRectangle(cornerRadius:20))
     }
     private func perform(_ action:HomeQuickAction) {switch action {case .recordFart:app.openFartRecorder(quick:true);case .status:app.showingStatus=true;case .partner:app.showingPartnerProfile=true;case .profile:app.showingProfile=true;default:break}}
 }
 struct QuickActionDestination:View {
     let action:HomeQuickAction
     var body:some View {switch action {
+    case .home:HomeView()
+    case .together:LoveHubView()
+    case .experience:ExperienceView()
+    case .cinema:CinemaView()
+    case .homeKit:HomeKitView()
+    case .airplay:TVSettingsView()
+    case .documents:DocumentsView()
     case .poop:DropPoopView()
     case .logPoop:DropPoopView(openComposer:true)
     case .momentMap:MomentsView(mapOnOpen:true)

@@ -20,11 +20,6 @@ struct HomeView: View {
             LazyVStack(alignment: .leading, spacing: 20) {
                 header
                 connection
-                HomeShortcutsView()
-                CinemaHomeCard()
-                HomeKitDashboardCard()
-                if EveningPlaylistService.shared.active {EveningPlayerHomeCard()}
-                DailyJournalHomeCard()
                 ForEach(appState.homeLayout.cards) { card in
                     homeCard(card).accessibilityIdentifier("home-card-" + card.id)
                 }
@@ -40,7 +35,6 @@ struct HomeView: View {
         .sheet(isPresented: $editingHome) { HomeEditorView() }
         .sheet(isPresented: $showingWakeComposer) { WakeComposerView() }
         .sheet(isPresented: $showingStatusEditor) { StatusEditorSheet() }
-        .sheet(isPresented: Binding(get:{appState.showingProfile},set:{appState.showingProfile=$0})) { NavigationStack { SettingsView().toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { appState.showingProfile=false } } } }.navigationTransition(.zoom(sourceID:"profile",in:profileTransition)).presentationDetents([.large]).presentationDragIndicator(.visible) }
         .sheet(isPresented: $showingHealth) { NavigationStack { HealthDashboardView() } }
         .sheet(isPresented: $showingNearby) { NavigationStack { NearbyView() } }
         .refreshable { await appState.syncNow(showErrors: false) }
@@ -48,6 +42,20 @@ struct HomeView: View {
 
     @ViewBuilder private func homeCard(_ card: HomeCard) -> some View {
         switch card.kind {
+        case .shortcuts: HomeShortcutsView()
+        case .cinema:
+            if card.size == .compact { homeLink(card,detail:"Plex, YouTube & AirPlay") { CinemaView() } }
+            else { CinemaHomeCard() }
+        case .homeKit:
+            if card.size == .compact { homeLink(card,detail:"Kameras, Geräte & Szenen") { HomeKitView() } }
+            else { HomeKitDashboardCard() }
+        case .eveningPlayer:
+            if EveningPlaylistService.shared.active && card.size == .large { EveningPlayerHomeCard() }
+            else { homeLink(card,detail:"Eure Momente und Aufnahmen") { EveningPlaylistView() } }
+        case .dailyJournal:
+            if card.size == .compact { homeLink(card,detail:"Euer gemeinsamer Tag") { SharedJournalView() } }
+            else { DailyJournalHomeCard() }
+        case .documents: homeLink(card,detail:"Dateien, Ordner & Favoriten") { DocumentsView() }
         case .heart:
             if card.size == .compact {
                 Button { Task { await appState.sendThought() } } label: {

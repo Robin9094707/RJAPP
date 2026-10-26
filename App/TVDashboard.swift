@@ -1,14 +1,15 @@
+import HomeKit
 import MapKit
 import SwiftUI
 
 enum TVWidgetKind: String,Codable,CaseIterable,Identifiable {
-    case clock,mine,partner,location,moments,countdown,nowPlaying,signals
+    case clock,mine,partner,location,moments,countdown,nowPlaying,signals,camera,health,planner,studio,documents
     var id: String { rawValue }
     var title: String {
-        switch self { case .clock: return "Uhr & Datum"; case .mine: return "Mein iPhone"; case .partner: return "Schatzi"; case .location: return "Freigegebene Standorte"; case .moments: return "Unsere Momente"; case .countdown: return "Unsere Zeit"; case .nowPlaying: return "Unser Kino"; case .signals: return "Liebe Signale" }
+        switch self { case .camera:return "HomeKit-Kamera";case .health:return "Health & Schlaf";case .planner:return "Unsere Planung";case .studio:return "Duftstudio";case .documents:return "Dokumente";case .clock: return "Uhr & Datum"; case .mine: return "Mein iPhone"; case .partner: return "Schatzi"; case .location: return "Freigegebene Standorte"; case .moments: return "Unsere Momente"; case .countdown: return "Unsere Zeit"; case .nowPlaying: return "Unser Kino"; case .signals: return "Liebe Signale" }
     }
     var symbol: String {
-        switch self { case .clock: return "clock"; case .mine: return "iphone"; case .partner: return "heart.fill"; case .location: return "map.fill"; case .moments: return "photo.stack"; case .countdown: return "calendar.badge.clock"; case .nowPlaying: return "play.tv.fill"; case .signals: return "hand.wave.fill" }
+        switch self { case .camera:return "web.camera.fill";case .health:return "heart.text.square.fill";case .planner:return "calendar";case .studio:return "waveform";case .documents:return "folder.fill";case .clock: return "clock"; case .mine: return "iphone"; case .partner: return "heart.fill"; case .location: return "map.fill"; case .moments: return "photo.stack"; case .countdown: return "calendar.badge.clock"; case .nowPlaying: return "play.tv.fill"; case .signals: return "hand.wave.fill" }
     }
 }
 enum TVTheme: String,Codable,CaseIterable,Identifiable {
@@ -25,6 +26,9 @@ struct TVSavedLayout: Codable {
     var fillPhotos: Bool
     var showInfo: Bool
     var sharedEnabled: Bool
+    var columns:Int? = nil
+    var slideSeconds:Int? = nil
+    var cameraAutoLive:Bool? = nil
 }
 struct TVDashboard: View {
     @State private var tv = TVPresentation.shared
@@ -32,7 +36,7 @@ struct TVDashboard: View {
         GeometryReader { geometry in
             let hasPhotos = tv.widgets.contains(.moments)
             let cards = tv.widgets.filter { $0 != .moments }
-            let columns = cards.count > 6 ? 3 : 2
+            let columns = cards.count == 1 ? 1 : tv.columns
             let rows = max(1,Int(ceil(Double(cards.count)/Double(columns))))
             HStack(spacing: 18) {
                 if !cards.isEmpty {
@@ -65,11 +69,29 @@ struct TVDashboardCard: View {
                 content.font(.system(size: max(15,min(28,geometry.size.height*0.15))))
                     .frame(maxWidth: .infinity,maxHeight: .infinity,alignment: .leading)
             }.padding(18).frame(width: geometry.size.width,height: geometry.size.height,alignment: .topLeading)
-                .background(.regularMaterial,in: RoundedRectangle(cornerRadius: 24))
+                .loveGlass(in: RoundedRectangle(cornerRadius:24))
         }
     }
     @ViewBuilder private var content: some View {
         switch kind {
+        case .camera: TVHomeCameraWidget()
+        case .health:
+            VStack(alignment:.leading,spacing:8) {
+                Label(tv.app?.partner?.presence?.steps?.formatted() ?? "–",systemImage:"figure.walk")
+                Label(tv.app?.partner?.presence?.sleepMinutes.map { "\($0 / 60) h \($0 % 60) min" } ?? "Keine Schlafdaten",systemImage:"moon.zzz")
+            }
+        case .planner:
+            let plans=(tv.app?.records ?? []).filter { [.calendar,.reminder,.milestone].contains($0.kind) && ($0.payload.startAt?.rjDate ?? .distantPast) >= .now }.sorted { ($0.payload.startAt ?? "") < ($1.payload.startAt ?? "") }
+            VStack(alignment:.leading,spacing:8) {
+                ForEach(Array(plans.prefix(3))) { record in Text(record.payload.title ?? "Unser Termin").font(.callout).lineLimit(1) }
+                if plans.isEmpty { Text("Zeit für euch.").font(.callout) }
+            }
+        case .studio:
+            VStack(alignment:.leading,spacing:8) {
+                Text("\(tv.app?.farts.count ?? 0) Aufnahmen geladen").font(.callout)
+                if let title=tv.app?.farts.first?.title { Text(title).font(.headline).lineLimit(2) }
+            }
+        case .documents: TVDocumentsWidget()
         case .clock: TVClockCard()
         case .mine: TVPhoneCard()
         case .partner:
@@ -119,6 +141,10 @@ private struct TVLocationCard: View {
         }
         return nil
     }
+    private var accuracy:Double? {
+        if tv.includeOwnLocation,location.sharingEnabled {return location.lastLocation?.horizontalAccuracy}
+        return tv.app?.partner?.presence?.horizontalAccuracy
+    }
     private var timestamp: Date? {
         if tv.includeOwnLocation, location.sharingEnabled { return location.lastLocation?.timestamp }
         return tv.app?.partner?.presence?.locationTimestamp?.rjDate
@@ -127,6 +153,7 @@ private struct TVLocationCard: View {
         VStack(alignment: .leading,spacing: 7) {
             if let coordinate,CLLocationCoordinate2DIsValid(coordinate) {
                 Map(initialPosition: .region(MKCoordinateRegion(center: coordinate,span: MKCoordinateSpan(latitudeDelta: 0.018,longitudeDelta: 0.018)))) {
+                    if let accuracy=accuracy,accuracy.isFinite,accuracy > 0 {MapCircle(center:coordinate,radius:accuracy).foregroundStyle(LovePalette.pink.opacity(0.12)).stroke(LovePalette.pink.opacity(0.5),lineWidth:1)}
                     Annotation(tv.includeOwnLocation && location.sharingEnabled ? tv.app?.me?.displayName ?? "Du" : tv.app?.partner?.displayName ?? "Schatzi",coordinate: coordinate) { Image(systemName: "heart.circle.fill").font(.title).foregroundStyle(.pink,.white) }
                 }.id("\(coordinate.latitude),\(coordinate.longitude)").allowsHitTesting(false).clipShape(RoundedRectangle(cornerRadius: 12))
                 if let timestamp { Text("Letzter Standort: " + timestamp.formatted(date: .abbreviated,time: .shortened)).font(.caption).foregroundStyle(.secondary) }
@@ -201,10 +228,16 @@ struct TVSettingsView: View {
     @State private var tv = TVPresentation.shared
     var body: some View {
         Form {
+            Section {
+                TVDashboard().frame(height:220).allowsHitTesting(false).clipShape(RoundedRectangle(cornerRadius:20)).accessibilityLabel("Vorschau deines TV-Dashboards")
+                Label(tv.connected ? "Fernseher verbunden" : "Vorschau · noch kein Fernseher verbunden",systemImage:"airplay.video").font(.caption)
+            }
             Section("Euer Bildschirm") {
                 Picker("Ansicht",selection: $tv.mode) { ForEach(TVMode.allCases) { Text($0.rawValue).tag($0) } }
                 Picker("Dashboard-Farben",selection: $tv.theme) { ForEach(TVTheme.allCases) { Text($0.rawValue).tag($0) } }
                 Toggle("Gemeinsame Bühne aktualisieren",isOn: $tv.sharedEnabled)
+                Picker("Dashboard-Spalten",selection:$tv.columns) {Text("Zwei").tag(2);Text("Drei").tag(3)}
+                Button("Dashboard auf dem Fernseher zeigen",systemImage:"rectangle.grid.2x2") {tv.mode = .dashboard}
             }
             Section("Dashboard-Widgets · Reihenfolge bearbeiten") {
                 ForEach(tv.widgets) { kind in Label(kind.title,systemImage: kind.symbol) }
@@ -214,6 +247,11 @@ struct TVSettingsView: View {
                     ForEach(TVWidgetKind.allCases.filter { !tv.widgets.contains($0) }) { kind in Button(kind.title,systemImage: kind.symbol) { tv.widgets.append(kind) } }
                 }
             }
+            Section("HomeKit-Kamera auf dem Fernseher") {
+                TVCameraSettings()
+                Toggle("Kamera im Dashboard live starten",isOn:$tv.cameraAutoLive)
+                Text("Füge das Kamera-Widget oben hinzu. Nur auf einem verbundenen Bildschirm wird automatisch live gestartet, immer zunächst ohne Ton. Sprechen steuerst du auf dem iPhone. Die App muss aktiv bleiben.").font(.caption).foregroundStyle(.secondary)
+            }
             Section("Standorte auf dem Fernseher") {
                 Toggle("Meinen freigegebenen Standort zeigen",isOn: $tv.includeOwnLocation)
                 Toggle("Schatzis freigegebenen Standort zeigen",isOn: $tv.showPartnerLocation)
@@ -221,10 +259,51 @@ struct TVSettingsView: View {
             }
             Section("Momente") {
                 Picker("Fotos gleichzeitig",selection: $tv.wallCount) { ForEach([4,6,9,12],id: \.self) { Text("\($0)").tag($0) } }
+                Picker("Diashow-Wechsel",selection:$tv.slideSeconds) {ForEach([5,10,15,30,60],id:\.self) {Text("\($0) Sekunden").tag($0)}}
                 Toggle("Fotos bildfüllend zuschneiden",isOn: $tv.fillPhotos)
                 Toggle("Infos neben dem Kino-Player",isOn: $tv.showInfo)
             }
-            Section { Text("Die Anordnung bleibt auf diesem iPhone gespeichert. Zeichnungen, Spielzüge und Signale teilen eure beiden angemeldeten Apps. iOS aktualisiert die eigene TV-Oberfläche zuverlässig im Vordergrund; eine gesperrte oder beendete App kann keinen dauerhaft live aktualisierten TV-Bildschirm garantieren.").font(.footnote) }
-        }.navigationTitle("AirPlay gestalten").toolbar { EditButton() }.accessibilityIdentifier("tv-settings-screen")
+            Section { Text("Die Anordnung wird automatisch in deinem Konto auf eurem RJ-Server gesichert. Zeichnungen, Spielzüge und Signale teilen eure beiden angemeldeten Apps. iOS aktualisiert die eigene TV-Oberfläche zuverlässig im Vordergrund; eine gesperrte oder beendete App kann keinen dauerhaft live aktualisierten TV-Bildschirm garantieren.").font(.footnote) }
+        }.scrollContentBackground(.hidden).background(LoveBackground()).navigationTitle("AirPlay gestalten").toolbar { EditButton() }.accessibilityIdentifier("tv-settings-screen")
+    }
+}
+
+private struct TVCameraSettings:View {
+    @State private var home=HomeKitDashboard.shared
+    var body:some View {
+        if home.enabled {
+            Picker("Zuhause",selection:$home.selectedID) {ForEach(home.homes,id:\.uniqueIdentifier) {Text($0.name).tag($0.uniqueIdentifier.uuidString)}}
+            Picker("Kamera",selection:$home.cameraID) {
+                Text("Erste verfügbare Kamera").tag("")
+                ForEach(home.cameras,id:\.uniqueIdentifier) {Text($0.name).tag($0.uniqueIdentifier.uuidString)}
+            }
+        } else {NavigationLink("Apple Home verbinden",destination:HomeKitView())}
+    }
+}
+private struct TVHomeCameraWidget:View {
+    @State private var home=HomeKitDashboard.shared
+    @State private var tv=TVPresentation.shared
+    var body:some View {
+        Group {
+            if home.enabled,let camera=home.selectedCamera {
+                if tv.connected {HomeCameraTile(accessory:camera,autoplay:tv.cameraAutoLive,external:true).id(camera.uniqueIdentifier)}
+                else {Label(camera.name + " · live am Fernseher",systemImage:"video.fill").font(.callout)}
+            } else {Text("Wähle eine HomeKit-Kamera auf deinem iPhone.").font(.callout).foregroundStyle(.secondary)}
+        }.task {if home.enabled {home.activate()}}
+    }
+}
+private struct TVDocumentsWidget:View {
+    @State private var tv=TVPresentation.shared
+    @State private var data=DocumentLibrary()
+    var body:some View {
+        VStack(alignment:.leading,spacing:8) {
+            Text("\(data.folders.count) Ordner · \(data.files.count) Dateien").font(.callout)
+            if let file=data.files.first {Text(file.filename).font(.headline).lineLimit(2)}
+        }.task {
+            while !Task.isCancelled {
+                if let api=tv.app?.api,let value=try? await api.documents() {data=value}
+                do {try await Task.sleep(for:.seconds(30))} catch {return}
+            }
+        }
     }
 }

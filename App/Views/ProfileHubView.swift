@@ -9,6 +9,18 @@ struct SettingsView:View {
     var body:some View {
         ScrollView {VStack(alignment:.leading,spacing:24){
             profileHero
+            VStack(alignment:.leading,spacing:16) {
+                LoveSectionTitle("Ganz nach dir",subtitle:"Deine persönliche App")
+                NavigationLink { HomeEditorView() } label: { LoveSettingsRow(title:"Startseite & Navigation",subtitle:"Alle Karten, Schnellzugriffe und bis zu fünf Tabs",symbol:"slider.horizontal.3") }
+                Divider()
+                NavigationLink { TVSettingsView() } label: { LoveSettingsRow(title:"AirPlay gestalten",subtitle:"Widgets, Kamera und Vorschau",symbol:"airplay.video",tint:LovePalette.violet) }
+                Divider()
+                NavigationLink { SettingsBackupView() } label: { LoveSettingsRow(title:"Automatische Sicherung",subtitle:"Deine Einstellungen auf eurem Server",symbol:"arrow.triangle.2.circlepath",tint:LovePalette.cyan) }
+                Divider()
+                NavigationLink { HomeKitView() } label: { LoveSettingsRow(title:"Unser Zuhause",subtitle:"Kameras, Szenen und Geräte",symbol:"house.fill",tint:LovePalette.cyan) }
+                Divider()
+                NavigationLink { DocumentsView() } label: { LoveSettingsRow(title:"Gemeinsame Dokumente",subtitle:"Dateien, Ordner und Favoriten",symbol:"folder.fill",tint:LovePalette.blue) }
+            }.loveCard()
             VStack(alignment:.leading,spacing:16){
                 LoveSectionTitle("Dein Alltag",subtitle:"Alles Wichtige für euer kleines Wir")
                 NavigationLink{CinemaView()}label:{LoveSettingsRow(title:"Unser Kino & AirPlay",subtitle:"YouTube, Plex und euer Fernsehabend",symbol:"play.tv.fill",tint:LovePalette.violet)}

@@ -1,10 +1,16 @@
 import Foundation
 
 enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case heart, partner, quickActions, studio, messenger, history, planner, instant, milestone, health, live, delivery, relationship, poop
+    case shortcuts, cinema, homeKit, eveningPlayer, dailyJournal, documents, heart, partner, quickActions, studio, messenger, history, planner, instant, milestone, health, live, delivery, relationship, poop
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .shortcuts: "Meine Schnellzugriffe"
+        case .cinema: "Unser gemeinsames Kino"
+        case .homeKit: "Unser Zuhause & Kameras"
+        case .eveningPlayer: "Abendplayer"
+        case .dailyJournal: "Unser Tagesrückblick"
+        case .documents: "Gemeinsame Dokumente"
         case .heart: "Herzgedanken"
         case .partner: "Mein Lieblingsmensch"
         case .quickActions: "Schnellaktionen"
@@ -23,6 +29,12 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
     var symbol: String {
         switch self {
+        case .shortcuts: "square.grid.2x2"
+        case .cinema: "play.tv.fill"
+        case .homeKit: "house.fill"
+        case .eveningPlayer: "play.square.stack.fill"
+        case .dailyJournal: "book.closed.fill"
+        case .documents: "folder.fill"
         case .heart: "heart.fill"
         case .partner: "person.crop.circle.fill"
         case .quickActions: "square.grid.2x2.fill"
@@ -51,14 +63,22 @@ struct HomeLayout: Codable, Hashable, Sendable {
     var theme: String = "rose"
     var title: String = "Euer kleines Wir."
     var shortcuts:[HomeShortcut]=HomeShortcut.standard
+    var tabs: [HomeShortcut] = HomeShortcut.standardTabs
+    var layoutVersion = 2
     static let standard = HomeLayout()
-    enum CodingKeys:String,CodingKey {case cards,theme,title,shortcuts}
+    enum CodingKeys:String,CodingKey {case cards,theme,title,shortcuts,tabs,layoutVersion}
     init(){}
     init(from decoder:Decoder)throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         cards=try c.decodeIfPresent([HomeCard].self,forKey:.cards) ?? HomeCardKind.allCases.map{HomeCard(kind:$0)}
         theme=try c.decodeIfPresent(String.self,forKey:.theme) ?? "rose"
         title=try c.decodeIfPresent(String.self,forKey:.title) ?? "Euer kleines Wir."
+        tabs=try c.decodeIfPresent([HomeShortcut].self,forKey:.tabs) ?? HomeShortcut.standardTabs
+        layoutVersion=try c.decodeIfPresent(Int.self,forKey:.layoutVersion) ?? 0
+        if layoutVersion < 2 {
+            cards = [HomeCardKind.shortcuts,.cinema,.homeKit,.eveningPlayer,.dailyJournal].filter { kind in !cards.contains { $0.kind == kind } }.map { HomeCard(kind:$0) } + cards
+            layoutVersion = 2
+        }
         shortcuts=try c.decodeIfPresent([HomeShortcut].self,forKey:.shortcuts) ?? HomeShortcut.standard
     }
 }

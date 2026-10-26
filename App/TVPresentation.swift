@@ -25,6 +25,10 @@ enum TVMode: String, Codable, CaseIterable, Identifiable {
         }
     }
     private var applyingSharedMode = false
+    private var applyingLayout = false
+    var columns=2 {didSet {saveLayout()}}
+    var slideSeconds=15 {didSet {saveLayout()}}
+    var cameraAutoLive=true {didSet {saveLayout()}}
     func acceptRemote(_ mode: TVMode) {
         guard self.mode != mode else { return }
         applyingSharedMode = true; self.mode = mode; applyingSharedMode = false
@@ -52,20 +56,32 @@ enum TVMode: String, Codable, CaseIterable, Identifiable {
     private var generation = UUID()
     func attach(app: AppState) {
         self.app = app
-        applyingSharedMode = true; defer { applyingSharedMode = false }
+        applyingSharedMode = true; applyingLayout=true;defer { applyingSharedMode = false;applyingLayout=false }
         layoutKey = "rjlove.tv.layout." + CinemaCoordinator.shared.namespace
-        if let data = UserDefaults.standard.data(forKey: layoutKey),let saved = try? JSONDecoder().decode(TVSavedLayout.self,from: data) {
-            mode = saved.mode; theme = saved.theme; widgets = saved.widgets.isEmpty ? [.clock] : saved.widgets
-            includeOwnLocation = saved.includeOwnLocation; showPartnerLocation = saved.showPartnerLocation
-            wallCount = [4,6,9,12].contains(saved.wallCount) ? saved.wallCount : 6
-            fillPhotos = saved.fillPhotos; showInfo = saved.showInfo; sharedEnabled = saved.sharedEnabled
-        }
+        if let data=UserDefaults.standard.data(forKey:layoutKey) {restoreLayout(data)}
+    }
+    func restoreLayout(_ data:Data) {
+        guard let saved=try? JSONDecoder().decode(TVSavedLayout.self,from:data) else {return}
+        let previous=applyingLayout;applyingLayout=true
+        let remote=applyingSharedMode;applyingSharedMode=true
+        defer {applyingLayout=previous;applyingSharedMode=remote;saveLayout()}
+        mode=saved.mode;theme=saved.theme;widgets=saved.widgets.isEmpty ? [.clock] : saved.widgets.reduce(into:[TVWidgetKind]()) {if !$0.contains($1) {$0.append($1)}}
+        includeOwnLocation=saved.includeOwnLocation;showPartnerLocation=saved.showPartnerLocation
+        wallCount=[4,6,9,12].contains(saved.wallCount) ? saved.wallCount : 6
+        fillPhotos=saved.fillPhotos;showInfo=saved.showInfo;sharedEnabled=saved.sharedEnabled
+        columns=[2,3].contains(saved.columns ?? 2) ? saved.columns ?? 2 : 2
+        slideSeconds=[5,10,15,30,60].contains(saved.slideSeconds ?? 15) ? saved.slideSeconds ?? 15 : 15
+        cameraAutoLive=saved.cameraAutoLive ?? true
+    }
+    func encodedLayout()->Data? {
+        let encoder=JSONEncoder();encoder.outputFormatting = .sortedKeys
+        return try? encoder.encode(TVSavedLayout(mode:mode,theme:theme,widgets:widgets,includeOwnLocation:includeOwnLocation,showPartnerLocation:showPartnerLocation,wallCount:wallCount,fillPhotos:fillPhotos,showInfo:showInfo,sharedEnabled:sharedEnabled,columns:columns,slideSeconds:slideSeconds,cameraAutoLive:cameraAutoLive))
     }
     private func saveLayout() {
-        guard !layoutKey.isEmpty else { return }
-        let saved = TVSavedLayout(mode: mode,theme: theme,widgets: widgets,includeOwnLocation: includeOwnLocation,showPartnerLocation: showPartnerLocation,wallCount: wallCount,fillPhotos: fillPhotos,showInfo: showInfo,sharedEnabled: sharedEnabled)
-        if let data = try? JSONEncoder().encode(saved) { UserDefaults.standard.set(data,forKey: layoutKey) }
+        guard !layoutKey.isEmpty,!applyingLayout else {return}
+        if let data=encodedLayout() {UserDefaults.standard.set(data,forKey:layoutKey)}
     }
+
     func loadWall() {
         wallTask?.cancel()
         guard let app,!moments.isEmpty else { return }
@@ -92,7 +108,7 @@ enum TVMode: String, Codable, CaseIterable, Identifiable {
         layoutKey = ""; wallTask?.cancel(); wallImages = [:]; generation = UUID(); app = nil; moments = []; image = nil; index = 0
         slideshow = false; loadTask?.cancel(); slideTask?.cancel(); mode = .ambient
         theme = .light; widgets = [.clock,.mine,.partner,.location,.moments,.signals]
-        includeOwnLocation = false; showPartnerLocation = true; wallCount = 6; fillPhotos = false; showInfo = false; sharedEnabled = true
+        includeOwnLocation = false; showPartnerLocation = true; wallCount = 6; fillPhotos = false; showInfo = false; sharedEnabled = true;columns=2;slideSeconds=15;cameraAutoLive=true
     }
     func loadMoments() async {
         guard let app else { return }
@@ -133,7 +149,7 @@ enum TVMode: String, Codable, CaseIterable, Identifiable {
         guard slideshow else { return }
         slideTask = Task { [weak self] in
             while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                do { try await Task.sleep(for: .seconds(self?.slideSeconds ?? 15)) } catch { return }
                 guard let self, self.slideshow else { return }; self.advance(1)
             }
         }

@@ -12,7 +12,7 @@ struct CinemaHomeCard: View {
                     HStack { Label(cinema.playing ? "Wiedergabe" : "Pausiert",systemImage: cinema.playing ? "play.fill" : "pause.fill"); Spacer(); Text(Duration.seconds(cinema.position).formatted(.time(pattern: .hourMinuteSecond))).monospacedDigit() }.font(.caption).foregroundStyle(.secondary)
                     if let device = cinema.room?.details?.device { Label(device,systemImage: "tv").font(.caption).foregroundStyle(.secondary) }
                 } else { Text("Plex, YouTube und AirPlay. Zusammen schauen, auch wenn ihr gerade nicht nebeneinander sitzt.").font(.subheadline).foregroundStyle(.secondary) }
-            }.padding(20).frame(maxWidth: .infinity,alignment: .leading).loveGlass(in: RoundedRectangle(cornerRadius: 28))
+            }.loveCard()
         }.buttonStyle(.plain)
     }
 }

@@ -177,7 +177,7 @@ final class AppState {
     func refreshNearbySearch() async {
         await nearby.reconcile(api:api,partnerAvailable:phase == .authenticated && partner != nil)
     }
-    func prepareToLeaveForeground(){nearby.prepareForBackground()}
+    func prepareToLeaveForeground(){nearby.prepareForBackground();HomeCameraSessions.shared.stopAll();Task {await SettingsBackup.shared.sync(app:self)}}
 
     func deactivateForeground() {
         if phase == .authenticated {Task {try? await api.reportActivity(mode:"inactive")}}
@@ -233,6 +233,8 @@ final class AppState {
     }
 
     func logout() async {
+        await SettingsBackup.shared.sync(app:self)
+        SettingsBackup.shared.reset()
         await CinemaCoordinator.shared.leave()
         CinemaCoordinator.shared.reset()
         EveningPlaylistService.shared.stop()
@@ -274,6 +276,8 @@ final class AppState {
             try await api.checkCompatibility()
             let snapshot = try await api.bootstrap()
             me = snapshot.me
+            CinemaCoordinator.shared.configure(app:self)
+            await SettingsBackup.shared.sync(app:self)
             if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners

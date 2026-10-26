@@ -52,8 +52,8 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "4.2.0"
-MINIMUM_APP_VERSION = "4.2.0"
+APP_VERSION = "4.3.0"
+MINIMUM_APP_VERSION = "4.3.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -115,10 +115,16 @@ def compatibility_info() -> dict[str, Any]:
             "update_url": "https://github.com/Robin9094707/RJAPP/actions"}
 
 
-QUICK_ACTIONS={"moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap"}
+QUICK_ACTIONS={"home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap"}
 
 def default_shortcuts():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/shortcut/"+action)),"action":action,"title":title} for action,title in [("moments","Momente"),("captureMoment","Aufnehmen"),("playlist","Unser Abend"),("instant","BeReal"),("status","Mein Status"),("journal","Unser Tag")]]
+
+
+def default_tabs():
+    return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/tab/"+action)),"action":action,"title":title} for action,title in [("home","Wir"),("together","Für uns"),("experience","Erleben"),("map","Karte")]]
+
+BACKUP_KEYS = {"tv.layout","cinema.autoJoin","rjlove.homekit.enabled","rjlove.homekit.home","rjlove.homekit.camera","rjlove.evening-auto","rjlove.instant-enabled","rjlove.sweet-autoplay","rjlove.keyboard-dismiss-after-send","rjlove.fart-locations","rjlove.live-auto-resume","rjlove.live-battery","rjlove.live-thoughts","rjlove.live-status","rjlove.live-action","rjlove.nearby-auto","rjlove.nearby-background","rjlove.sleep-goal-hours","rjlove.location-sharing","rjlove.background-location","rjlove.photo-location","rjlove.health-sharing","rjlove.share-activity","rjlove.share-sleep","rjlove.share-vitals","rjlove.share-wifi-name","rjlove.status-message"}
 
 
 def record_payload_wire(kind,payload):
@@ -387,6 +393,11 @@ class Database:
                 CREATE TABLE IF NOT EXISTS ai_consent (user_id TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS ai_summaries (fingerprint TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS ai_usage (id TEXT PRIMARY KEY,local_day TEXT NOT NULL,created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS app_settings (user_id TEXT PRIMARY KEY, payload TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS document_folders (id TEXT PRIMARY KEY, parent_id TEXT, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS document_folder_parent ON document_folders(parent_id);
+                CREATE TABLE IF NOT EXISTS shared_documents (id TEXT PRIMARY KEY, folder_id TEXT, asset_id TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL, created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS document_favorites (user_id TEXT NOT NULL, folder_id TEXT NOT NULL, PRIMARY KEY(user_id,folder_id));
                 CREATE TABLE IF NOT EXISTS user_preferences (user_id TEXT PRIMARY KEY, dashboard TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL);
 
                 CREATE TABLE IF NOT EXISTS presence (
@@ -990,6 +1001,8 @@ class NotificationHub:
         target, identifier = "feed", None
         if kind in {"wake_request", "wake", "love_alarm"}:
             target, identifier = "alarms", (job or {}).get("id")
+        elif kind == "document_uploaded":
+            target, identifier = "documents", payload.get("document_id")
         elif kind == "fart_comment":
             target, identifier = "fart-comments", payload.get("clip_id")
         elif kind.startswith("fart_"):
@@ -2048,15 +2061,99 @@ class RJLoveApplication:
             # Never echo provider response bodies or credentials into the app or logs.
             raise APIError(502,"ai_provider_error","OpenAI hat gerade keinen vollständigen Rückblick geliefert. Schlüssel, Modellzugang und API-Guthaben am Server prüfen; später erneut versuchen.") from None
 
+    def settings(self,user_id):
+        with self.database.connect() as db:
+            row=db.execute("SELECT payload,revision,updated_at FROM app_settings WHERE user_id=?",(user_id,)).fetchone()
+        return {"values":json.loads(row["payload"]) if row else {},"revision":row["revision"] if row else 0,"updatedAt":row["updated_at"] if row else None}
+
+    def save_settings(self,user_id,body):
+        values,revision=body.get("values"),body.get("revision")
+        if set(body)-{"values","revision","updatedAt"} or type(revision) is not int or revision<0 or not isinstance(values,dict) or len(json_bytes(values))>128*1024:
+            raise APIError(400,"invalid_settings","Ungültige App-Einstellungen.")
+        for key,value in values.items():
+            if key not in BACKUP_KEYS or not isinstance(value,str) or len(value)>48000:
+                raise APIError(400,"invalid_settings","Unbekannte oder zu große App-Einstellung.")
+            try: base64.b64decode(value,validate=True)
+            except (ValueError,TypeError): raise APIError(400,"invalid_settings","Ungültige App-Einstellung.")
+        now=iso_now()
+        with self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row=db.execute("SELECT revision FROM app_settings WHERE user_id=?",(user_id,)).fetchone()
+            if (row[0] if row else 0)!=revision: raise APIError(409,"settings_changed","Einstellungen geändert. Automatischer Abgleich beim nächsten Versuch.")
+            db.execute("INSERT INTO app_settings VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision,updated_at=excluded.updated_at",(user_id,json.dumps(values),revision+1,now))
+        return {"values":values,"revision":revision+1,"updatedAt":now}
+
+    def documents(self,user_id):
+        with self.database.connect() as db:
+            folders=[dict(r) for r in db.execute("SELECT * FROM document_folders ORDER BY name COLLATE NOCASE,id")]
+            files=[dict(r) for r in db.execute("SELECT d.*,a.filename,a.mime_type,a.size_bytes FROM shared_documents d JOIN assets a ON a.id=d.asset_id AND a.ready=1 ORDER BY d.created_at DESC,d.id")]
+            favorites=[r[0] for r in db.execute("SELECT folder_id FROM document_favorites WHERE user_id=?",(user_id,))]
+        return {"folders":folders,"files":files,"favorites":favorites}
+
+    def save_document(self,user_id,path,body):
+        now=iso_now()
+        with self.media_lock,self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if path=="/v1/documents/folders":
+                parent=body.get("parent_id");name=safe_text(body.get("name"),80,allow_empty=False)
+                if parent is not None and not db.execute("SELECT 1 FROM document_folders WHERE id=?",(parent,)).fetchone(): raise APIError(404,"folder_missing","Ordner nicht gefunden.")
+                if len(name.encode())>240 or any(c in name for c in ("/","\\","\x00")): raise APIError(400,"invalid_name","Ungültiger Ordnername.")
+                if db.execute("SELECT COUNT(*) FROM document_folders").fetchone()[0]>=1000: raise APIError(409,"folder_limit","Höchstens 1000 Ordner.")
+                if db.execute("SELECT 1 FROM document_folders WHERE parent_id IS ? AND name=? COLLATE NOCASE",(parent,name)).fetchone(): raise APIError(409,"folder_exists","Dieser Ordner existiert bereits.")
+                db.execute("INSERT INTO document_folders VALUES(?,?,?,?,?)",(str(uuid.uuid4()),parent,name,user_id,now))
+            elif path=="/v1/documents/favorite":
+                folder=body.get("folder_id")
+                if type(body.get("favorite")) is not bool: raise APIError(400,"invalid_favorite","Ungültiger Favorit.")
+                if not db.execute("SELECT 1 FROM document_folders WHERE id=?",(folder,)).fetchone(): raise APIError(404,"folder_missing","Ordner nicht gefunden.")
+                if body["favorite"]:db.execute("INSERT OR IGNORE INTO document_favorites VALUES(?,?)",(user_id,folder))
+                else:db.execute("DELETE FROM document_favorites WHERE user_id=? AND folder_id=?",(user_id,folder))
+            elif path=="/v1/documents/files":
+                folder,asset_id=body.get("folder_id"),body.get("asset_id")
+                if folder is not None and not db.execute("SELECT 1 FROM document_folders WHERE id=?",(folder,)).fetchone(): raise APIError(404,"folder_missing","Ordner nicht gefunden.")
+                asset=db.execute("SELECT * FROM assets WHERE id=? AND owner_id=? AND ready=1",(asset_id,user_id)).fetchone()
+                if not asset: raise APIError(403,"invalid_asset","Lade zuerst eine eigene Datei hoch.")
+                previous=db.execute("SELECT * FROM shared_documents WHERE asset_id=?",(asset_id,)).fetchone()
+                if previous:
+                    if previous["folder_id"]!=folder: raise APIError(409,"already_shared","Diese Datei ist bereits in einem anderen Ordner geteilt.")
+                else:
+                    identifier=str(uuid.uuid4())
+                    db.execute("INSERT INTO shared_documents VALUES(?,?,?,?,?)",(identifier,folder,asset_id,user_id,now))
+                    folder_name=db.execute("SELECT name FROM document_folders WHERE id=?",(folder,)).fetchone() if folder else None
+                    sender=self.user_by_id(user_id)
+                    self.broadcast_event(user_id,"document_uploaded",f"{sender['display_name']} hat ein Dokument geteilt",asset["filename"]+" · "+(folder_name[0] if folder_name else "Gemeinsame Dokumente"),{"document_id":identifier,"folder_id":folder},db=db)
+            else:raise APIError(404,"not_found","Route nicht gefunden.")
+        return self.documents(user_id)
+
+    def delete_document(self,user_id,kind,identifier):
+        with self.media_lock,self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if kind=="folders":
+                row=db.execute("SELECT * FROM document_folders WHERE id=?",(identifier,)).fetchone()
+                if not row:raise APIError(404,"folder_missing","Ordner nicht gefunden.")
+                if row["owner_id"]!=user_id:raise APIError(403,"not_owner","Nur selbst angelegte Ordner können entfernt werden.")
+                if db.execute("SELECT 1 FROM document_folders WHERE parent_id=?",(identifier,)).fetchone() or db.execute("SELECT 1 FROM shared_documents WHERE folder_id=?",(identifier,)).fetchone():raise APIError(409,"folder_not_empty","Entferne zuerst die Inhalte dieses Ordners.")
+                db.execute("DELETE FROM document_favorites WHERE folder_id=?",(identifier,));db.execute("DELETE FROM document_folders WHERE id=?",(identifier,))
+            elif kind=="files":
+                row=db.execute("SELECT * FROM shared_documents WHERE id=?",(identifier,)).fetchone()
+                if not row:raise APIError(404,"document_missing","Dokument nicht gefunden.")
+                if row["owner_id"]!=user_id:raise APIError(403,"not_owner","Nur selbst hochgeladene Dokumente können entfernt werden.")
+                db.execute("DELETE FROM shared_documents WHERE id=?",(identifier,))
+            else:raise APIError(404,"not_found","Route nicht gefunden.")
+
     def preferences(self, user_id: str) -> dict[str, Any]:
         with self.database.connect() as db:
             row = db.execute("SELECT dashboard,revision FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
         if row:
             dashboard=json.loads(row["dashboard"])
             dashboard.setdefault("shortcuts",default_shortcuts())
+            if dashboard.get("layoutVersion", 0) < 2:
+                existing = {c["kind"] for c in dashboard["cards"]}
+                dashboard["cards"] = [{"kind": k, "size": "large"} for k in ("shortcuts","cinema","homeKit","eveningPlayer","dailyJournal") if k not in existing] + dashboard["cards"]
+                dashboard["layoutVersion"] = 2
+            dashboard.setdefault("tabs", default_tabs())
             return {"dashboard":dashboard,"revision":row["revision"]}
-        cards = ["heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
-        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts()}, "revision": 0}
+        cards = ["shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
+        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts(),"tabs":default_tabs(),"layoutVersion":2}, "revision": 0}
 
     def bootstrap(self, user_id: str, compact_media=False) -> dict[str, Any]:
         day = self.local_day()
@@ -2152,7 +2249,7 @@ class RJLoveApplication:
             db.execute("BEGIN IMMEDIATE")
             for row in db.execute("SELECT * FROM assets WHERE created_at<?",(cutoff,)).fetchall():
                 referenced=db.execute("SELECT 1 FROM records,json_each(json_extract(payload,'$.asset_ids')) AS a WHERE deleted_at IS NULL AND a.value=? LIMIT 1",(row["id"],)).fetchone()
-                if not referenced and not db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(row["id"],)).fetchone():
+                if not referenced and not db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(row["id"],)).fetchone() and not db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(row["id"],)).fetchone():
                     shutil.rmtree(self.media_path(row["path"]).parent,ignore_errors=True)
                     db.execute("DELETE FROM assets WHERE id=?",(row["id"],))
 
@@ -2983,7 +3080,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def navigation_data(query):
-        allowed = {"home", "feed", "partner", "planner", "alarms", "chat", "moments", "farts", "poop", "countdowns", "record", "fart", "fart-comments"}
+        allowed = {"home", "feed", "partner", "planner", "alarms", "chat", "moments", "farts", "poop", "countdowns", "documents", "record", "fart", "fart-comments"}
         if set(query) - {"target", "id", "comment", "account"} or any(len(v) != 1 for v in query.values()):
             raise APIError(400, "invalid_navigation", "Dieser Link ist ungültig.")
         data = {k: values[0] for k, values in query.items() if values}
@@ -2995,7 +3092,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     uuid.UUID(data[key])
                 except (ValueError, TypeError, AttributeError):
                     raise APIError(400, "invalid_navigation", "Dieser Link ist ungültig.")
-        if data["target"] in {"record", "fart", "fart-comments"} and "id" not in data:
+        if data["target"] in {"documents", "record", "fart", "fart-comments"} and "id" not in data:
             raise APIError(400, "invalid_navigation", "Das Ziel fehlt im Link.")
         if "account" in data and not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", data["account"]):
             raise APIError(400, "invalid_navigation", "Das Konto im Link ist ungültig.")
@@ -3009,7 +3106,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         identifier = data.get("id")
         if not identifier:
             return result
-        if data["target"] in {"fart", "fart-comments"}:
+        if data["target"] == "documents":
+            with self.app.database.connect() as db:
+                row=db.execute("SELECT folder_id FROM shared_documents WHERE id=?",(identifier,)).fetchone()
+            if not row: raise APIError(410,"document_missing","Dieses Dokument wurde entfernt.")
+            result["folder_id"]=row["folder_id"];result["document_id"]=identifier
+        elif data["target"] in {"fart", "fart-comments"}:
             result["clip"] = self.app.fart_clip(identifier)
         elif data["target"] in {"record", "chat"}:
             with self.app.database.connect() as db:
@@ -3183,6 +3285,10 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 self.app.cinema.stream(self,stream_parts[2],stream_parts[3] if len(stream_parts)==4 else None); return
             if path.startswith("/v1/cinema/"):
                 self.send_json(200, self.app.cinema.get(self.current_user(), path, query)); return
+            if path == "/v1/settings":
+                self.send_json(200,self.app.settings(self.current_user()));return
+            if path == "/v1/documents":
+                self.send_json(200,self.app.documents(self.current_user()));return
             if path == "/v1/navigation":
                 self.send_json(200, self.navigation_target(self.current_user(), query)); return
             if path == "/v1/notifications/settings":
@@ -3266,6 +3372,10 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
 
             user_id = self.current_user()
+            if path == "/v1/settings":
+                self.send_json(200,self.app.save_settings(user_id,self.read_json()));return
+            if path.startswith("/v1/documents/"):
+                self.send_json(200,self.app.save_document(user_id,path,self.read_json()));return
             if path.startswith("/v1/cinema/"):
                 self.send_json(200, self.app.cinema.post(user_id, path, self.read_json(), self.headers.get("Authorization"))); return
             if path == "/v1/notifications/settings":
@@ -3413,6 +3523,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         try:
             _, parts, _ = self.route()
             user_id = self.current_user()
+            if len(parts)==4 and parts[:2]==["v1","documents"]:
+                self.app.delete_document(user_id,parts[2],parts[3]);self.send_empty();return
             if len(parts)==5 and parts[:2]==["v1","farts"] and parts[3]=="comments":
                 with self.app.database.connect() as db:
                     row=db.execute("SELECT user_id FROM fart_comments WHERE id=? AND clip_id=?",(parts[4],parts[2])).fetchone()
@@ -3435,7 +3547,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     asset=db.execute("SELECT * FROM assets WHERE id=? AND owner_id=?",(parts[2],user_id)).fetchone()
                     if not asset:raise APIError(404,"asset_missing","Upload nicht gefunden.")
                     referenced=db.execute("SELECT 1 FROM records,json_each(json_extract(payload,'$.asset_ids')) AS a WHERE deleted_at IS NULL AND a.value=? LIMIT 1",(parts[2],)).fetchone()
-                    if referenced or db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(parts[2],)).fetchone():raise APIError(409,"asset_in_use","Geteilte Medien über den zugehörigen Eintrag entfernen.")
+                    if referenced or db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(parts[2],)).fetchone() or db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(parts[2],)).fetchone():raise APIError(409,"asset_in_use","Geteilte Medien über den zugehörigen Eintrag entfernen.")
                     db.execute("DELETE FROM assets WHERE id=?",(parts[2],))
                     import shutil
                     shutil.rmtree(self.app.media_path(asset["path"]).parent,ignore_errors=True)
@@ -3595,6 +3707,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if not public and row["owner_id"]!=user_id:
             with self.app.database.connect() as db:
                 shared=db.execute("SELECT 1 FROM records,json_each(json_extract(records.payload,'$.asset_ids')) AS a WHERE records.deleted_at IS NULL AND a.value=? LIMIT 1",(asset_id,)).fetchone()
+                shared = shared or db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(asset_id,)).fetchone()
             if not shared:raise APIError(404,"asset_missing","Medium zurückgerufen oder noch nicht geteilt.")
         return row
 
@@ -3651,13 +3764,16 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             self.send_empty();return True
         if path=="/v1/assets":
             body=self.read_json();mime=safe_text(body.get("mime_type",""),80,allow_empty=False)
-            if mime not in {"image/jpeg","image/png","image/heic","image/heif","video/mp4","video/quicktime","audio/mp4","audio/m4a","application/octet-stream"}:raise APIError(400,"invalid_media","Medienformat nicht unterstützt.")
+            if mime not in {"image/jpeg","image/png","image/heic","image/heif","video/mp4","video/quicktime","audio/mp4","audio/m4a","application/octet-stream","application/pdf","text/plain","text/csv","application/zip","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}:raise APIError(400,"invalid_media","Medienformat nicht unterstützt.")
             size=body.get("size_bytes");digest=body.get("sha256","")
             if isinstance(size,bool) or not isinstance(size,int) or not 0<size<=int(self.app.config["server"].get("max_media_mb",256))*1024*1024:raise APIError(413,"media_too_large","Datei zu groß oder leer. Standardlimit: 256 MB.")
             if not isinstance(digest,str) or not re.fullmatch(r"[a-f0-9]{64}",digest):raise APIError(400,"invalid_hash","Prüfsumme fehlt.")
             filename=Path(safe_text(body.get("filename","medium"),200,allow_empty=False)).name
             asset_id=str(uuid.uuid4());now=iso_now();owner=re.sub(r"[^a-zA-Z0-9_-]","_",user_id)
-            suffix={"image/jpeg":".jpg","image/png":".png","image/heic":".heic","image/heif":".heic","video/mp4":".mp4","video/quicktime":".mov","audio/mp4":".m4a","audio/m4a":".m4a","application/octet-stream":".ipa"}[mime]
+            suffix={"image/jpeg":".jpg","image/png":".png","image/heic":".heic","image/heif":".heic","video/mp4":".mp4","video/quicktime":".mov","audio/mp4":".m4a","audio/m4a":".m4a","application/octet-stream":".ipa"}.get(mime,".bin")
+            if mime == "application/octet-stream" or suffix == ".bin":
+                ext=Path(filename).suffix.lower()
+                suffix=ext if re.fullmatch(r"\.[a-z0-9]{1,12}",ext) else ".bin"
             relative=f"media/assets/{owner}/{utc_now().strftime('%Y/%m')}/{asset_id}/original{suffix}"
             with self.app.media_lock,self.app.database.connect() as db:
                 db.execute("BEGIN IMMEDIATE");self.app.enforce_quota(user_id,size,db=db)
@@ -3795,10 +3911,10 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         revision = body.get("revision")
         if set(body) != {"dashboard", "revision"} or isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
             raise APIError(400, "invalid_preferences", "Startseiten-Einstellungen sind ungültig.")
-        if not isinstance(dashboard, dict) or not {"cards","theme","title"}.issubset(dashboard) or set(dashboard)-{"cards","theme","title","shortcuts"}:
+        if not isinstance(dashboard, dict) or not {"cards","theme","title"}.issubset(dashboard) or set(dashboard)-{"cards","theme","title","shortcuts","tabs","layoutVersion"}:
             raise APIError(400, "invalid_dashboard", "Die Startseite ist ungültig.")
         cards = dashboard["cards"]
-        allowed = {"heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop"}
+        allowed = {"shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop"}
         if not isinstance(cards, list) or len(cards) > len(allowed):
             raise APIError(400, "invalid_cards", "Die Kartenliste ist ungültig.")
         seen = set()
@@ -3818,6 +3934,18 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 except (ValueError,TypeError,AttributeError):raise APIError(400,"invalid_shortcut","Schnellzugriff-ID ungültig.")
                 if item["id"] in seen_ids or not isinstance(item["action"],str) or item["action"] not in QUICK_ACTIONS:raise APIError(400,"invalid_shortcut","Schnellzugriff doppelt oder unbekannt.")
                 seen_ids.add(item["id"]);item["title"]=safe_text(item["title"],24,allow_empty=False)
+        tabs = dashboard.get("tabs", default_tabs())
+        if not isinstance(tabs,list) or not 1 <= len(tabs) <= 5:
+            raise APIError(400,"invalid_tabs","Wähle eine bis fünf Schaltflächen.")
+        seen_tabs=set()
+        for tab in tabs:
+            if not isinstance(tab,dict) or set(tab)!={"id","action","title"} or tab.get("action") not in QUICK_ACTIONS:
+                raise APIError(400,"invalid_tabs","Ungültige Schaltfläche.")
+            try: uuid.UUID(tab["id"])
+            except (ValueError,TypeError,AttributeError): raise APIError(400,"invalid_tabs","Ungültige Schaltfläche.")
+            if tab["action"] in seen_tabs: raise APIError(400,"invalid_tabs","Jedes Ziel nur einmal auswählen.")
+            seen_tabs.add(tab["action"]);tab["title"]=safe_text(tab["title"],24,allow_empty=False)
+        dashboard["tabs"]=tabs;dashboard["layoutVersion"]=2
         dashboard["title"] = safe_text(dashboard["title"], 80, allow_empty=False)
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")

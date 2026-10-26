@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AppTab:Hashable {case home,map,together,moments,cinema,settings}
+enum AppTab:Hashable {case home,map,together,moments,cinema,settings,shortcut(HomeQuickAction)}
 struct RootView:View {
     @Environment(AppState.self) private var appState
     @ObservedObject private var update=UpdateCoordinator.shared
@@ -46,24 +46,22 @@ struct RootView:View {
 struct MainTabView:View {
     @Environment(AppState.self) private var appState
     @State private var cinema = CinemaCoordinator.shared
+    @State private var extraDestination: HomeQuickAction?
+    private func tabID(_ action:HomeQuickAction)->AppTab {
+        switch action {case .home:return .home;case .map:return .map;case .together:return .together;case .experience:return .moments;case .cinema:return .cinema;default:return .shortcut(action)}
+    }
+    private var visibleTabs:[AppTab] { appState.homeLayout.tabs.map { tabID($0.action) } }
     var body:some View {
         @Bindable var state=appState
         @Bindable var journey=appState.setupJourney
         TabView(selection:$state.selectedTab) {
-            Tab("Wir",systemImage:"heart.fill",value:AppTab.home) {
-                NavigationStack { HomeView() }.modifier(CinemaVideoInset(tab:.home))
-            }
-            Tab("Für uns",systemImage:"person.2.fill",value:AppTab.together) {
-                NavigationStack { LoveHubView() }.modifier(CinemaVideoInset(tab:.together))
-            }
-            Tab("Erleben",systemImage:"sparkles",value:AppTab.moments) {
-                NavigationStack { ExperienceView() }.modifier(CinemaVideoInset(tab:.moments))
-            }
-            Tab("Karte",systemImage:"location.fill",value:AppTab.map) {
-                NavigationStack { PartnerMapView() }.modifier(CinemaVideoInset(tab:.map))
-            }
-            Tab("Kino",systemImage:"play.tv.fill",value:AppTab.cinema) {
-                NavigationStack { CinemaView() }.modifier(CinemaVideoInset(tab:.cinema))
+            ForEach(appState.homeLayout.tabs) { item in
+                Tab(item.title,systemImage:item.action.symbol,value:tabID(item.action)) {
+                    NavigationStack {
+                        QuickActionDestination(action:item.action)
+                            .toolbar { ToolbarItem(placement:.topBarTrailing) { Button { appState.showingProfile=true } label:{Image(systemName:"person.crop.circle")} .accessibilityLabel("Profil und Einstellungen") } }
+                    }.modifier(CinemaVideoInset(tab:tabID(item.action)))
+                }
             }
         }
         .tint(LovePalette.pink)
@@ -79,7 +77,18 @@ struct MainTabView:View {
         .sheet(isPresented:$state.showingHealthUpgrade,onDismiss:{appState.health.deferExpandedAccess();appState.offerForegroundMoments()}){HealthPermissionsUpgradeView()}
         .sheet(isPresented:$state.showingPoop){NavigationStack{DropPoopView(openComposer:appState.composingPoop).toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingPoop=false}}}}}
         .sheet(isPresented:$state.showingStatus){StatusEditorSheet()}
-        .onChange(of:state.selectedTab){_,tab in dismissKeyboard(); if tab == .settings{state.selectedTab = .home;state.showingProfile=true}}
+         .onChange(of:state.selectedTab) { _,tab in
+            dismissKeyboard()
+            if tab == .settings { state.showingProfile=true;state.selectedTab=visibleTabs.first ?? .home }
+            else if !visibleTabs.contains(tab) {
+                switch tab {case .cinema:extraDestination = .cinema;case .map:extraDestination = .map;case .together:extraDestination = .together;case .moments:extraDestination = .experience;case .home:extraDestination = .home;case .shortcut(let action):extraDestination=action;case .settings:break}
+                state.selectedTab=visibleTabs.first ?? .home
+            }
+        }
+        .onChange(of:appState.homeLayout.tabs) { _,_ in if !visibleTabs.contains(state.selectedTab) { state.selectedTab=visibleTabs.first ?? .home } }
+        .onAppear { if !visibleTabs.contains(state.selectedTab) { state.selectedTab=visibleTabs.first ?? .home } }
+        .sheet(item:$extraDestination) { action in NavigationStack { QuickActionDestination(action:action).toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { extraDestination=nil } } } } }
+        .sheet(isPresented:$state.showingProfile) { NavigationStack { SettingsView().toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { state.showingProfile=false } } } }.presentationDragIndicator(.visible) }
         .sheet(isPresented:$state.showingFartRecorder,onDismiss:{appState.offerForegroundMoments()}){FartRecorderView(autoStart:appState.quickFartRecording)}
         .sheet(isPresented:$state.showingChangelog,onDismiss:{appState.offerForegroundMoments()}){ChangelogView()}
         .sheet(item:$state.pendingSweet,onDismiss:{appState.offerForegroundMoments()}){SweetPlaybackView(record:$0)}
@@ -94,16 +103,13 @@ struct ChangelogView:View {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
                 Text("Eure Momente.\nAlles im Blick.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 4.2.1").font(.title3.bold())
-                Label("Momente direkt öffnen und mit Bestätigung für beide löschen",systemImage:"trash")
-                Label("Kino als eigener Tab und eine ausblendbare Plex-Leiste",systemImage:"play.tv.fill")
-                Label("Klare Navigation ohne überlagerte AirPlay-Steuerung",systemImage:"rectangle.bottomthird.inset.filled")
-                Label("Gemeinsam steuern, Schlaftimer und getrennte Medienkonten",systemImage:"person.2.fill")
-                Label("Bark bringt dich direkt zur Nachricht oder zum Kommentar",systemImage:"bell.badge.fill")
-                Label("Kritische Bark-Weckrufe und Wiederholung bis zur Bestätigung",systemImage:"alarm.fill")
-                Label("Eigene Ruhezeiten mit Wochentagen und Nachtstatus",systemImage:"moon.zzz.fill")
-                Label("Drop-Poop: das private Thronarchiv für euch zwei",systemImage:"toilet.fill")
-                Label("Beziehungsmonate, Monatstage und Jahrestag im Blick",systemImage:"heart.circle.fill")
+                Text("Willkommen in RJ Love 4.3.0").font(.title3.bold())
+                Label("Startseite und bis zu fünf Navigationstasten frei gestalten",systemImage:"slider.horizontal.3")
+                Label("HomeKit: Vollbild, Zuhören und Sprechen mit unterstützten Kameras",systemImage:"video.fill")
+                Label("Deine Kamera live im AirPlay-Dashboard",systemImage:"airplay.video")
+                Label("Gemeinsame Dokumente, Ordner, Favoriten und Bark-Direktlinks",systemImage:"folder.fill")
+                Label("App-Einstellungen automatisch sichern und wiederherstellen",systemImage:"arrow.triangle.2.circlepath")
+                Label("Standort mit Genauigkeitskreis und klarer Aktualisierung",systemImage:"location.circle")
                 Text("Original oder optional platzsparend teilen: Ihr entscheidet. Eure bisherigen Erinnerungen bleiben erhalten. Ortsmarkierungen werden nur mit den entsprechenden Freigaben gespeichert.").font(.subheadline).foregroundStyle(.secondary)
                 Text("Unsere Beziehungsmonate und Drop-Poop könnt ihr über Startseite anpassen als eigene Karten hinzufügen. Neue Schnellzugriffe, Widgets und ein Kontrollzentrum-Button bringen euch direkt hin.").font(.footnote).foregroundStyle(.secondary)
                 Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)

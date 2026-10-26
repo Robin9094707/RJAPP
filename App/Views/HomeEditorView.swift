@@ -17,6 +17,23 @@ struct HomeEditorView: View {
                     }
                 }
                 Section {
+                    ForEach($draft.tabs) { $tab in
+                        VStack(alignment:.leading,spacing:8) {
+                            TextField("Beschriftung",text:$tab.title)
+                            Picker("Öffnet",selection:$tab.action) {
+                                ForEach(HomeQuickAction.allCases.filter { action in action == tab.action || !draft.tabs.contains { $0.action == action } }) { action in Label(action.title,systemImage:action.symbol).tag(action) }
+                            }
+                        }
+                    }.onMove { draft.tabs.move(fromOffsets:$0,toOffset:$1) }.onDelete { offsets in if draft.tabs.count-offsets.count > 0 { draft.tabs.remove(atOffsets:offsets) } }
+                    if draft.tabs.count < 5 {
+                        Menu("Schaltfläche hinzufügen",systemImage:"plus.circle") {
+                            ForEach(HomeQuickAction.allCases.filter { action in !draft.tabs.contains { $0.action == action } }) { action in
+                                Button(action.title,systemImage:action.symbol) { draft.tabs.append(HomeShortcut(action:action)) }
+                            }
+                        }
+                    }
+                } header: { Text("Navigation unten · bis zu fünf") } footer: { Text("Eine bis fünf Schaltflächen für beliebige Bereiche. Kino bleibt über Schnellzugriffe, Karten und die Einstellungen erreichbar. Profil und Einstellungen findest du auch über das Personensymbol.") }
+                Section {
                     ForEach($draft.shortcuts) { $shortcut in
                         VStack(alignment:.leading,spacing:8){
                             TextField("Name des Buttons",text:$shortcut.title).accessibilityIdentifier("shortcut-title-"+shortcut.id)
@@ -57,7 +74,7 @@ struct HomeEditorView: View {
                     ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() }.disabled(saving) }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(saving ? "Speichert …" : "Speichern") { Task { await save() } }
-                            .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.title.count > 80 || draft.shortcuts.contains{$0.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || $0.title.count>24})
+                            .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.title.count > 80 || (draft.shortcuts + draft.tabs).contains{$0.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || $0.title.count>24})
                             .accessibilityIdentifier("home-layout-save")
                     }
                 }.interactiveDismissDisabled(saving)

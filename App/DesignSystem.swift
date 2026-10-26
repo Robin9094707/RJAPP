@@ -43,7 +43,7 @@ private struct LoveCardSurface:ViewModifier {
     @Environment(\.colorScheme) private var scheme
     func body(content:Content)->some View {
         content.padding(20).frame(maxWidth:.infinity,alignment:.leading)
-            .background(LovePalette.surface,in:RoundedRectangle(cornerRadius:26,style:.continuous))
+            .loveGlass(in:RoundedRectangle(cornerRadius:26,style:.continuous))
             .overlay{RoundedRectangle(cornerRadius:26,style:.continuous).stroke(Color.primary.opacity(scheme == .dark ? 0.07:0.025),lineWidth:1).allowsHitTesting(false)}
             .shadow(color:.black.opacity(scheme == .dark ? 0:0.025),radius:14,y:5)
     }

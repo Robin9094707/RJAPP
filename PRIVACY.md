@@ -129,3 +129,8 @@ AirPlay-Layouts werden lokal je RJ-Server und RJ-Benutzer gespeichert. Eigene Ak
 
 Plex-Home-PINs werden ausschließlich zur Online-Prüfung an Plex übermittelt und nicht gespeichert. Die aktuelle Profilberechtigung wird nur im Arbeitsspeicher verwendet; Bibliothekszugriff und Filmfreigaben richten sich nach diesem Profil. Beim gemeinsamen Transcoding vermittelt der private RJ-Server auch Playlists und Videosegmente. Konto-/Profil-Tokens bleiben vom Partner getrennt. Details: [Release 4.1.0](RELEASE-4.1.0.md).
 
+
+
+## Version 4.3.0: gemeinsame Dokumente und Einstellungssicherung
+
+Gemeinsam hochgeladene Dateien und Ordner liegen auf eurem konfigurierten RJ-Server und sind für beide angemeldeten Konten zugänglich. Ordnerfavoriten und portable App-Einstellungen werden pro Konto gespeichert. Nur der Ersteller kann Dokumente bzw. leere eigene Ordner entfernen. Bark erhält beim Upload den Dateinamen und einen kontogebunden geprüften App-Link. Kamera-Livebilder bleiben bei Apple Home; RJ-Server und Bark erhalten keine Kamera-Streams. Das Mikrofon wird erst nach ausdrücklichem Aktivieren von Sprechen mit unterstützter Kamera verwendet. HomeKit-Freigaben, Betriebssystem-Berechtigungen, Anmeldetokens und iOS-Widget-Platzierungen werden nicht als App-Einstellungssicherung kopiert.

@@ -1,3 +1,7 @@
+# Aktueller Server: 4.3.0
+
+Mit App 4.3.0 verwenden. Nur die Python-Datei ersetzen, vorhandene Konfiguration und Datenordner behalten. Additive Tabellen für Dokumente, Ordnerfavoriten und App-Einstellungen. Alte Apps zeigen die Update-Ansicht. Details: [Release 4.3.0](../RELEASE-4.3.0.md).
+
 # Aktueller Server: 4.2.0
 
 Zusammen mit App 4.2.0 verwenden. Nur die Python-Datei ersetzen, bestehende Konfiguration und den Datenordner behalten. Zusätzlich zu den bisherigen Daten gibt es die additive Tabelle `cinema_details`. Plex-Automatik benötigt eine sichere, vom RJ-Server erreichbare Plex-Verbindung und Sitzungsrechte. Tokens bleiben höchstens zwölf Stunden im Arbeitsspeicher. Details: [Release 4.2.0](../RELEASE-4.2.0.md).

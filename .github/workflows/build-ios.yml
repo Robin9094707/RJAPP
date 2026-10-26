@@ -2,11 +2,13 @@ name: Build RJ Love unsigned IPA
 
 on:
   push:
+    branches: [main, codex/rj-love-4.3.0]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: rj-love-${{ github.ref }}
+  group: rj-love-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:

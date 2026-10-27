@@ -2,7 +2,7 @@ name: Build RJ Love unsigned IPA
 
 on:
   push:
-    branches: [main, codex/rj-love-4.3.0]
+    branches: [main, codex/rj-love-4.3.0, codex/rj-love-4.3.1]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -46,9 +46,11 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Backend/rj_love_server.py
           python3 Scripts/validate_project.py
-          python3 -m unittest -q Tests/test_cinema42.py Tests/test_dashboard43.py
+          python3 -m unittest -q Tests/test_cinema42.py Tests/test_dashboard43.py Tests/test_documents431.py
           swiftc Shared/HomeShortcuts.swift Shared/HomeLayout.swift Tests/PreferencesSmoke.swift -o /tmp/rj-preferences-smoke
           /tmp/rj-preferences-smoke
+          swiftc Shared/QuickCaptureRequest.swift Tests/QuickCaptureSmoke.swift -o /tmp/rj-quick-capture-smoke
+          /tmp/rj-quick-capture-smoke
 
       - name: Install XcodeGen
         shell: bash
@@ -108,9 +110,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-4.3.0-Komplettpaket
+          name: RJ-Love-4.3.1-Komplettpaket
           path: |
-            RJ-Love-4.3.0-Komplettpaket.zip
+            RJ-Love-4.3.1-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30
@@ -134,3 +136,4 @@ jobs:
           path: RJ-Love-build.log
           if-no-files-found: ignore
           retention-days: 14
+

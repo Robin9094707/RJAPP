@@ -52,7 +52,7 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "4.3.0"
+APP_VERSION = "4.3.1"
 MINIMUM_APP_VERSION = "4.3.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
@@ -400,6 +400,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS document_folders (id TEXT PRIMARY KEY, parent_id TEXT, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS document_folder_parent ON document_folders(parent_id);
                 CREATE TABLE IF NOT EXISTS shared_documents (id TEXT PRIMARY KEY, folder_id TEXT, asset_id TEXT NOT NULL UNIQUE, owner_id TEXT NOT NULL, created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS document_names (document_id TEXT PRIMARY KEY, filename TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS document_favorites (user_id TEXT NOT NULL, folder_id TEXT NOT NULL, PRIMARY KEY(user_id,folder_id));
                 CREATE TABLE IF NOT EXISTS user_preferences (user_id TEXT PRIMARY KEY, dashboard TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL);
 
@@ -2089,7 +2090,7 @@ class RJLoveApplication:
     def documents(self,user_id):
         with self.database.connect() as db:
             folders=[dict(r) for r in db.execute("SELECT * FROM document_folders ORDER BY name COLLATE NOCASE,id")]
-            files=[dict(r) for r in db.execute("SELECT d.*,a.filename,a.mime_type,a.size_bytes FROM shared_documents d JOIN assets a ON a.id=d.asset_id AND a.ready=1 ORDER BY d.created_at DESC,d.id")]
+            files=[dict(r) for r in db.execute("SELECT d.*,COALESCE(n.filename,a.filename) AS filename,a.mime_type,a.size_bytes FROM shared_documents d JOIN assets a ON a.id=d.asset_id AND a.ready=1 LEFT JOIN document_names n ON n.document_id=d.id ORDER BY d.created_at DESC,d.id")]
             favorites=[r[0] for r in db.execute("SELECT folder_id FROM document_favorites WHERE user_id=?",(user_id,))]
         return {"folders":folders,"files":files,"favorites":favorites}
 
@@ -2104,6 +2105,41 @@ class RJLoveApplication:
                 if db.execute("SELECT COUNT(*) FROM document_folders").fetchone()[0]>=1000: raise APIError(409,"folder_limit","Höchstens 1000 Ordner.")
                 if db.execute("SELECT 1 FROM document_folders WHERE parent_id IS ? AND name=? COLLATE NOCASE",(parent,name)).fetchone(): raise APIError(409,"folder_exists","Dieser Ordner existiert bereits.")
                 db.execute("INSERT INTO document_folders VALUES(?,?,?,?,?)",(str(uuid.uuid4()),parent,name,user_id,now))
+            elif path in ("/v1/documents/rename", "/v1/documents/move"):
+                kind,identifier=body.get("kind"),body.get("id")
+                if kind not in ("files","folders") or not isinstance(identifier,str):
+                    raise APIError(400,"invalid_document","Datei oder Ordner auswählen.")
+                table="shared_documents" if kind=="files" else "document_folders"
+                row=db.execute(f"SELECT * FROM {table} WHERE id=?",(identifier,)).fetchone()
+                if not row:raise APIError(404,"document_missing","Datei oder Ordner wurde entfernt. Bitte aktualisieren.")
+                if row["owner_id"]!=user_id:raise APIError(403,"not_owner","Nur eigene Dateien und Ordner können geändert werden.")
+                if path.endswith("/rename"):
+                    name=safe_text(body.get("name"),180 if kind=="files" else 80,allow_empty=False)
+                    if name in (".","..") or len(name.encode())>240 or any(ord(c)<32 or c in "/\\" for c in name):
+                        raise APIError(400,"invalid_name","Ungültiger Name. Keine Pfadzeichen oder Steuerzeichen verwenden.")
+                    if kind=="folders":
+                        if db.execute("SELECT 1 FROM document_folders WHERE parent_id IS ? AND name=? COLLATE NOCASE AND id!=?",(row["parent_id"],name,identifier)).fetchone():
+                            raise APIError(409,"folder_exists","Dieser Ordner existiert bereits.")
+                        db.execute("UPDATE document_folders SET name=? WHERE id=?",(name,identifier))
+                    else:
+                        # Display metadata only: leave the original asset and every reference intact.
+                        db.execute("INSERT INTO document_names VALUES(?,?) ON CONFLICT(document_id) DO UPDATE SET filename=excluded.filename",(identifier,name))
+                else:
+                    if "folder_id" not in body:raise APIError(400,"invalid_folder","Zielordner fehlt.")
+                    folder=body["folder_id"]
+                    if folder is not None and (not isinstance(folder,str) or not db.execute("SELECT 1 FROM document_folders WHERE id=?",(folder,)).fetchone()):
+                        raise APIError(404,"folder_missing","Zielordner nicht gefunden.")
+                    if kind=="folders":
+                        current=folder;visited=set()
+                        while current is not None:
+                            if current==identifier or current in visited:raise APIError(409,"folder_cycle","Ein Ordner kann nicht in sich selbst oder einen Unterordner verschoben werden.")
+                            visited.add(current)
+                            parent=db.execute("SELECT parent_id FROM document_folders WHERE id=?",(current,)).fetchone()
+                            current=parent[0] if parent else None
+                        if db.execute("SELECT 1 FROM document_folders WHERE parent_id IS ? AND name=? COLLATE NOCASE AND id!=?",(folder,row["name"],identifier)).fetchone():
+                            raise APIError(409,"folder_exists","Am Ziel existiert bereits ein Ordner mit diesem Namen.")
+                    column="folder_id" if kind=="files" else "parent_id"
+                    db.execute(f"UPDATE {table} SET {column}=? WHERE id=?",(folder,identifier))
             elif path=="/v1/documents/favorite":
                 folder=body.get("folder_id")
                 if type(body.get("favorite")) is not bool: raise APIError(400,"invalid_favorite","Ungültiger Favorit.")
@@ -2140,6 +2176,7 @@ class RJLoveApplication:
                 row=db.execute("SELECT * FROM shared_documents WHERE id=?",(identifier,)).fetchone()
                 if not row:raise APIError(404,"document_missing","Dokument nicht gefunden.")
                 if row["owner_id"]!=user_id:raise APIError(403,"not_owner","Nur selbst hochgeladene Dokumente können entfernt werden.")
+                db.execute("DELETE FROM document_names WHERE document_id=?",(identifier,))
                 db.execute("DELETE FROM shared_documents WHERE id=?",(identifier,))
             else:raise APIError(404,"not_found","Route nicht gefunden.")
 
@@ -4805,5 +4842,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 

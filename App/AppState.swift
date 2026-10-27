@@ -42,6 +42,10 @@ final class AppState {
     var experienceSection: ExperienceSection = .farts
     var showingFartRecorder = false
     var quickFartRecording = false
+    var quickCaptureAttempt = UUID()
+    private(set) var pendingQuickCapture: QuickCaptureRequest?
+    private var quickCaptureObserver: NSObjectProtocol?
+    private var sessionRevision = UUID()
     private(set) var farts: [FartClip] = []
     var fartArchiveVisible = false
     private(set) var loadingFartArchive = false
@@ -102,6 +106,9 @@ final class AppState {
         profile = Self.loadProfile()
         WidgetSharedStore.migrateLegacyAppData()
         configureCallbacks()
+        quickCaptureObserver = NotificationCenter.default.addObserver(forName: QuickCaptureRequests.notification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.acceptQuickCaptureRequest() }
+        }
         restoreSession()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") { loadPreview() }
@@ -135,6 +142,8 @@ final class AppState {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") { return }
         #endif
+        if phase == .restoring { restoreSession() }
+        acceptQuickCaptureRequest()
         guard UIApplication.shared.applicationState == .active, !activating else { return }
         activating = true; defer { activating = false }
         acceptQuickCaptureRequest()
@@ -197,6 +206,7 @@ final class AppState {
             alert = AppAlert(title: "Serveradresse prüfen", message: APIClientError.invalidServerURL.localizedDescription)
             return
         }
+        sessionRevision = UUID()
         phase = .restoring
         connectionMessage = "Sichere Anmeldung …"
         let newProfile = ServerProfile(baseURL: url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")), username: username.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -220,6 +230,7 @@ final class AppState {
             api.configure(baseURL: url, token: response.token)
             phase = .authenticated
             connectionMessage = "Verbunden"
+            acceptQuickCaptureRequest()
             DebugLogger.shared.log("Anmeldung erfolgreich", category: "Server")
             await syncNow(showErrors: true)
             offerForegroundMoments()
@@ -234,6 +245,8 @@ final class AppState {
     }
 
     func logout() async {
+        sessionRevision = UUID()
+        await DocumentFileCache.shared.clear()
         await SettingsBackup.shared.sync(app:self)
         SettingsBackup.shared.reset()
         await CinemaCoordinator.shared.leave()
@@ -272,11 +285,14 @@ final class AppState {
     func syncNow(showErrors: Bool = true) async -> Bool {
         guard phase == .authenticated, !isSyncing else { return false }
         isSyncing = true
+        let revision = sessionRevision
         defer { isSyncing = false }
         do {
             try await api.checkCompatibility()
             let snapshot = try await api.bootstrap()
+            guard revision == sessionRevision else { return false }
             me = snapshot.me
+            acceptQuickCaptureRequest()
             CinemaCoordinator.shared.configure(app:self)
             await SettingsBackup.shared.sync(app:self)
             if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
@@ -313,7 +329,7 @@ final class AppState {
             if health.sharingEnabled, Date.now.timeIntervalSince(lastHealthRefresh)>60 { await health.refresh(); lastHealthRefresh = .now }
             queuePresenceUpload(force: true)
             await PlannerService.shared.reconcile(app: self)
-            if !setupJourney.presented, !showingFartRecorder, pendingSweet==nil,pendingPhotoRequest==nil,UserDefaults.standard.string(forKey:"rjlove.changelog-seen") != RJVersion.app { showingChangelog = true }
+            if pendingQuickCapture == nil, !setupJourney.presented, !showingFartRecorder, pendingSweet==nil,pendingPhotoRequest==nil,UserDefaults.standard.string(forKey:"rjlove.changelog-seen") != RJVersion.app { showingChangelog = true }
             presentPendingNotification()
             offerForegroundMoments()
             return true
@@ -321,9 +337,17 @@ final class AppState {
             connectionMessage = issue.localizedDescription
             return false
         } catch let error as APIClientError {
+            guard revision == sessionRevision else { return false }
             if case .server(let status, _) = error, status == 401 {
-                await logout()
-                connectionMessage = "Auf einem anderen Gerät angemeldet oder Zugang geändert."
+                // Expiration is not an explicit logout: keep offline data and local drafts.
+                sessionRevision = UUID()
+                KeychainStore.delete(Self.tokenKey)
+                pollTask?.cancel(); pollTask=nil
+                phase = .setup
+                showingFartRecorder=false
+                me=nil; partners=[]
+                if let profile, let url=Self.normalizedServerURL(profile.baseURL) { api.configure(baseURL:url,token:nil) }
+                connectionMessage = "Sitzung abgelaufen. Bitte erneut anmelden; eure Daten bleiben erhalten."
                 return false
             }
             connectionMessage = "Offline · Daten bleiben erhalten"
@@ -536,6 +560,7 @@ final class AppState {
         showingChangelog = false
     }
     func offerForegroundMoments() {
+        if pendingQuickCapture != nil { acceptQuickCaptureRequest(); return }
         presentPendingNotification()
         guard notificationDestination == nil, pendingNotificationRoute == nil, UIApplication.shared.applicationState == .active, !showingChangelog, !showingProfile, !showingPartnerProfile, !showingCountdowns, !showingStatus, !showingHealthUpgrade, !showingEvening, myStatus?.isQuiet != true, !setupJourney.presented, !showingFartRecorder, pendingSweet == nil, pendingPhotoRequest == nil else { return }
         let defaults = UserDefaults.standard
@@ -640,8 +665,17 @@ final class AppState {
     }
 
     private func restoreSession() {
-        guard let profile, let url = Self.normalizedServerURL(profile.baseURL),
-              let token = KeychainStore.get(Self.tokenKey) else {
+        guard let profile, let url = Self.normalizedServerURL(profile.baseURL) else {
+            phase = .setup; connectionMessage = "Server einrichten"; return
+        }
+        let storedToken: String?
+        do { storedToken = try KeychainStore.read(Self.tokenKey) }
+        catch {
+            phase = .restoring
+            connectionMessage = "iPhone entsperren · gespeicherte Anmeldung wird geladen …"
+            return
+        }
+        guard let token = storedToken else {
             phase = .setup
             connectionMessage = "Server einrichten"
             return
@@ -667,13 +701,42 @@ final class AppState {
             WidgetSharedStore.defaults?.removeObject(forKey:"rjlove.status-requested")
             Task { _ = await setStatus(text:text,hours:values["hours"] as? Int ?? 2,quiet:values["quiet"] as? Bool ?? false) }
         }
-        if phase == .authenticated,WidgetSharedStore.defaults?.bool(forKey:"rjlove.quick-fart-requested") == true {
-            WidgetSharedStore.defaults?.set(false,forKey:"rjlove.quick-fart-requested")
-            handleDeepLink(URL(string:"rjlove://record-fart")!)
+        if let request = QuickCaptureRequests.pending() {
+            pendingQuickCapture = request
+            quickCaptureAttempt = UUID()
         }
     }
+    /// Called by the mounted main view, independent of network/health work.
+    func presentQuickCapture() async {
+        guard pendingQuickCapture != nil, phase == .authenticated, me != nil,
+              !setupJourney.presented, UIApplication.shared.applicationState == .active else { return }
+        if showingFartRecorder {
+            quickFartRecording=true
+            if studio.hasRecording || studio.draft != nil { acknowledgeQuickCapture() }
+            return
+        }
+        showingProfile=false; showingPartnerProfile=false; showingCountdowns=false
+        showingStatus=false; showingEvening=false; showingChangelog=false; showingHealthUpgrade=false
+        showingPoop=false; notificationDestination=nil; pendingSweet=nil; pendingPhotoRequest=nil
+        alert=nil
+        // Wait for actual sheet dismissal instead of presenting two sheets in one frame.
+        for _ in 0..<40 {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled, phase == .authenticated,
+                  UIApplication.shared.applicationState == .active else { return }
+            let root = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows).first { $0.isKeyWindow }?.rootViewController
+            if root?.presentedViewController == nil {
+                openFartRecorder(quick:true)
+                return
+            }
+        }
+    }
+    func acknowledgeQuickCapture() {
+        if let request = pendingQuickCapture { QuickCaptureRequests.acknowledge(request.id) }
+        pendingQuickCapture = nil
+    }
     private func observeSystemEvents() {
-        notificationTasks.append(Task{[weak self] in for await _ in NotificationCenter.default.notifications(named:Notification.Name("rjEmergencyFartRequested")){self?.acceptQuickCaptureRequest()}})
 
         notificationTasks.append(Task { [weak self] in
             for await notification in NotificationCenter.default.notifications(named: .rjDeviceTokenReceived) {
@@ -771,7 +834,7 @@ final class AppState {
     }
 
     private func presentPendingNotification() {
-        guard phase == .authenticated, !setupJourney.presented, !showingFartRecorder, let me, let route = pendingNotificationRoute else { return }
+        guard phase == .authenticated, !setupJourney.presented, !showingFartRecorder, pendingQuickCapture == nil, let me, let route = pendingNotificationRoute else { return }
         pendingNotificationRoute = nil
         if let account = route.account, account != me.id {
             alert = AppAlert(title: "Anderes Konto", message: "Diese Mitteilung ist für das andere Konto. Bitte mit dem passenden Konto anmelden.")
@@ -802,8 +865,8 @@ final class AppState {
         case "farts": selectedTab = .moments; experienceSection = .farts
         case "dates": selectedTab = .moments; experienceSection = .love
         case "record-fart":
-            selectedTab = .moments; experienceSection = .farts
-            openFartRecorder(quick:true)
+            QuickCaptureRequests.enqueue()
+            acceptQuickCaptureRequest()
         case "stop-recording":
             studio.finishRecording()
             selectedTab = .moments; experienceSection = .farts
@@ -985,4 +1048,5 @@ extension AppState {
     }
 }
 #endif
+
 

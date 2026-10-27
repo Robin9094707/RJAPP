@@ -2,11 +2,13 @@ name: Build RJ Love unsigned IPA
 
 on:
   push:
+    branches: [main, codex/rj-love-4.3.0]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: rj-love-${{ github.ref }}
+  group: rj-love-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -44,7 +46,9 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Backend/rj_love_server.py
           python3 Scripts/validate_project.py
-          python3 -m unittest -v Tests/test_cinema42.py
+          python3 -m unittest -q Tests/test_cinema42.py Tests/test_dashboard43.py
+          swiftc Shared/HomeShortcuts.swift Shared/HomeLayout.swift Tests/PreferencesSmoke.swift -o /tmp/rj-preferences-smoke
+          /tmp/rj-preferences-smoke
 
       - name: Install XcodeGen
         shell: bash
@@ -104,9 +108,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-4.2.1-Komplettpaket
+          name: RJ-Love-4.3.0-Komplettpaket
           path: |
-            RJ-Love-4.2.1-Komplettpaket.zip
+            RJ-Love-4.3.0-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30

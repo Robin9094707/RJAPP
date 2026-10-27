@@ -17,6 +17,23 @@ struct HomeEditorView: View {
                     }
                 }
                 Section {
+                    ForEach($draft.tabs) { $tab in
+                        VStack(alignment:.leading,spacing:8) {
+                            TextField("Beschriftung",text:$tab.title)
+                            Picker("Öffnet",selection:$tab.action) {
+                                ForEach(HomeQuickAction.allCases.filter { action in action == tab.action || !draft.tabs.contains { $0.action == action } }) { action in Label(action.title,systemImage:action.symbol).tag(action) }
+                            }
+                        }
+                    }.onMove { draft.tabs.move(fromOffsets:$0,toOffset:$1) }.onDelete { offsets in if draft.tabs.count-offsets.count > 0 { draft.tabs.remove(atOffsets:offsets) } }
+                    if draft.tabs.count < 5 {
+                        Menu("Schaltfläche hinzufügen",systemImage:"plus.circle") {
+                            ForEach(HomeQuickAction.allCases.filter { action in !draft.tabs.contains { $0.action == action } }) { action in
+                                Button(action.title,systemImage:action.symbol) { draft.tabs.append(HomeShortcut(action:action)) }
+                            }
+                        }
+                    }
+                } header: { Text("Navigation unten · bis zu fünf") } footer: { Text("Eine bis fünf Schaltflächen für beliebige Bereiche. Kino bleibt über Schnellzugriffe, Karten und die Einstellungen erreichbar. Profil und Einstellungen findest du auch über das Personensymbol.") }
+                Section {
                     ForEach($draft.shortcuts) { $shortcut in
                         VStack(alignment:.leading,spacing:8){
                             TextField("Name des Buttons",text:$shortcut.title).accessibilityIdentifier("shortcut-title-"+shortcut.id)
@@ -25,6 +42,15 @@ struct HomeEditorView: View {
                     }.onMove{draft.shortcuts.move(fromOffsets:$0,toOffset:$1)}.onDelete{draft.shortcuts.remove(atOffsets:$0)}
                     if draft.shortcuts.count<12 {Menu("Schnellzugriff hinzufügen",systemImage:"plus.circle"){ForEach(HomeQuickAction.allCases){action in Button(action.title,systemImage:action.symbol){draft.shortcuts.append(HomeShortcut(action:action))}}}}
                 } header:{Text("Kleine Schnellzugriffe")} footer:{Text("Bis zu zwölf Buttons direkt oben auf deiner Startseite. Namen frei ändern, verschieben oder entfernen. Jeder von euch hat seine eigene Auswahl.")}
+                Section {
+                    ForEach($draft.actions) { $shortcut in
+                        VStack(alignment:.leading,spacing:8) {
+                            TextField("Name des Buttons",text:$shortcut.title)
+                            Picker("Öffnet",selection:$shortcut.action) {ForEach(HomeQuickAction.allCases) {action in Label(action.title,systemImage:action.symbol).tag(action)}}
+                        }
+                    }.onMove {draft.actions.move(fromOffsets:$0,toOffset:$1)}.onDelete {draft.actions.remove(atOffsets:$0)}
+                    if draft.actions.count < 12 {Menu("Schnellaktion hinzufügen",systemImage:"plus.circle") {ForEach(HomeQuickAction.allCases) {action in Button(action.title,systemImage:action.symbol) {draft.actions.append(HomeShortcut(action:action))}}}}
+                } header:{Text("Buttons in der Schnellaktionen-Karte")} footer:{Text("Auch die bisherigen vier festen Aktionen sind jetzt frei bearbeitbar. Die gesamte Karte lässt sich unten entfernen oder verschieben.")}
                 Section {
                     ForEach($draft.cards) { $card in
                         VStack(alignment: .leading, spacing: 10) {
@@ -57,7 +83,7 @@ struct HomeEditorView: View {
                     ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() }.disabled(saving) }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(saving ? "Speichert …" : "Speichern") { Task { await save() } }
-                            .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.title.count > 80 || draft.shortcuts.contains{$0.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || $0.title.count>24})
+                            .disabled(saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.title.count > 80 || (draft.shortcuts + draft.tabs + draft.actions).contains{$0.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || $0.title.count>24})
                             .accessibilityIdentifier("home-layout-save")
                     }
                 }.interactiveDismissDisabled(saving)

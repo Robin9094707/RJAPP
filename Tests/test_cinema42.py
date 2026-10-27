@@ -21,7 +21,7 @@ class Cinema42Tests(unittest.TestCase):
   self.user=config['users'][0]['id'];self.other=config['users'][1]['id'];self.app.cinema.bridge_stop.set();self.app.cinema.bridge_thread.join(timeout=2)
  def tearDown(self):
   self.http.shutdown();self.http.server_close();self.app.close();self.thread.join();self.tmp.cleanup()
- def request(self,path,body=None,who=None,version='4.2.0'):
+ def request(self,path,body=None,who=None,version=server.APP_VERSION):
   h={'X-RJ-App-Version':version,'X-RJ-Protocol':'5','Content-Type':'application/json'}
   if who is not None:h['Authorization']='Bearer '+self.tokens[who]
   r=urllib.request.Request(self.base+path,data=json.dumps(body).encode() if body is not None else None,headers=h)

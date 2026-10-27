@@ -2,7 +2,7 @@
 
 Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widgets und Alltag.
 
-**Aktuelle App: 4.2.1 (421).** Der Server bleibt bei 4.2.0. Momente mit Bestätigung löschen, direkter Kino-Tab und eine ausblendbare native Plex-Leiste: [Release 4.2.1](RELEASE-4.2.1.md).
+**Aktuelle App: 4.3.0 (430), Server 4.3.0.** Frei gestaltbare Startseite und Navigation, HomeKit mit Vollbild und Kamera-Audio, Live-Kamera im AirPlay-Dashboard, gemeinsame Dokumente und automatische Einstellungssicherung: [Release 4.3.0](RELEASE-4.3.0.md).
 
 ## Neu: Unser Kino
 
@@ -20,7 +20,7 @@ Plex-Fernsteuerung setzt einen kompatiblen Empfänger und passende Serverrechte 
 
 Server stoppen, Konfiguration und Datenordner sichern, nur `Backend/rj_love_server.py` ersetzen und neu starten. Konfiguration, Konto-IDs und Datenpfad unverändert behalten. Die neue IPA mit demselben Signierteam, derselben Bundle-ID und identischer App Group über die bestehende App installieren. Die App nicht löschen.
 
-Die Datenbank wird ausschließlich additiv erweitert. Die App benötigt mindestens Server 4.2.0; der Server akzeptiert Apps ab 4.2.0. Beim Update von App 4.2.0 auf 4.2.1 muss der Server nicht ersetzt werden.
+Die Datenbank wird ausschließlich additiv erweitert. App und Server benötigen jetzt mindestens 4.3.0. Alte Apps erhalten die Update-Ansicht. Beide müssen aus demselben Komplettpaket aktualisiert werden.
 
 ## Installation
 
@@ -34,6 +34,6 @@ Details: [Installation](INSTALLATION.md), [Funktionen](FEATURES.md), [Datenschut
 
 ## Build
 
-GitHub Actions baut auf `main` App und Widgets als unsignierte IPA und liefert die einzelne Serverdatei sowie ein Komplettpaket. Vier gezielte Backend-Prüfungen decken die neuen Kinoabläufe ab. Alte Tests und zusätzliche Simulator-Jobs wurden entfernt. Compiler- und Paketprüfung bleiben erhalten.
+GitHub Actions baut auf `main` App und Widgets als unsignierte IPA und liefert die einzelne Serverdatei sowie ein Komplettpaket. Sieben schnelle HTTP-Prüfungen und ein kurzer Swift-Layouttest prüfen Kino, Dokumente, Einstellungen und Migration. Keine zusätzlichen Simulator-Jobs. Compiler- und Paketprüfung bleiben erhalten.
 
 YouTube verwendet [YouTubeKit](https://github.com/b5i/YouTubeKit), fest auf eine Revision gebunden; der Lizenztext liegt in den App-Ressourcen. Google-/YouTube-Anmeldedaten bleiben auf dem jeweiligen iPhone. Plex-Brücken speichern Zugangstokens ausschließlich befristet im Serverspeicher.

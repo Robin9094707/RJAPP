@@ -3,6 +3,9 @@ import SwiftUI
 struct NotificationTargetResponse: Decodable {
     let record: SharedRecord?
     let clip: FartClip?
+    let folderID:String?
+    let documentID:String?
+    enum CodingKeys:String,CodingKey {case record,clip;case folderID="folder_id",documentID="document_id"}
 }
 extension APIClient {
     func notificationTarget(_ route: NotificationRoute) async throws -> NotificationTargetResponse {
@@ -53,6 +56,7 @@ struct NotificationDestinationView: View {
             NotificationRecordDetail(original: record)
         } else {
             switch route.target {
+            case "documents": DocumentsView(folderID:content?.folderID,highlightID:content?.documentID)
             case "chat": MessengerView(initialMessageID: route.identifier)
             case "partner": PartnerProfileView()
             case "planner": PlannerView()

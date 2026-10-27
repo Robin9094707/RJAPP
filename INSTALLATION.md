@@ -1,10 +1,10 @@
-# App-Update 4.2.1
+# App-Update 4.3.0
 
-Nur die neue IPA über die bestehende App installieren. Server 4.2.0, Konfiguration und Datenordner unverändert behalten. Details: [Release 4.2.1](RELEASE-4.2.1.md).
+App und Server auf 4.3.0 aktualisieren. Bestehende Konfiguration, Konto-IDs und Datenordner behalten. Details: [Release 4.3.0](RELEASE-4.3.0.md).
 
 # RJ Love installieren und aktualisieren
 
-## Bestehende Installation auf 4.2.0 aktualisieren
+## Bestehende Installation auf 4.3.0 aktualisieren
 
 1. Python-Server stoppen. Vorhandene Konfiguration und kompletten Datenordner sichern.
 2. Nur `rj_love_server.py` ersetzen. Vorhandene Konto-IDs, Datenpfad, Passwörter und Serveradresse beibehalten.
@@ -12,7 +12,7 @@ Nur die neue IPA über die bestehende App installieren. Server 4.2.0, Konfigurat
 4. Beide iPhones mit der neuen IPA aktualisieren. Dieselbe Bundle-ID und dasselbe Signierteam verwenden; die bestehende App nicht löschen.
 5. Haupt-App und eingebettete Widget-Extension zusammen signieren. Die bereits funktionierende App Group in beiden erhalten; die aktuelle Projektvorgabe ist `group.dfbc88d056a46f1b.1`.
 
-App und Server müssen beide 4.2.0 sein. Alte Apps erhalten vor Änderungen einen Updatehinweis. Ein Wechsel des Signierteams oder der Bundle-ID kann den Zugriff auf Keychain und lokale App-Daten verändern.
+App und Server müssen beide 4.3.0 sein. Alte Apps erhalten vor Änderungen einen Updatehinweis. Ein Wechsel des Signierteams oder der Bundle-ID kann den Zugriff auf Keychain und lokale App-Daten verändern.
 
 ## Neue Installation
 
@@ -46,4 +46,11 @@ Auf der Startseite „HomeKit aktivieren“, iOS-Zugriff erlauben und ein eigene
 
 Widgets benötigen identische erreichbare App Groups. HealthKit, APNs, AlarmKit und HomeKit benötigen passende Signierung und iOS-Zustimmung. Background-Audio ist für laufende native Wiedergabe vorgesehen; iOS gewährt keinen beliebigen Dauerbetrieb. Kamera- und eigene TV-Dashboard-Ansichten stoppen bei gesperrtem iPhone.
 
-Bark-/Push-Einstellungen, eigene Serveradresse und alle bisherigen Konfigurationswerte übernehmen. Die vollständigen Funktionsgrenzen und Änderungen stehen in [Release 4.2.0](RELEASE-4.2.0.md).
+Bark-/Push-Einstellungen, eigene Serveradresse und alle bisherigen Konfigurationswerte übernehmen. Die vollständigen Funktionsgrenzen und Änderungen stehen in [Release 4.3.0](RELEASE-4.3.0.md).
+
+
+## Dokumente und automatische Sicherung
+
+Profil → Gemeinsame Dokumente: Dateien hochladen, verschachtelte Ordner anlegen und Ordner persönlich favorisieren. Ein Tipp auf eine Bark-Upload-Mitteilung öffnet den richtigen Ordner und markiert die Datei. Reverse-Proxys müssen `/v1/documents` samt Unterpfaden und `/v1/settings` weiterleiten.
+
+Unter Profil → Automatische Sicherung den ersten erfolgreichen Abgleich prüfen. Nach Neuanmeldung werden portable Einstellungen automatisch wiederhergestellt; Betriebssystem-Berechtigungen und lokale Dateien/Entwürfe bleiben gerätegebunden. Startseite und bis zu fünf persönliche Navigationstasten: Profil → Startseite & Navigation. Die Kamera zum TV-Dashboard unter AirPlay gestalten als Widget hinzufügen und auswählen.

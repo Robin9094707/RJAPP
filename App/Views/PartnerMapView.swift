@@ -4,6 +4,10 @@ import SwiftUI
 
 struct PartnerMapView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var refreshing=false
+    @State private var refreshTurn=0.0
+    @State private var geocodeTask:Task<Void,Never>?
     @State private var position: MapCameraPosition = .automatic
     @State private var address = "Standort wird aufgelöst …"
     @State private var showingPlaceEditor = false
@@ -14,6 +18,11 @@ struct PartnerMapView: View {
             Map(position: $position) {
                 UserAnnotation()
                 if let coordinate = partnerCoordinate {
+                    if let accuracy=partnerAccuracy {
+                        MapCircle(center:coordinate,radius:accuracy)
+                            .foregroundStyle(LovePalette.pink.opacity(0.12))
+                            .stroke(LovePalette.pink.opacity(0.6),lineWidth:1.5)
+                    }
                     Annotation(appState.partner?.displayName ?? "Schatzi", coordinate: coordinate, anchor: .bottom) {
                         VStack(spacing: 3) {
                             PartnerAvatar(name: appState.partner?.displayName ?? "Schatzi", size: 58)
@@ -67,9 +76,9 @@ struct PartnerMapView: View {
             centerOnPartner()
             resolveAddress()
         }
-        .onChange(of: appState.partner?.presence?.latitude) { _, _ in
-            resolveAddress()
-        }
+        .onChange(of: appState.partner?.presence?.locationTimestamp) { _, _ in resolveAddress() }
+        .onChange(of: appState.partner?.presence?.locationSharing) { _,_ in resolveAddress() }
+        .onDisappear {geocodeTask?.cancel()}
     }
 
     private var partnerSheet: some View {
@@ -107,10 +116,17 @@ struct PartnerMapView: View {
                 }
                 .disabled(partnerCoordinate == nil)
                 mapAction("Neu laden", symbol: "arrow.clockwise", tint: LovePalette.violet) {
-                    Task { await appState.syncNow(showErrors: false) }
-                }
+                    guard !refreshing else {return}
+                    refreshing=true
+                    if !reduceMotion {withAnimation(.linear(duration:0.8)) {refreshTurn += 360}}
+                    Task {
+                        let success=await appState.syncNow(showErrors:true)
+                        if success {resolveAddress();if reduceMotion {centerOnPartner()} else {withAnimation(.smooth(duration:0.6)) {centerOnPartner()}};Haptics.success()}
+                        refreshing=false
+                    }
+                }.disabled(refreshing || appState.isSyncing)
             }
-
+            if let accuracy=partnerAccuracy {Label("Genauigkeit ca. \(Int(accuracy.rounded())) m",systemImage:"scope").font(.caption).foregroundStyle(.secondary)}
             if let distance {
                 Label(distance.formatted(.measurement(width: .abbreviated, usage: .road)), systemImage: "point.topleft.down.to.point.bottomright.curvepath")
                     .font(.caption)
@@ -122,12 +138,17 @@ struct PartnerMapView: View {
     }
 
     private var partnerCoordinate: CLLocationCoordinate2D? {
-        guard appState.partner?.presence?.locationSharing != false,
+        guard appState.partner?.presence?.locationSharing == true,
               let latitude = appState.partner?.presence?.latitude,
               let longitude = appState.partner?.presence?.longitude else { return nil }
-        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        let coordinate=CLLocationCoordinate2D(latitude:latitude,longitude:longitude)
+        return CLLocationCoordinate2DIsValid(coordinate) ? coordinate : nil
     }
 
+    private var partnerAccuracy:Double? {
+        guard partnerCoordinate != nil,let accuracy=appState.partner?.presence?.horizontalAccuracy,accuracy.isFinite,accuracy > 0 else {return nil}
+        return min(accuracy,20_000_000)
+    }
     private var distance: Measurement<UnitLength>? {
         guard let own = appState.location.lastLocation, let partnerCoordinate else { return nil }
         let meters = own.distance(from: CLLocation(latitude: partnerCoordinate.latitude, longitude: partnerCoordinate.longitude))
@@ -137,25 +158,28 @@ struct PartnerMapView: View {
     private func centerOnPartner() {
         guard let coordinate = partnerCoordinate else { return }
         position = .camera(
-            MapCamera(centerCoordinate: coordinate, distance: 1_100, heading: 0, pitch: 35)
+            MapCamera(centerCoordinate: coordinate, distance: max(1_100,min((partnerAccuracy ?? 0)*5,20_000_000)), heading: 0, pitch: 35)
         )
     }
 
     private func resolveAddress() {
+        geocodeTask?.cancel()
         guard let coordinate = partnerCoordinate else {
             address = appState.partner?.presence?.locationSharing == false
                 ? "Standortfreigabe ist ausgeschaltet"
                 : "Noch kein Standort verfügbar"
             return
         }
-        Task {
+        geocodeTask=Task {
             do {
                 let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
                 guard let request = MKReverseGeocodingRequest(location: location) else { return }
                 let mapItems = try await request.mapItems
+                guard !Task.isCancelled,let current=partnerCoordinate,current.latitude == coordinate.latitude,current.longitude == coordinate.longitude else {return}
                 address = mapItems.first?.name
                     ?? String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
             } catch {
+                guard !Task.isCancelled else {return}
                 address = String(format: "%.5f, %.5f", coordinate.latitude, coordinate.longitude)
             }
         }
@@ -172,11 +196,14 @@ struct PartnerMapView: View {
     private func mapAction(_ title: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                Image(systemName: symbol).font(.title3).foregroundStyle(tint)
+                Group {
+                    if title == "Neu laden" && refreshing {ProgressView().tint(tint)}
+                    else {Image(systemName:symbol).font(.title3).foregroundStyle(tint).rotationEffect(.degrees(title == "Neu laden" ? refreshTurn:0))}
+                }
                 Text(title).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 68)
-            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .loveGlass(in:RoundedRectangle(cornerRadius:18,style:.continuous))
         }
         .buttonStyle(.plain)
     }

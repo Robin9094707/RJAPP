@@ -7,7 +7,7 @@ struct NotificationRoute: Hashable, Identifiable, Sendable {
     var commentID: String?
     var account: String?
     var id: String { [target, identifier ?? "", commentID ?? "", account ?? ""].joined(separator: ":") }
-    static let targets: Set<String> = ["home", "feed", "partner", "planner", "alarms", "chat", "moments", "farts", "poop", "countdowns", "record", "fart", "fart-comments"]
+    static let targets: Set<String> = ["documents", "home", "feed", "partner", "planner", "alarms", "chat", "moments", "farts", "poop", "countdowns", "record", "fart", "fart-comments"]
 
     init(target: String, identifier: String? = nil, commentID: String? = nil, account: String? = nil) {
         self.target = target; self.identifier = identifier; self.commentID = commentID; self.account = account

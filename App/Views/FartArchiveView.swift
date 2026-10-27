@@ -76,11 +76,18 @@ struct FartStudioView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if room == .sammlung && query.isEmpty { hero }
-                    HStack {
-                        NavigationLink {FartLibraryView()} label:{Label("Duftschatzkiste & Import",systemImage:"square.and.arrow.down")}
-                        Spacer()
-                        NavigationLink{EveningPlaylistView()}label:{Label("Abendplayer",systemImage:"play.square.stack.fill")}.accessibilityIdentifier("evening-playlist-link")
-                    }.font(.caption.bold())
+                    if room == .sammlung {
+                        HStack(spacing:12) {
+                            NavigationLink {FartLibraryView()} label:{Label("Schatzkiste & Import",systemImage:"square.and.arrow.down").frame(maxWidth:.infinity,minHeight:44)}
+                            NavigationLink {EveningPlaylistView()} label:{Label("Abendplayer",systemImage:"play.square.stack.fill").frame(maxWidth:.infinity,minHeight:44)}.accessibilityIdentifier("evening-playlist-link")
+                        }.font(.caption.bold()).buttonStyle(.bordered)
+                        HStack {
+                            Button {favorites.toggle()} label:{Label("Lieblinge",systemImage:favorites ? "heart.fill":"heart")}.tint(favorites ? LovePalette.pink:LovePalette.violet)
+                            Spacer()
+                            Menu {Picker("Sortieren",selection:$order) {ForEach(DuftOrder.allCases,id:\.self) {Text($0.rawValue).tag($0)}}} label:{Label("Sortieren",systemImage:"arrow.up.arrow.down")}
+                            Button {filtersExpanded=true;showingDates=true} label:{Image(systemName:"calendar")}.accessibilityLabel("Zeitraum filtern")
+                        }.font(.subheadline).buttonStyle(.bordered)
+                    }
                     if app.studio.queueCount>0{HStack{Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)");Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18))}
                     DisclosureGroup("Verfeinern · \(clips.count) Werke",isExpanded:$filtersExpanded){filters.padding(.top,12)}.font(.subheadline.bold()).loveCard()
                     if app.loadingFartArchive { ProgressView("Euer vollständiges Archiv wird geladen …").font(.footnote) }
@@ -131,20 +138,18 @@ struct FartStudioView: View {
             HStack(alignment:.center,spacing:10) {
                 VStack(alignment:.leading,spacing:12) {
                     LoveEyebrow(text:"Kleine Kunst. Große Liebe.")
-                    Text("Für immer.\nFürzeinander.").font(.system(size:34,weight:.medium,design:.serif)).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("duft-archive-title")
+                    Text("Dein Duftstudio.").font(.system(size:28,weight:.medium,design:.serif)).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("duft-archive-title")
                     Text("Ein privates Tonstudio für euren ganz eigenen Humor.").font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer(minLength:0)
-                PuffMascot(active:false).frame(width:115,height:130).clipped()
+                PuffMascot(active:false).frame(width:78,height:90).clipped()
             }
             HStack(spacing:12) {
                 studioStat(app.farts.count.formatted(),"Meisterwerke","cloud.fill")
                 studioStat(Set(app.farts.compactMap{$0.date.map{cal.startOfDay(for:$0)}}).count.formatted(),"Dufttage","calendar")
                 studioStat(app.farts.reduce(0){$0+($1.commentCount ?? 0)}.formatted(),"Kommentare","bubble.left.fill")
             }
-            if let favorite=app.farts.filter({$0.stars != nil}).max(by:{($0.stars ?? 0)<($1.stars ?? 0)}) {
-                HStack(spacing:12){Image(systemName:"trophy.fill").foregroundStyle(LovePalette.coral);VStack(alignment:.leading,spacing:4){Text("Ein Liebling der Duftjury").font(.caption).foregroundStyle(.secondary);Text(favorite.title).font(.subheadline.bold()).lineLimit(1)};Spacer();Text("\(favorite.stars ?? 0) ★").font(.subheadline.bold()).foregroundStyle(LovePalette.coral)}.padding(14).background(LovePalette.coral.opacity(0.09),in:RoundedRectangle(cornerRadius:18))
-            }
+
         }.loveCard()
     }
     private func studioStat(_ value:String,_ title:String,_ symbol:String)->some View {

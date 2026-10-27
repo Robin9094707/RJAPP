@@ -34,12 +34,11 @@ struct RJLoveShortcuts: AppShortcutsProvider {
     }
 }
 
-struct EmergencyFartIntent: AppIntent {
+struct EmergencyFartIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Notfallfurz aufnehmen"
-    static var openAppWhenRun = true
+    static var supportedModes: IntentModes { .foreground }
     @MainActor func perform() async throws -> some IntentResult {
-        WidgetSharedStore.defaults?.set(true,forKey:"rjlove.quick-fart-requested")
-        NotificationCenter.default.post(name:Notification.Name("rjEmergencyFartRequested"),object:nil)
+        QuickCaptureRequests.enqueue()
         return .result()
     }
 }
@@ -78,3 +77,4 @@ struct LogPoopIntent:AppIntent {
     static var openAppWhenRun=true
     @MainActor func perform() async throws -> some IntentResult {requestLoveRoute("rjlove://poop-log");return .result()}
 }
+

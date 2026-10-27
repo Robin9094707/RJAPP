@@ -179,6 +179,7 @@ struct FartRecorderView: View {
     @State private var saving = false
     @State private var discard = false
     @State private var starting = false
+    @State private var attemptedAutoStart = false
     @State private var failedUpload = false
     private var studio: AudioStudioService { appState.studio }
     var body: some View {
@@ -232,7 +233,7 @@ struct FartRecorderView: View {
             }
         }.interactiveDismissDisabled(saving)
         .animation(reduceMotion ? nil : .snappy, value: studio.mode)
-        .task {
+        .task(id:appState.me?.id) {
             guard let ownerID = appState.me?.id else { return }
             studio.prepare(ownerID: ownerID)
             if quip.isEmpty {
@@ -240,14 +241,25 @@ struct FartRecorderView: View {
                 quip = DuftspruchDeck.next(for: situation)
             }
             trimEnd = studio.draft?.duration ?? 0.2
-            if autoStart && studio.draft == nil && !studio.hasRecording {
-                starting = true; await studio.start(ownerID: ownerID); starting = false
-            }
+            await startQuickCaptureIfReady()
         }
+        .task(id:scenePhase) { if scenePhase == .active { await startQuickCaptureIfReady() } }
+        .task(id:autoStart) { await startQuickCaptureIfReady() }
         .onChange(of: situation) { _, value in quip = DuftspruchDeck.next(for: value) }
         .onChange(of: studio.mode) { _, mode in if mode == .review { trimStart = 0; trimEnd = studio.draft?.duration ?? 0.2 } }
         .onChange(of: scenePhase) { _, phase in if phase == .background { studio.finishRecording() } }
         .onDisappear { studio.finishRecording(); studio.stopPlayback() }
+    }
+    @MainActor private func startQuickCaptureIfReady() async {
+        guard autoStart, !attemptedAutoStart, !starting, scenePhase == .active,
+              let ownerID = appState.me?.id else { return }
+        starting=true
+        studio.prepare(ownerID:ownerID)
+        if studio.draft == nil && !studio.hasRecording { await studio.start(ownerID:ownerID) }
+        starting=false
+        guard !Task.isCancelled, scenePhase == .active else { return }
+        attemptedAutoStart=true
+        appState.acknowledgeQuickCapture()
     }
     private var spruchCard: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -385,3 +397,4 @@ private struct FartRatingView: View {
         }
     }
 }
+

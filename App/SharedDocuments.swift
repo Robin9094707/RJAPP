@@ -32,18 +32,19 @@ extension APIClient {
     }
     func removeDocument(kind:String,id:String) async throws {_ = try await execute(try request(path:"/v1/documents/\(kind)/\(id)",method:"DELETE"),as:EmptyResponse.self)}
     func documentFile(_ document:SharedDocument) async throws -> URL {
-        let (file,response)=try await session.download(for:request(path:"/v1/assets/"+document.assetID,method:"GET"))
-        guard let http=response as? HTTPURLResponse,http.statusCode==200 else {throw APIClientError.transport("Dieses Dokument ist nicht mehr verfügbar.")}
-        let directory=FileManager.default.temporaryDirectory.appendingPathComponent("rj-document-"+UUID().uuidString,isDirectory:true)
-        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
-        let name=URL(fileURLWithPath:document.filename).lastPathComponent
-        let destination=directory.appendingPathComponent(name == "." || name == ".." ? "Dokument" : name)
-        try FileManager.default.moveItem(at:file,to:destination)
-        try? FileManager.default.setAttributes([.protectionKey:FileProtectionType.complete],ofItemAtPath:destination.path)
-        return destination
+        try await DocumentFileCache.shared.previewCopy(document,api:self)
     }
 }
 
+enum DocumentSort: String, CaseIterable {
+    case name="Name", newest="Neueste zuerst", size="Größe", type="Dateityp"
+}
+struct DocumentEditTarget:Identifiable {
+    let id:String
+    let kind:String
+    let name:String
+    let parentID:String?
+}
 struct DocumentsView:View {
     var folderID:String?=nil
     var highlightID:String?=nil
@@ -61,39 +62,75 @@ struct DocumentsView:View {
     @State private var deleteFile:SharedDocument?
     @State private var deleteFolder:DocumentFolder?
     @State private var preview:DocumentPreviewItem?
+    @State private var renameTarget:DocumentEditTarget?
+    @State private var moveTarget:DocumentEditTarget?
+    @State private var information:SharedDocument?
+    @State private var sort:DocumentSort = .name
+    @State private var searchEverywhere=false
+    @AppStorage("rjlove.documents-grid") private var grid=false
     private var title:String {library.folders.first {$0.id == folderID}?.name ?? "Dokumente"}
-    private var folders:[DocumentFolder] {library.folders.filter {$0.parentID == folderID && (query.isEmpty || $0.name.localizedStandardContains(query))}}
-    private var files:[SharedDocument] {library.files.filter {$0.folderID == folderID && (query.isEmpty || $0.filename.localizedStandardContains(query))}}
+    private var folders:[DocumentFolder] {
+        library.folders.filter { ($0.parentID == folderID || searchEverywhere && !query.isEmpty) && (query.isEmpty || $0.name.localizedStandardContains(query)) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+    private var files:[SharedDocument] {
+        library.files.filter { ($0.folderID == folderID || searchEverywhere && !query.isEmpty) && (query.isEmpty || $0.filename.localizedStandardContains(query)) }
+            .sorted { a,b in
+                switch sort {
+                case .name: return a.filename.localizedStandardCompare(b.filename) == .orderedAscending
+                case .newest: return a.createdAt == b.createdAt ? a.id < b.id : a.createdAt > b.createdAt
+                case .size: return a.sizeBytes == b.sizeBytes ? a.id < b.id : a.sizeBytes > b.sizeBytes
+                case .type: return a.mimeType == b.mimeType ? a.filename.localizedStandardCompare(b.filename) == .orderedAscending : a.mimeType < b.mimeType
+                }
+            }
+    }
     var body:some View {
+        folderDialog
+        .confirmationDialog("Dokument für beide entfernen?",isPresented:Binding(get:{deleteFile != nil},set:{if !$0 {deleteFile=nil}}),titleVisibility:.visible) {
+            if let file=deleteFile {Button("Dokument entfernen",role:.destructive) {Task {await remove(kind:"files",id:file.id)};deleteFile=nil}}
+            Button("Abbrechen",role:.cancel) {deleteFile=nil}
+        }
+        .confirmationDialog("Leeren Ordner entfernen?",isPresented:Binding(get:{deleteFolder != nil},set:{if !$0 {deleteFolder=nil}}),titleVisibility:.visible) {
+            if let folder=deleteFolder {Button("Ordner entfernen",role:.destructive) {Task {await remove(kind:"folders",id:folder.id)};deleteFolder=nil}}
+            Button("Abbrechen",role:.cancel) {deleteFolder=nil}
+        }
+    }
+    private var folderDialog:some View {
+        informationDialog
+        .alert("Neuer Ordner",isPresented:$newFolder) {
+            TextField("Ordnername",text:$name)
+            Button("Anlegen") {Task {await createFolder()}}.disabled(name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+            Button("Abbrechen",role:.cancel) {}
+        }
+    }
+    private var informationDialog:some View {
+        renameDialog
+        .alert("Dateiinformationen",isPresented:Binding(get:{information != nil},set:{if !$0 {information=nil}})) {Button("OK") {information=nil}} message:{
+            if let file=information {Text(file.filename+"\n"+ByteCountFormatter.string(fromByteCount:file.sizeBytes,countStyle:.file)+"\n"+file.mimeType+"\nOrdner: "+folderPath(file.folderID))}
+        }
+    }
+    private var renameDialog:some View {
+        previewSheets
+        .alert("Umbenennen",isPresented:Binding(get:{renameTarget != nil},set:{if !$0 {renameTarget=nil}})) {
+            TextField("Name",text:$name)
+            Button("Speichern") {if let target=renameTarget {let value=name;Task {await change("rename",target:target,values:["name":value])}};renameTarget=nil}.disabled(name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+            Button("Abbrechen",role:.cancel) {renameTarget=nil}
+        } message:{Text("Bei Dateien die Dateiendung beibehalten, damit sie weiterhin richtig geöffnet werden.")}
+    }
+    private var previewSheets:some View {
+        browser
+        .sheet(isPresented:$importing) {SharedDocumentPicker {result in importing=false;switch result {case .success(let file):Task {await upload(file)};case .failure(let issue):if !(issue is CancellationError) {error=issue.localizedDescription}}}}
+        .sheet(item:$preview) {item in DocumentPreviewScreen(item:item)}
+        .sheet(item:$moveTarget) {target in DocumentMovePicker(library:library,target:target) { destination in
+            moveTarget=nil;Task {await change("move",target:target,values:["folder_id":destination as Any? ?? NSNull()])}
+        }}
+    }
+    private var browser:some View {
         ScrollViewReader {reader in
-            ScrollView {
-                LazyVStack(alignment:.leading,spacing:18) {
-                    if folderID == nil {
-                        VStack(alignment:.leading,spacing:12) {
-                            LoveIcon(symbol:"folder.fill",tint:LovePalette.blue,size:52)
-                            Text("Alles für uns.").font(.system(size:30,weight:.medium,design:.serif))
-                            Text("Ein gemeinsamer Platz für eure Unterlagen. Neue Uploads kommen per Bark direkt zum passenden Ordner.").font(.subheadline).foregroundStyle(.secondary)
-                            Text("\(library.folders.count) Ordner · \(library.files.count) Dateien").font(.caption.bold()).foregroundStyle(LovePalette.blue)
-                        }.loveCard()
-                    }
-                    if let transferLabel {VStack(alignment:.leading,spacing:8) {ProgressView(value:progress);Text(transferLabel).font(.caption)}.loveCard()}
-                    if let error {VStack(alignment:.leading,spacing:8) {Text(error).font(.subheadline).foregroundStyle(.orange);Button("Erneut laden") {Task {await load()}}}.loveCard()}
-                    if loading {ProgressView("Eure Dokumente laden …").frame(maxWidth:.infinity)}
-                    if folderID == nil,query.isEmpty,!library.favorites.isEmpty {
-                        LoveSectionTitle("Deine Favoriten")
-                        ForEach(library.folders.filter {library.favorites.contains($0.id)}) {folder in folderRow(folder)}
-                    }
-                    if !folders.isEmpty {
-                        LoveSectionTitle("Ordner")
-                        ForEach(folders) {folder in folderRow(folder)}
-                    }
-                    if !files.isEmpty {
-                        LoveSectionTitle("Dateien")
-                        ForEach(files) {file in fileRow(file).id(file.id)}
-                    }
-                    if !loading,files.isEmpty,folders.isEmpty {ContentUnavailableView(query.isEmpty ? "Platz für eure Dokumente" : "Kein Treffer",systemImage:"folder",description:Text(query.isEmpty ? "Lege einen Ordner an oder lade eine Datei hoch." : "Versuche einen anderen Dateinamen."))}
-                }.padding(20)
-            }.onChange(of:loading) {_,value in if !value,let id=highlightID {withAnimation {reader.scrollTo(id,anchor:.center)}}}
+            ScrollView {libraryContent.padding(20)}
+                .onChange(of:loading) {_,value in
+                    if !value,let id=highlightID {withAnimation {reader.scrollTo(id,anchor:.center)}}
+                }
         }.background(LoveBackground()).navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .searchable(text:$query,prompt:"In diesem Ordner suchen")
         .toolbar {
@@ -110,20 +147,61 @@ struct DocumentsView:View {
         }
         .refreshable {await load()}
         .task(id:folderID) {await load()}
-        .sheet(isPresented:$importing) {SharedDocumentPicker {result in importing=false;switch result {case .success(let file):Task {await upload(file)};case .failure(let issue):if !(issue is CancellationError) {error=issue.localizedDescription}}}}
-        .sheet(item:$preview,onDismiss:{preview=nil}) {item in DocumentQuickLook(url:item.url)}
-        .alert("Neuer Ordner",isPresented:$newFolder) {
-            TextField("Ordnername",text:$name)
-            Button("Anlegen") {Task {await createFolder()}}.disabled(name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
-            Button("Abbrechen",role:.cancel) {}
+    }
+    private var libraryContent:some View {
+        LazyVStack(alignment:.leading,spacing:18) {
+            if folderID == nil {libraryHeader}
+            viewControls
+            transferStatus
+            favoriteFolders
+            folderList
+            fileList
+            if !loading,files.isEmpty,folders.isEmpty {
+                ContentUnavailableView(query.isEmpty ? "Platz für eure Dokumente" : "Kein Treffer",systemImage:"folder",description:Text(query.isEmpty ? "Lege einen Ordner an oder lade eine Datei hoch." : "Versuche einen anderen Dateinamen."))
+            }
         }
-        .confirmationDialog("Dokument für beide entfernen?",isPresented:Binding(get:{deleteFile != nil},set:{if !$0 {deleteFile=nil}}),titleVisibility:.visible) {
-            if let file=deleteFile {Button("Dokument entfernen",role:.destructive) {Task {await remove(kind:"files",id:file.id)};deleteFile=nil}}
-            Button("Abbrechen",role:.cancel) {deleteFile=nil}
+    }
+    private var libraryHeader:some View {
+        VStack(alignment:.leading,spacing:12) {
+            LoveIcon(symbol:"folder.fill",tint:LovePalette.blue,size:52)
+            Text("Alles für uns.").font(.system(size:30,weight:.medium,design:.serif))
+            Text("Eure Dateien, übersichtlich an einem Ort. Mit Bild- und PDF-Vorschauen, Ordnern und direktem Teilen.").font(.subheadline).foregroundStyle(.secondary)
+            Text("\(library.folders.count) Ordner · \(library.files.count) Dateien").font(.caption.bold()).foregroundStyle(LovePalette.blue)
+        }.loveCard()
+    }
+    @ViewBuilder private var viewControls:some View {
+        HStack {
+            Menu {Picker("Sortierung",selection:$sort) {ForEach(DocumentSort.allCases,id:\.self) {Text($0.rawValue).tag($0)}}} label:{Label(sort.rawValue,systemImage:"arrow.up.arrow.down")}
+            Spacer()
+            Button {grid.toggle()} label:{Image(systemName:grid ? "list.bullet":"square.grid.2x2").frame(width:44,height:44)}.accessibilityLabel(grid ? "Listenansicht":"Rasteransicht")
+        }.font(.subheadline)
+        if !query.isEmpty {Toggle("Alle Ordner durchsuchen",isOn:$searchEverywhere).font(.subheadline)}
+    }
+    @ViewBuilder private var transferStatus:some View {
+        if let transferLabel {VStack(alignment:.leading,spacing:8) {ProgressView(value:progress);Text(transferLabel).font(.caption)}.loveCard()}
+        if let error {VStack(alignment:.leading,spacing:8) {Text(error).font(.subheadline).foregroundStyle(.orange);Button("Erneut laden") {Task {await load()}}}.loveCard()}
+        if loading {ProgressView("Eure Dokumente laden …").frame(maxWidth:.infinity)}
+    }
+    @ViewBuilder private var favoriteFolders:some View {
+        if folderID == nil && query.isEmpty && !library.favorites.isEmpty {
+            LoveSectionTitle("Deine Favoriten")
+            ForEach(library.folders.filter {library.favorites.contains($0.id)}) {folder in folderRow(folder)}
         }
-        .confirmationDialog("Leeren Ordner entfernen?",isPresented:Binding(get:{deleteFolder != nil},set:{if !$0 {deleteFolder=nil}}),titleVisibility:.visible) {
-            if let folder=deleteFolder {Button("Ordner entfernen",role:.destructive) {Task {await remove(kind:"folders",id:folder.id)};deleteFolder=nil}}
-            Button("Abbrechen",role:.cancel) {deleteFolder=nil}
+    }
+    @ViewBuilder private var folderList:some View {
+        if !folders.isEmpty {
+            LoveSectionTitle("Ordner")
+            ForEach(folders) {folder in folderRow(folder)}
+        }
+    }
+    @ViewBuilder private var fileList:some View {
+        if !files.isEmpty {
+            LoveSectionTitle("Dateien")
+            if grid {
+                LazyVGrid(columns:[GridItem(.adaptive(minimum:145),spacing:12)],spacing:12) {
+                    ForEach(files) {file in fileTile(file).id(file.id)}
+                }
+            } else {ForEach(files) {file in fileRow(file).id(file.id)}}
         }
     }
     private func folderRow(_ folder:DocumentFolder)->some View {
@@ -138,14 +216,18 @@ struct DocumentsView:View {
                 }
             }.buttonStyle(.plain)
             Button {Task {await favorite(folder)}} label:{Image(systemName:library.favorites.contains(folder.id) ? "star.fill":"star").foregroundStyle(LovePalette.coral).frame(width:44,height:44)}.disabled(busy).accessibilityLabel("Favorit für "+folder.name+" ändern")
-            if folder.ownerID == app.me?.id {Menu {Button("Leeren Ordner entfernen",systemImage:"trash",role:.destructive) {deleteFolder=folder}} label:{Image(systemName:"ellipsis").frame(width:44,height:44)}.accessibilityLabel("Ordneroptionen")}
+            if folder.ownerID == app.me?.id {Menu {
+                Button("Umbenennen",systemImage:"pencil") {beginRename(DocumentEditTarget(id:folder.id,kind:"folders",name:folder.name,parentID:folder.parentID))}
+                Button("Verschieben",systemImage:"folder") {moveTarget=DocumentEditTarget(id:folder.id,kind:"folders",name:folder.name,parentID:folder.parentID)}
+                Button("Leeren Ordner entfernen",systemImage:"trash",role:.destructive) {deleteFolder=folder}
+            } label:{Image(systemName:"ellipsis").frame(width:44,height:44)}.accessibilityLabel("Ordneroptionen")}
         }.loveCard()
     }
     private func fileRow(_ file:SharedDocument)->some View {
         HStack(spacing:12) {
             Button {Task {await open(file)}} label:{
                 HStack(spacing:12) {
-                    LoveIcon(symbol:file.mimeType.contains("pdf") ? "doc.richtext":"doc.fill",tint:LovePalette.blue)
+                    DocumentThumbnail(file:file,api:app.api).frame(width:64,height:72)
                     VStack(alignment:.leading,spacing:5) {
                         Text(file.filename).font(.subheadline.bold()).foregroundStyle(.primary).lineLimit(2)
                         Text(ByteCountFormatter.string(fromByteCount:file.sizeBytes,countStyle:.file)+" · "+(file.ownerID == app.me?.id ? "Von dir":"Von "+(app.partner?.displayName ?? "Schatzi"))).font(.caption).foregroundStyle(.secondary)
@@ -153,18 +235,53 @@ struct DocumentsView:View {
                     }.frame(maxWidth:.infinity,alignment:.leading)
                 }
             }.buttonStyle(.plain).disabled(busy)
-            if file.ownerID == app.me?.id {Menu {Button("Für beide entfernen",systemImage:"trash",role:.destructive) {deleteFile=file}} label:{Image(systemName:"ellipsis").frame(width:44,height:44)}.accessibilityLabel("Dateioptionen")}
+            fileMenu(file)
+
         }.loveCard().overlay {if file.id == highlightID {RoundedRectangle(cornerRadius:26).stroke(LovePalette.blue.opacity(0.5),lineWidth:2).allowsHitTesting(false)}}
     }
-    private func load() async {loading=true;defer {loading=false};do {library=try await app.api.documents();error=nil} catch {self.error=error.localizedDescription}}
+    private func fileMenu(_ file:SharedDocument)->some View {
+        Menu {
+            Button("Vorschau & Teilen",systemImage:"eye") {Task {await open(file)}}
+            Button("Informationen",systemImage:"info.circle") {information=file}
+            if file.ownerID == app.me?.id {
+                Button("Umbenennen",systemImage:"pencil") {beginRename(DocumentEditTarget(id:file.id,kind:"files",name:file.filename,parentID:file.folderID))}
+                Button("Verschieben",systemImage:"folder") {moveTarget=DocumentEditTarget(id:file.id,kind:"files",name:file.filename,parentID:file.folderID)}
+                Divider()
+                Button("Für beide entfernen",systemImage:"trash",role:.destructive) {deleteFile=file}
+            }
+        } label:{Image(systemName:"ellipsis").frame(width:44,height:44)}.disabled(busy).accessibilityLabel("Optionen für "+file.filename)
+    }
+    private func fileTile(_ file:SharedDocument)->some View {
+        VStack(alignment:.leading,spacing:8) {
+            Button {Task {await open(file)}} label:{DocumentThumbnail(file:file,api:app.api).frame(height:130)}.buttonStyle(.plain).disabled(busy).accessibilityLabel("Vorschau für "+file.filename)
+            Text(file.filename).font(.subheadline.bold()).lineLimit(2).frame(height:40,alignment:.topLeading)
+            HStack {Text(ByteCountFormatter.string(fromByteCount:file.sizeBytes,countStyle:.file)).font(.caption).foregroundStyle(.secondary);Spacer(minLength:0);fileMenu(file)}
+        }.padding(12).background(.regularMaterial,in:RoundedRectangle(cornerRadius:20))
+    }
+    private func folderPath(_ id:String?)->String {
+        var parts:[String]=[];var current=id;var visited=Set<String>()
+        while let value=current,visited.insert(value).inserted,let folder=library.folders.first(where:{$0.id==value}) {parts.insert(folder.name,at:0);current=folder.parentID}
+        return (["Dokumente"]+parts).joined(separator:" / ")
+    }
+    private func beginRename(_ target:DocumentEditTarget) {name=target.name;renameTarget=target}
+    private func change(_ action:String,target:DocumentEditTarget,values:[String:Any]) async {
+        guard !busy else {return};busy=true;defer {busy=false}
+        do {library=try await app.api.documentAction(action,body:values.merging(["kind":target.kind,"id":target.id]) {$1});error=nil;Haptics.success()}
+        catch {self.error=error.localizedDescription}
+    }
+    private func load() async {
+        guard !busy else {return};loading=true;defer {loading=false}
+        do {library=try await app.api.documents();error=nil} catch {if !Task.isCancelled {self.error=error.localizedDescription}}
+    }
     private func createFolder() async {
+        guard !busy else {return};busy=true;defer {busy=false}
         do {library=try await app.api.documentAction("folders",body:["name":name,"parent_id":folderID as Any? ?? NSNull()]);error=nil} catch {self.error=error.localizedDescription}
     }
     private func favorite(_ folder:DocumentFolder) async {
         busy=true;defer {busy=false}
         do {library=try await app.api.documentAction("favorite",body:["folder_id":folder.id,"favorite":!library.favorites.contains(folder.id)]);error=nil} catch {self.error=error.localizedDescription}
     }
-    private func remove(kind:String,id:String) async {busy=true;defer {busy=false};do {try await app.api.removeDocument(kind:kind,id:id);await load()} catch {self.error=error.localizedDescription}}
+    private func remove(kind:String,id:String) async {guard !busy else{return};busy=true;defer {busy=false};do {try await app.api.removeDocument(kind:kind,id:id);library=try await app.api.documents();error=nil} catch {self.error=error.localizedDescription}}
     private func upload(_ file:URL) async {
         busy=true;progress=0;transferLabel="Datei wird hochgeladen …";defer {busy=false;transferLabel=nil;try? FileManager.default.removeItem(at:file.deletingLastPathComponent())}
         var asset:String?
@@ -180,15 +297,61 @@ struct DocumentsView:View {
             if let asset {_ = try? await app.api.execute(try app.api.request(path:"/v1/assets/"+asset,method:"DELETE"),as:EmptyResponse.self)}
         }
     }
-    private func open(_ file:SharedDocument) async {busy=true;progress=nil;transferLabel="Dokument wird geladen …";defer {busy=false;transferLabel=nil};do {preview=DocumentPreviewItem(url:try await app.api.documentFile(file));error=nil} catch {self.error=error.localizedDescription}}
+    private func open(_ file:SharedDocument) async {guard !busy else{return};busy=true;progress=nil;transferLabel="Dokument wird geladen …";defer {busy=false;transferLabel=nil};do {preview=DocumentPreviewItem(url:try await app.api.documentFile(file),name:file.filename);error=nil} catch {self.error=error.localizedDescription}}
 }
-private struct DocumentPreviewItem:Identifiable {let id=UUID();let url:URL}
+private struct DocumentPreviewItem:Identifiable {let id=UUID();let url:URL;let name:String}
+private struct DocumentPreviewScreen:View {
+    let item:DocumentPreviewItem
+    @Environment(\.dismiss) private var dismiss
+    var body:some View {
+        NavigationStack {
+            Group {
+                if QLPreviewController.canPreview(item.url as NSURL) {DocumentQuickLook(url:item.url)}
+                else {ContentUnavailableView("Keine Vorschau für diesen Dateityp",systemImage:"doc",description:Text("Über Teilen kannst du die Originaldatei sichern oder in einer anderen App öffnen."))}
+            }.navigationTitle(item.name).navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement:.cancellationAction) {Button("Fertig") {dismiss()}}
+                    ToolbarItem(placement:.primaryAction) {ShareLink(item:item.url).accessibilityLabel("Datei teilen oder sichern")}
+                }
+        }.onDisappear {try? FileManager.default.removeItem(at:item.url.deletingLastPathComponent())}
+    }
+}
+private struct DocumentMovePicker:View {
+    let library:DocumentLibrary
+    let target:DocumentEditTarget
+    let selected:(String?)->Void
+    @Environment(\.dismiss) private var dismiss
+    private func path(_ folder:DocumentFolder)->String {
+        var parts=[folder.name];var current=folder.parentID;var visited:Set<String>=[folder.id]
+        while let id=current,visited.insert(id).inserted,let parent=library.folders.first(where:{$0.id==id}) {parts.insert(parent.name,at:0);current=parent.parentID}
+        return parts.joined(separator:" / ")
+    }
+    private func allowed(_ folder:DocumentFolder)->Bool {
+        guard target.kind == "folders" else {return true}
+        var current:String?=folder.id;var visited=Set<String>()
+        while let id=current,visited.insert(id).inserted {if id==target.id{return false};current=library.folders.first(where:{$0.id==id})?.parentID}
+        return true
+    }
+    var body:some View {
+        NavigationStack {
+            List {
+                Section {Text(target.name).font(.headline)}
+                Section("Zielordner auswählen") {
+                    Button {selected(nil)} label:{Label("Dokumente (Hauptordner)",systemImage:"folder")}.disabled(target.parentID==nil)
+                    ForEach(library.folders.filter(allowed).sorted {path($0).localizedStandardCompare(path($1)) == .orderedAscending}) {folder in
+                        Button {selected(folder.id)} label:{Label(path(folder),systemImage:"folder")}.disabled(folder.id==target.parentID)
+                    }
+                }
+            }.navigationTitle("Verschieben").navigationBarTitleDisplayMode(.inline)
+                .toolbar {ToolbarItem(placement:.cancellationAction) {Button("Abbrechen") {dismiss()}}}
+        }
+    }
+}
 private struct DocumentQuickLook:UIViewControllerRepresentable {
     let url:URL
     func makeCoordinator()->Coordinator {Coordinator(url)}
     func makeUIViewController(context:Context)->QLPreviewController {let view=QLPreviewController();view.dataSource=context.coordinator;return view}
     func updateUIViewController(_ view:QLPreviewController,context:Context) {}
-    static func dismantleUIViewController(_ view:QLPreviewController,coordinator:Coordinator) {try? FileManager.default.removeItem(at:coordinator.url.deletingLastPathComponent())}
     final class Coordinator:NSObject,QLPreviewControllerDataSource {
         let url:URL
         init(_ url:URL) {self.url=url}
@@ -217,3 +380,4 @@ private struct SharedDocumentPicker:UIViewControllerRepresentable {
         }
     }
 }
+

@@ -38,7 +38,7 @@ struct RootView:View {
                 #endif
             }
         }.frame(maxWidth:.infinity,maxHeight:.infinity).accessibilityIdentifier("rj-root").previewAccessibilityEnvironment()
-            .overlay{if update.requirement != nil {UpdateRequiredView()}}
+            .overlay{if update.requirement != nil && !appState.showingFartRecorder && appState.pendingQuickCapture == nil {UpdateRequiredView()}}
             .task{await appState.activate()}
             .alert(item:Binding(get:{appState.alert},set:{appState.alert=$0})){Alert(title:Text($0.title),message:Text($0.message),dismissButton:.default(Text("OK")))}
     }
@@ -68,7 +68,17 @@ struct MainTabView:View {
         .tabBarMinimizeBehavior(.never)
         .tabViewBottomAccessory(isEnabled: cinema.active && cinema.provider == "plex" && !cinema.screenVisible && cinema.foreground && !cinema.miniPlayerHidden) { CinemaMiniPlayer() }
         .onChange(of:cinema.mediaID) { _,_ in cinema.miniPlayerHidden = false }
-        .task { CinemaCoordinator.shared.configure(app: appState) }
+        .task { CinemaCoordinator.shared.configure(app: appState); appState.acceptQuickCaptureRequest() }
+        .task(id:appState.quickCaptureAttempt) {
+            if appState.pendingQuickCapture != nil { extraDestination=nil; await appState.presentQuickCapture() }
+        }
+        .onChange(of:journey.presented) { _,shown in if !shown { appState.acceptQuickCaptureRequest() } }
+        .safeAreaInset(edge:.top) {
+            if appState.pendingQuickCapture != nil && !appState.showingFartRecorder && !journey.presented {
+                Button("Notfallaufnahme öffnen",systemImage:"cloud.fill") { appState.acceptQuickCaptureRequest() }
+                    .buttonStyle(.borderedProminent).padding(8)
+            }
+        }
         .onChange(of: appState.me?.id) { _, _ in CinemaCoordinator.shared.configure(app: appState) }
         .sheet(item:$state.notificationDestination,onDismiss:{appState.offerForegroundMoments()}) { route in NotificationDestinationView(route:route).id(route.id) }
         .sheet(isPresented:$state.showingEvening,onDismiss:{appState.didCloseEvening()}){NavigationStack{SharedJournalView().toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){state.showingEvening=false}}}}}
@@ -102,12 +112,12 @@ struct ChangelogView:View {
         NavigationStack {
             ScrollView {VStack(alignment:.leading,spacing:22){
                 LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
-                Text("Eure Momente.\nAlles im Blick.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 4.3.0").font(.title3.bold())
-                Label("Startseite und bis zu fünf Navigationstasten frei gestalten",systemImage:"slider.horizontal.3")
-                Label("HomeKit: Vollbild, Zuhören und Sprechen mit unterstützten Kameras",systemImage:"video.fill")
-                Label("Deine Kamera live im AirPlay-Dashboard",systemImage:"airplay.video")
-                Label("Gemeinsame Dokumente, Ordner, Favoriten und Bark-Direktlinks",systemImage:"folder.fill")
+                Text("Schneller aufnehmen.\nDateien im Blick.").font(.system(size:38,weight:.medium,design:.serif))
+                Text("Willkommen in RJ Love 4.3.1").font(.title3.bold())
+                Label("Notfallaufnahme zuverlässig über Kontrollzentrum und Kurzbefehle",systemImage:"cloud.fill")
+                Label("Gespeicherte Anmeldung robuster wiederherstellen",systemImage:"key.fill")
+                Label("Bild- und PDF-Miniaturen sowie Vorschauen direkt in der App",systemImage:"doc.richtext")
+                Label("Dateien und Ordner umbenennen, verschieben, suchen und sortieren",systemImage:"folder.fill")
                 Label("App-Einstellungen automatisch sichern und wiederherstellen",systemImage:"arrow.triangle.2.circlepath")
                 Label("Standort mit Genauigkeitskreis und klarer Aktualisierung",systemImage:"location.circle")
                 Text("Original oder optional platzsparend teilen: Ihr entscheidet. Eure bisherigen Erinnerungen bleiben erhalten. Ortsmarkierungen werden nur mit den entsprechenden Freigaben gespeichert.").font(.subheadline).foregroundStyle(.secondary)
@@ -117,4 +127,5 @@ struct ChangelogView:View {
         }.interactiveDismissDisabled()
     }
 }
+
 

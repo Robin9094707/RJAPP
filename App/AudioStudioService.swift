@@ -2,6 +2,7 @@ import ActivityKit
 import AVFoundation
 import Foundation
 import Observation
+import UIKit
 
 struct FartDraft: Codable, Identifiable {
     let id: String
@@ -110,7 +111,11 @@ final class AudioStudioService: NSObject, AVAudioRecorderDelegate, AVAudioPlayer
         guard await AVAudioApplication.requestRecordPermission() else {
             errorMessage = "Bitte erlaube RJ Love den Mikrofonzugriff in den iPhone-Einstellungen."; return
         }
-        guard operationID == operation, !Task.isCancelled else { return }
+        // A permission prompt or Control Center can still be dismissing.
+        for _ in 0..<40 where UIApplication.shared.applicationState != .active {
+            do { try await Task.sleep(for:.milliseconds(50)) } catch { return }
+        }
+        guard operationID == operation, !Task.isCancelled, UIApplication.shared.applicationState == .active else { return }
         MomentVideoAudio.shared.stop();stopPlayback()
         do {
             let audioSession = AVAudioSession.sharedInstance()
@@ -316,4 +321,5 @@ private enum StudioError: LocalizedError {
     case recordingFailed, playbackFailed
     var errorDescription: String? { self == .recordingFailed ? "Die Aufnahme konnte nicht gestartet werden." : "Die Aufnahme konnte nicht abgespielt werden." }
 }
+
 

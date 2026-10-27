@@ -29,6 +29,14 @@ actor DocumentFileCache {
     private var inFlight: [String: Task<URL,Error>] = [:]
     private var activeDownloads = 0
     private var generation = UUID()
+    private let downloadSession:URLSession = {
+        let configuration=URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest=60
+        configuration.timeoutIntervalForResource=900
+        configuration.waitsForConnectivity=true
+        configuration.httpMaximumConnectionsPerHost=2
+        return URLSession(configuration:configuration)
+    }()
     private func digest(_ value:String) -> String { SHA256.hash(data:Data(value.utf8)).map { String(format:"%02x",$0) }.joined() }
     func file(_ document:SharedDocument, api:APIClient) async throws -> URL {
         let request = try api.request(path:"/v1/assets/"+document.assetID, method:"GET")
@@ -52,7 +60,7 @@ actor DocumentFileCache {
         guard generation == expected else { throw CancellationError() }
         activeDownloads += 1
         defer { activeDownloads -= 1 }
-        let (temporary,response)=try await api.session.download(for:request)
+        let (temporary,response)=try await downloadSession.download(for:request)
         defer { try? FileManager.default.removeItem(at:temporary) }
         try Task.checkCancellation()
         guard generation == expected else { throw CancellationError() }
@@ -76,9 +84,9 @@ actor DocumentFileCache {
         catch { try? FileManager.default.removeItem(at:directory); throw error }
     }
     private func prune() {
-        let keys:Set<URLResourceKey>=[.fileSizeKey,.contentModificationDateKey]
+        let keys:Set<URLResourceKey>=[.fileSizeKey,.contentModificationDateKey,.isRegularFileKey]
         let files=(FileManager.default.enumerator(at:root,includingPropertiesForKeys:Array(keys))?.allObjects as? [URL] ?? []).compactMap { url -> (URL,Int,Date)? in
-            guard let values=try? url.resourceValues(forKeys:keys),let size=values.fileSize else { return nil }
+            guard let values=try? url.resourceValues(forKeys:keys),values.isRegularFile == true,let size=values.fileSize else { return nil }
             return (url,size,values.contentModificationDate ?? .distantPast)
         }.sorted { $0.2 < $1.2 }
         var bytes=files.reduce(0) { $0+$1.1 }

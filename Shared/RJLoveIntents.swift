@@ -34,9 +34,9 @@ struct RJLoveShortcuts: AppShortcutsProvider {
     }
 }
 
-struct EmergencyFartIntent: AppIntent {
+struct EmergencyFartIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Notfallfurz aufnehmen"
-    static var openAppWhenRun = true
+    static var supportedModes: IntentModes { .foreground }
     @MainActor func perform() async throws -> some IntentResult {
         QuickCaptureRequests.enqueue()
         return .result()

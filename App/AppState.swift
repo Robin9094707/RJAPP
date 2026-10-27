@@ -286,15 +286,17 @@ final class AppState {
         guard phase == .authenticated, !isSyncing else { return false }
         isSyncing = true
         let revision = sessionRevision
+        let syncAPI = api.sessionCopy()
         defer { isSyncing = false }
         do {
-            try await api.checkCompatibility()
-            let snapshot = try await api.bootstrap()
+            try await syncAPI.checkCompatibility()
+            let snapshot = try await syncAPI.bootstrap()
             guard revision == sessionRevision else { return false }
             me = snapshot.me
             acceptQuickCaptureRequest()
             CinemaCoordinator.shared.configure(app:self)
             await SettingsBackup.shared.sync(app:self)
+            guard revision == sessionRevision else { return false }
             if let server=profile?.baseURL{LocalFartStore.shared.configure(server:server,userID:snapshot.me.id)}
             setupJourney.check(profile: profile, userID: snapshot.me.id)
             partners = snapshot.partners
@@ -307,8 +309,11 @@ final class AppState {
             let history=records.filter{archiveKinds.contains($0.kind) && !snapshotIDs.contains($0.id) && !deletedRecordIDs.contains($0.id)}
             records = snapshot.records.filter { !deletedRecordIDs.contains($0.id) } + history
             dismissRecalledPhotoRequest()
-            if fartArchiveVisible { farts = try await api.loadFartArchive() }
-            else { farts = snapshot.farts ?? [] }
+            let clips: [FartClip]
+            if fartArchiveVisible { clips = try await syncAPI.loadFartArchive() }
+            else { clips = snapshot.farts ?? [] }
+            guard revision == sessionRevision else { return false }
+            farts = clips
             thoughts = snapshot.thoughts
             serverLocalDay = snapshot.localDay
             storageUsedBytes = snapshot.storageUsedBytes
@@ -321,10 +326,13 @@ final class AppState {
             connectionMessage = "Gerade synchronisiert"
             synchronizeGeofences()
             await process(snapshot.commands, events: snapshot.events)
+            guard revision == sessionRevision else { return false }
             await scheduleSharedReminders()
             await drainWidgetThoughts()
+            guard revision == sessionRevision else { return false }
             updateWidgetSnapshot()
             await updateLiveActivity()
+            guard revision == sessionRevision else { return false }
             persistCache()
             if health.sharingEnabled, Date.now.timeIntervalSince(lastHealthRefresh)>60 { await health.refresh(); lastHealthRefresh = .now }
             queuePresenceUpload(force: true)
@@ -334,6 +342,7 @@ final class AppState {
             offerForegroundMoments()
             return true
         } catch let issue as UpdateRequirement {
+            guard revision == sessionRevision else { return false }
             connectionMessage = issue.localizedDescription
             return false
         } catch let error as APIClientError {

@@ -2,7 +2,7 @@
 
 ## Notfallaufnahme und Anmeldung
 
-- Der vorhandene Kontrollzentrum-Button und Kurzbefehl bleiben erhalten.
+- Der vorhandene Kontrollzentrum-Button und Kurzbefehl bleiben erhalten. Der aufnehmende Intent verwendet den Vordergrundmodus von iOS 26 und den App-Prozess für die Aufnahme mit Live-Aktivität.
 - Aufnahmeaufträge werden lokal und optional in der App Group gespeichert. Ohne App-Group-Berechtigung funktioniert der Vordergrund-Intent weiterhin über den App-Speicher.
 - Die App hört ab der Initialisierung zu; Netzwerk- und Health-Abgleiche blockieren den Aufnahmeauftrag nicht.
 - Ein Auftrag bleibt bis zur bereiten Recorder-Ansicht erhalten. Fehlt die Nutzerkennung im Offline-Cache, wartet er auf den ersten erfolgreichen Abgleich oder die Anmeldung.

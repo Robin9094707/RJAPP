@@ -17,7 +17,7 @@ struct EveningRitualView:View {
                 Text("Was war schön? Wofür bist du dankbar? Worauf freust du dich mit deinem Lieblingsmenschen? Ein kleines Ritual, das eure guten Momente bewahrt.").font(.subheadline).foregroundStyle(.secondary)
                 HStack(spacing:14){ForEach(0..<2){index in Image(systemName:index<contributions.count ? "heart.fill":"heart").font(.system(size:30)).foregroundStyle(index<contributions.count ? LovePalette.pink:LovePalette.violet.opacity(0.35))};Text("\(contributions.count) von 2 Beiträgen").font(.caption.bold()).foregroundStyle(.secondary)}
                 Text("Keine Pflicht, kein Punktestand. Eure Beiträge sind sofort füreinander sichtbar und nur innerhalb eures Paars gespeichert.").font(.caption).foregroundStyle(.secondary)
-                Button(mine==nil ? "Meinen Abendmoment teilen":"Meinen Beitrag bearbeiten",systemImage:"square.and.pencil"){composing=true}.buttonStyle(.glassProminent).controlSize(.large)
+                Button(mine==nil ? "Meinen Abendmoment teilen":"Meinen Beitrag bearbeiten",systemImage:"square.and.pencil"){composing=true}.buttonStyle(.borderedProminent).controlSize(.large)
             }.loveCard()
             if contributions.isEmpty {ContentUnavailableView("Euer erster kleiner Abendmoment",systemImage:"sparkles",description:Text("Ein Satz pro Feld reicht. Ein kleines Danke kann einen ganzen Tag wärmer machen."))}
             ForEach(contributions){record in

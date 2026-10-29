@@ -111,7 +111,7 @@ struct TVGameRemote: View {
             Text("Tic-Tac-Toe für uns zwei").font(.title2.bold())
             TVGameBoard(interactive: true).frame(height: 380)
             Text(together.state.players["X"] == together.userID ? "Du spielst X · Schatzi spielt O" : together.state.players["O"] == together.userID ? "Du spielst O · Schatzi spielt X" : "Starte eine neue Runde.").font(.caption).foregroundStyle(.secondary)
-            Button("Neue Runde",systemImage: "arrow.clockwise") { Task { await together.action("new_game") } }.buttonStyle(.glassProminent).accessibilityIdentifier("tv-game-new")
+            Button("Neue Runde",systemImage: "arrow.clockwise") { Task { await together.action("new_game") } }.buttonStyle(.borderedProminent).accessibilityIdentifier("tv-game-new")
             if let error = together.error { Text(error).font(.footnote).foregroundStyle(.orange) }
         }.loveCard().task { await together.refresh() }
     }

@@ -59,7 +59,7 @@ struct ServerSetupView: View {
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .disabled(server.trimmingCharacters(in: .whitespaces).isEmpty || username.isEmpty || password.isEmpty || isWorking)
                 }

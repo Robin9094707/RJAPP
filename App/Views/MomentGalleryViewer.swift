@@ -149,7 +149,7 @@ private struct MomentGalleryPage:View {
             else if let image,active{MomentZoomImage(image:image)}
             else{MomentPreview(record:record).aspectRatio(contentMode:.fit)}
             if loading{ProgressView().tint(.white).padding(20).background(.black.opacity(0.35),in:Circle())}
-            if let error{VStack(spacing:14){Text(error).foregroundStyle(.white);Button("Erneut laden"){retry += 1}.buttonStyle(.glassProminent)}.padding(24).background(.black.opacity(0.7),in:RoundedRectangle(cornerRadius:20))}
+            if let error{VStack(spacing:14){Text(error).foregroundStyle(.white);Button("Erneut laden"){retry += 1}.buttonStyle(.borderedProminent)}.padding(24).background(.black.opacity(0.7),in:RoundedRectangle(cornerRadius:20))}
         }.task(id:"\(active)-\(retry)-\(record.updatedAt)"){await load()}.onDisappear{clear()}
         .onChange(of:scenePhase){_,phase in if phase == .background{player?.pause()}else if phase == .active,let player,active{do{try MomentVideoAudio.shared.activate(player,owner:audioOwner)}catch{self.error=error.localizedDescription}}}
     }

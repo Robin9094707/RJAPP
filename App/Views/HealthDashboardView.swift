@@ -94,8 +94,8 @@ struct HealthDashboardView:View {
     private var sharingControls:some View {
         VStack(alignment:.leading,spacing:16) {
             LoveSectionTitle("Du entscheidest.",subtitle:"Zusätzliche Werte benötigen deine iOS-Freigabe auf diesem iPhone.")
-            Button("Health-Freigabe erweitern",systemImage:"heart.text.square"){Task{await health.requestAuthorization();app.queuePresenceUpload(force:true)}}.buttonStyle(.glassProminent)
-            Button("Bewegung & Fitness prüfen",systemImage:"figure.walk.motion"){Task{await device.requestMotionAccess()}}.buttonStyle(.glass)
+            Button("Health-Freigabe erweitern",systemImage:"heart.text.square"){Task{await health.requestAuthorization();app.queuePresenceUpload(force:true)}}.buttonStyle(.borderedProminent)
+            Button("Bewegung & Fitness prüfen",systemImage:"figure.walk.motion"){Task{await device.requestMotionAccess()}}.buttonStyle(.bordered)
             Toggle("Health-Zusammenfassungen teilen",isOn:$health.sharingEnabled)
             Toggle("Aktivität & Schritte",isOn:$health.shareActivity).disabled(!health.sharingEnabled)
             Toggle("Schlafphasen, Verlauf & RJ-Schlafindex",isOn:$health.shareSleep).disabled(!health.sharingEnabled)
@@ -178,7 +178,7 @@ struct HealthPermissionsUpgradeView:View {
                 Label("Bewegung & Fitness mit passenden Symbolen",systemImage:"figure.walk.motion")
                 Label("Weitere Vital- und Körpermesswerte mit Messdatum",systemImage:"waveform.path.ecg")
                 Text("Die bisherigen Freigabeschalter bleiben unverändert. Unter Health → Meine Daten entscheidest du, was dein Lieblingsmensch sehen darf. Ohne passende Datenquelle erscheinen keine erfundenen Werte.").font(.subheadline).foregroundStyle(.secondary)
-                Button(working ? "Freigaben werden geöffnet …":"Health & Bewegung freigeben") {working=true;Task{await app.health.requestAuthorization();await app.deviceStatus.requestMotionAccess();app.queuePresenceUpload(force:true);working=false;dismiss()}}.buttonStyle(.glassProminent).controlSize(.large).disabled(working)
+                Button(working ? "Freigaben werden geöffnet …":"Health & Bewegung freigeben") {working=true;Task{await app.health.requestAuthorization();await app.deviceStatus.requestMotionAccess();app.queuePresenceUpload(force:true);working=false;dismiss()}}.buttonStyle(.borderedProminent).controlSize(.large).disabled(working)
                 Button("Später selbst einrichten"){app.health.deferExpandedAccess();dismiss()}.disabled(working)
                 if let error=app.health.errorMessage {Text(error).font(.caption).foregroundStyle(.orange)}
             }.padding(24)}.navigationTitle("Health erweitern").navigationBarTitleDisplayMode(.inline).background(LoveBackground())

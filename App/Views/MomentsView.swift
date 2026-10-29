@@ -81,8 +81,8 @@ struct MomentsView:View {
     }
     private var captureControls:some View {
         HStack{
-            Button("Aufnehmen",systemImage:"camera.fill"){camera=true}.buttonStyle(.glassProminent).accessibilityIdentifier("moments-capture")
-            Button("Hinzufügen",systemImage:"plus"){picker=true}.buttonStyle(.glass)
+            Button("Aufnehmen",systemImage:"camera.fill"){camera=true}.buttonStyle(.borderedProminent).accessibilityIdentifier("moments-capture")
+            Button("Hinzufügen",systemImage:"plus"){picker=true}.buttonStyle(.bordered)
             Spacer()
             filtersMenu
         }

@@ -18,15 +18,15 @@ struct AIDaySummaryView:View {
                 DatePicker("Euer Tag",selection:$day,in:...Date.now,displayedComponents:.date).disabled(busy)
                 if let status {
                     Label(status.available ? "KI am Server eingerichtet":"KI am Server noch ausgeschaltet",systemImage:status.available ? "checkmark.circle.fill":"power").font(.caption).foregroundStyle(.secondary)
-                    if !ready {NavigationLink{AISettingsView()}label:{Label("KI-Rückblick einrichten",systemImage:"slider.horizontal.3")}.buttonStyle(.glass)}
+                    if !ready {NavigationLink{AISettingsView()}label:{Label("KI-Rückblick einrichten",systemImage:"slider.horizontal.3")}.buttonStyle(.bordered)}
                     if status.available,!status.partnerConsent {Text("\(app.partner?.displayName ?? "Dein Lieblingsmensch") hat die Freigabe noch nicht aktiviert.").font(.caption).foregroundStyle(.secondary)}
                 }else if error==nil{ProgressView("Freigaben werden geladen …")}
-                Button{Task{await generate()}}label:{HStack{if busy{ProgressView().tint(.white)};Label(busy ? "Euer Rückblick entsteht …":"Momente zusammenfassen",systemImage:"sparkles").frame(maxWidth:.infinity)}}.buttonStyle(.glassProminent).controlSize(.large).disabled(!ready || busy).accessibilityIdentifier("ai-generate")
+                Button{Task{await generate()}}label:{HStack{if busy{ProgressView().tint(.white)};Label(busy ? "Euer Rückblick entsteht …":"Momente zusammenfassen",systemImage:"sparkles").frame(maxWidth:.infinity)}}.buttonStyle(.borderedProminent).controlSize(.large).disabled(!ready || busy).accessibilityIdentifier("ai-generate")
                 Text("Nur auf deinen Tipp: Titel, Beschreibungen, Autorennamen, Medienart und Aufnahmezeiten dieses Tages gehen an OpenAI. Keine Foto-/Video- oder Audiodateien, Chats, Health-Werte oder GPS-Koordinaten. Beiderseitige Freigabe erforderlich.").font(.caption).foregroundStyle(.secondary)
             }.loveCard()
-            if let error{Text(error).foregroundStyle(.orange).font(.footnote);if status==nil{Button("Erneut laden"){Task{await loadStatus()}}.buttonStyle(.glass)}}
+            if let error{Text(error).foregroundStyle(.orange).font(.footnote);if status==nil{Button("Erneut laden"){Task{await loadStatus()}}.buttonStyle(.bordered)}}
             if let result {summary(result)}
-            NavigationLink{AISettingsView()}label:{Label("Freigabe & Kostenkontrolle",systemImage:"hand.raised.fill")}.font(.caption).buttonStyle(.glass)
+            NavigationLink{AISettingsView()}label:{Label("Freigabe & Kostenkontrolle",systemImage:"hand.raised.fill")}.font(.caption).buttonStyle(.bordered)
         }.padding(20)}.background(LoveBackground()).navigationTitle("Euer KI-Rückblick").navigationBarTitleDisplayMode(.inline)
         .task{await loadStatus()}.onChange(of:day){_,_ in result=nil;error=nil;sources=[]}
         .sheet(item:$selected){record in NavigationStack{ScrollView{JournalRecordDetail(record:record).padding(20)}.background(LoveBackground()).navigationTitle("Ein Moment von euch").toolbar{ToolbarItem(placement:.confirmationAction){Button("Fertig"){selected=nil}}}}}
@@ -38,7 +38,7 @@ struct AIDaySummaryView:View {
             Text(value.summary.intro).font(.body).lineSpacing(4)
             ForEach(Array(value.summary.highlights.enumerated()),id:\.offset){_,highlight in
                 VStack(alignment:.leading,spacing:10){Label(highlight.title,systemImage:"heart.text.square.fill").font(.headline).foregroundStyle(LovePalette.pink);Text(highlight.detail).font(.subheadline).lineSpacing(4)
-                    ForEach(highlight.recordIDs,id:\.self){id in if let record=sources.first(where:{$0.id==id}){Button{selected=record}label:{Label(record.payload.caption?.isEmpty==false ? record.payload.caption!:"Moment ansehen",systemImage:"photo").lineLimit(1)}.font(.caption).buttonStyle(.glass)}}
+                    ForEach(highlight.recordIDs,id:\.self){id in if let record=sources.first(where:{$0.id==id}){Button{selected=record}label:{Label(record.payload.caption?.isEmpty==false ? record.payload.caption!:"Moment ansehen",systemImage:"photo").lineLimit(1)}.font(.caption).buttonStyle(.bordered)}}
                 }.frame(maxWidth:.infinity,alignment:.leading).padding(16).background(LovePalette.pink.opacity(0.06),in:RoundedRectangle(cornerRadius:20))
             }
             if !value.summary.reflection.isEmpty{VStack(alignment:.leading,spacing:8){LoveEyebrow(text:"Ein Gedanke für euch");Text(value.summary.reflection).font(.body).lineSpacing(4)}}

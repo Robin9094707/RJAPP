@@ -65,7 +65,7 @@ struct HomeKitDashboardCard:View {
             }
             if !home.enabled {
                 Text(home.message ?? "Kameras aus deinem eigenen oder geteilten Apple Home. Live-Bilder bleiben bei HomeKit.").font(.subheadline).foregroundStyle(.secondary)
-                Button("Mit Apple Home verbinden",systemImage:"house.fill") { home.activate() }.buttonStyle(.glass)
+                Button("Mit Apple Home verbinden",systemImage:"house.fill") { home.activate() }.buttonStyle(.bordered)
             } else {
                 if let message=home.message { Text(message).font(.caption).foregroundStyle(.secondary) }
                 if !home.homes.isEmpty {
@@ -198,7 +198,7 @@ struct HomeCameraTile:View {
             cameraSurface(feed:feed).frame(maxWidth:.infinity).frame(height:external ? nil : 190).frame(maxHeight:external ? .infinity : nil).clipShape(RoundedRectangle(cornerRadius:18))
             if !external {
                 cameraControls(feed:feed)
-                Button("Vollbild",systemImage:"arrow.up.left.and.arrow.down.right") { fullscreen=true }.font(.caption).buttonStyle(.glass)
+                Button("Vollbild",systemImage:"arrow.up.left.and.arrow.down.right") { fullscreen=true }.font(.caption).buttonStyle(.bordered)
             }
             if let error=feed.error { Text(error).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true) }
         }.task { feed.retain(viewer,autoplay:autoplay) }.onDisappear { feed.release(viewer) }
@@ -236,7 +236,7 @@ private struct HomeCameraFullscreen:View {
     ViewThatFits {
         HStack { cameraButtons(feed:feed) }
         VStack { cameraButtons(feed:feed) }
-    }.buttonStyle(.glass).controlSize(.regular)
+    }.buttonStyle(.bordered).controlSize(.regular)
 }
 @MainActor @ViewBuilder private func cameraButtons(feed:HomeCameraFeed)->some View {
     Button(feed.live || feed.connecting ? "Stoppen" : "Live",systemImage:feed.live ? "stop.fill" : "play.fill") { if feed.live || feed.connecting {feed.stop()} else {feed.start()} }
@@ -272,7 +272,7 @@ struct HomeKitView:View {
                                 Button(scene.name,systemImage:"sparkles") {
                                     executing=true
                                     selected.executeActionSet(scene) {issue in Task {@MainActor in executing=false;home.message=issue?.localizedDescription} }
-                                }.buttonStyle(.glass).disabled(executing)
+                                }.buttonStyle(.bordered).disabled(executing)
                             }
                         }.loveCard()
                     }

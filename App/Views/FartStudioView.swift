@@ -5,7 +5,6 @@ enum ExperienceSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 struct ExperienceView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppState.self) private var appState
     var body: some View {
         @Bindable var state = appState
@@ -22,33 +21,31 @@ struct ExperienceView: View {
             case .moments: MomentsView()
             case .cinema: Color.clear.onAppear { appState.experienceSection = .moments; appState.selectedTab = .cinema }
             }
-            }.id(state.experienceSection).transition(.opacity.combined(with: .scale(scale: 0.985)))
-        }.animation(reduceMotion ? nil : LoveMotion.gentle, value: state.experienceSection)
+            }.id(state.experienceSection)
+        }
             .background(LoveBackground()).navigationBarTitleDisplayMode(.inline)
             .onChange(of:appState.experienceSection) { _,_ in dismissKeyboard(); Haptics.selection() }
     }
 }
+/// The studio's little cloud. Static by design: a cheerful face instead of a constantly moving drawing.
 struct PuffMascot: View {
     var active: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.1, paused: !active || reduceMotion)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            ZStack {
-                ForEach(0..<3) { i in
-                    Image(systemName: "cloud.fill").font(.system(size: 24 + Double(i) * 7))
-                        .foregroundStyle(LovePalette.violet.opacity(0.12 + Double(i) * 0.04))
-                        .offset(x: CGFloat(46 + i * 23), y: active && !reduceMotion ? CGFloat(sin(time * 2 + Double(i)) * 8 - Double(i) * 12) : CGFloat(-i * 9))
-                }
-                Image(systemName: "cloud.fill").font(.system(size: 100)).foregroundStyle(LinearGradient(colors: [Color(red: 0.84, green: 0.74, blue: 0.98), LovePalette.violet], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .shadow(color: LovePalette.violet.opacity(0.2), radius: 14, y: 8)
-                HStack(spacing: 22) {
-                    Capsule().fill(.white).frame(width: 7, height: active ? 4 : 10)
-                    Capsule().fill(.white).frame(width: 7, height: active ? 4 : 10)
-                }.offset(y: 3)
-                Image(systemName: "heart.fill").font(.system(size: 13)).foregroundStyle(.white.opacity(0.95)).offset(y: 21)
-            }.offset(y: active && !reduceMotion ? CGFloat(sin(time * 3) * 3) : 0)
-        }.accessibilityHidden(true)
+        ZStack {
+            ForEach(0..<3) { i in
+                Image(systemName: "cloud.fill").font(.system(size: 24 + Double(i) * 7))
+                    .foregroundStyle(LovePalette.violet.opacity(0.12 + Double(i) * 0.04))
+                    .offset(x: CGFloat(46 + i * 23), y: CGFloat(-i * 9))
+            }
+            Image(systemName: "cloud.fill").font(.system(size: 100)).foregroundStyle(LinearGradient(colors: [Color(red: 0.84, green: 0.74, blue: 0.98), LovePalette.violet], startPoint: .topLeading, endPoint: .bottomTrailing))
+            HStack(spacing: 22) {
+                Capsule().fill(.white).frame(width: 7, height: active ? 4 : 10)
+                Capsule().fill(.white).frame(width: 7, height: active ? 4 : 10)
+            }.offset(y: 3)
+            Image(systemName: "heart.fill").font(.system(size: 13)).foregroundStyle(.white.opacity(0.95)).offset(y: 21)
+        }
+        .frame(width: 150, height: 100)
+        .accessibilityHidden(true)
     }
 }
 struct AudioWaveform: View {
@@ -109,9 +106,6 @@ struct FartClipCard: View {
                     }.font(.headline).foregroundStyle(.white).frame(width: 48, height: 48)
                         .background(LovePalette.dusk, in: Circle())
                         .overlay { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 1) }
-                        .shadow(color: LovePalette.violet.opacity(playing ? 0.45 : 0.18), radius: playing ? 12 : 6, y: 4)
-                        .scaleEffect(playing ? 1.05 : 1)
-                        .animation(LoveMotion.bouncy, value: playing)
                 }.buttonStyle(.lovePress).accessibilityLabel(playing ? "Wiedergabe stoppen" : "Aufnahme abspielen")
                 AudioWaveform(values: clip.waveform, progress: playing && appState.studio.playbackDuration > 0 ? appState.studio.playbackTime / appState.studio.playbackDuration : 0).frame(height: 40)
                 Text(String(format: "%.1f s", clip.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -125,11 +119,10 @@ struct FartClipCard: View {
                     let selected = clip.reactions.contains { $0.userID == appState.me?.id && $0.emoji == emoji }
                     let count = clip.reactions.filter { $0.emoji == emoji }.count
                     Button { Haptics.selection(); Task { await appState.reactToFart(clip, emoji: emoji) } } label: {
-                        HStack(spacing: 4) { Text(emoji).scaleEffect(selected ? 1.15 : 1); Text(count.formatted()).font(.caption2.weight(.semibold)).contentTransition(.numericText(value: Double(count))) }
+                        HStack(spacing: 4) { Text(emoji); Text(count.formatted()).font(.caption2.weight(.semibold)).contentTransition(.numericText(value: Double(count))) }
                             .padding(.horizontal, 10).padding(.vertical, 7)
                             .background(selected ? LovePalette.violet.opacity(0.2) : Color.primary.opacity(0.045), in: Capsule())
                             .overlay { Capsule().strokeBorder(selected ? LovePalette.violet.opacity(0.4) : .clear, lineWidth: 1) }
-                            .animation(LoveMotion.bouncy, value: selected)
                             .animation(LoveMotion.snappy, value: count)
                     }.buttonStyle(.lovePress).accessibilityLabel("Reaktion \(emoji)").accessibilityAddTraits(selected ? .isSelected : [])
                 }
@@ -137,7 +130,7 @@ struct FartClipCard: View {
             }
             Button { comments=true } label: {
                 Label("Kommentare · \(clip.commentCount ?? 0)",systemImage:"bubble.left.and.bubble.right.fill").font(.subheadline.weight(.semibold))
-            }.buttonStyle(.glass)
+            }.buttonStyle(.bordered)
             Divider().opacity(0.4)
             HStack {
                 Label(clip.stars.map { "\($0)/5 Sterne" } ?? "Jury noch sprachlos", systemImage: "star.fill").font(.caption.bold()).foregroundStyle(LovePalette.coral)
@@ -174,6 +167,20 @@ struct FartClipCard: View {
     }
 }
 
+/// Live level around the stop button. Scales instead of resizing, so the layout never moves while recording.
+private struct RecorderLevelRing: View {
+    let level: Double
+    let reduceMotion: Bool
+    var body: some View {
+        ZStack {
+            Circle().fill(LovePalette.pink.opacity(0.16)).frame(width: 96, height: 96).scaleEffect(1 + level * 0.3)
+            Circle().strokeBorder(LovePalette.pink.opacity(0.32), lineWidth: 2).frame(width: 104, height: 104).scaleEffect(1 + level * 0.32).opacity(1 - level * 0.5)
+        }
+        .animation(reduceMotion ? nil : .linear(duration: 0.08), value: level)
+        .allowsHitTesting(false)
+    }
+}
+
 struct FartRecorderView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -194,7 +201,6 @@ struct FartRecorderView: View {
     @State private var starting = false
     @State private var attemptedAutoStart = false
     @State private var failedUpload = false
-    @State private var idleBreath = false
     private var studio: AudioStudioService { appState.studio }
     var body: some View {
         NavigationStack {
@@ -212,12 +218,11 @@ struct FartRecorderView: View {
                       Text(studio.mode == .review ? "2 · Schneiden & senden" : "1 · Aufnehmen").font(.caption.bold()).foregroundStyle(LovePalette.violet)
                     }.frame(maxWidth: .infinity)
                     LoveEyebrow(text: studio.hasRecording ? "Das Mikrofon ist für euch offen" : studio.mode == .review ? "Ein kleines Meisterwerk ist geboren" : "Wenn die Natur ruft: Aufnahme.")
-                    PuffMascot(active: studio.isRecording).frame(height: studio.mode == .review ? 50 : 85)
+                    if studio.mode != .review { PuffMascot(active: studio.isRecording).frame(height: 85) }
                     spruchCard
                     Text(studio.mode == .review ? "Bereit für die Duftpost?" : studio.mode == .paused ? "Kurze Atempause." : studio.isRecording ? "Lass es raus." : "Bühne frei.")
                         .font(.loveDisplay(30)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).contentTransition(.opacity)
                     Text(String(format: "%02d:%02d", Int(studio.elapsed) / 60, Int(studio.elapsed) % 60)).font(.system(size: studio.mode == .review ? 32 : 52, weight: .light, design: .rounded)).monospacedDigit()
-                        .contentTransition(.numericText()).animation(reduceMotion ? nil : LoveMotion.snappy, value: Int(studio.elapsed))
                     AudioWaveform(values: studio.mode == .review ? studio.draft?.waveform ?? [] : studio.liveLevels).frame(height: 58).padding(.horizontal, 12)
                     if studio.mode == .review { recordingControls.disabled(saving) }
                     if studio.mode == .review { reviewForm }
@@ -233,12 +238,12 @@ struct FartRecorderView: View {
                         Text(String(format: "Dein Ausschnitt: %.1f s · Name optional", max(0.2, trimEnd - trimStart)))
                             .font(.caption2).foregroundStyle(.secondary)
                     }.padding(.horizontal, 20).padding(.vertical, 12)
-                        .frame(maxWidth: .infinity).background { Rectangle().fill(.clear).glassEffect(.regular, in: Rectangle()).ignoresSafeArea() }
+                        .frame(maxWidth: .infinity).background(.bar)
                 } else {
                     VStack(spacing: 8) {
                         recordingControls
                         Text(studio.hasRecording ? "Nur ihr hört mit · maximal 60 Sekunden" : "Ein Tipp. Ein Naturtalent. Eure Erinnerung.").font(.caption).foregroundStyle(.secondary)
-                    }.padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:.infinity).background { Rectangle().fill(.clear).glassEffect(.regular, in: Rectangle()).ignoresSafeArea() }
+                    }.padding(.horizontal,20).padding(.vertical,12).frame(maxWidth:.infinity).background(.bar)
                 }
             }.background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Schließen") { dismiss() }.disabled(saving) } }
@@ -247,7 +252,6 @@ struct FartRecorderView: View {
                 Button("Behalten", role: .cancel) {}
             }
         }.interactiveDismissDisabled(saving)
-        .animation(reduceMotion ? nil : .snappy, value: studio.mode)
         .task(id:appState.me?.id) {
             guard let ownerID = appState.me?.id else { return }
             studio.prepare(ownerID: ownerID)
@@ -294,7 +298,7 @@ struct FartRecorderView: View {
         HStack(spacing: 5) { Text(number).font(.caption.bold()); Text(title).font(.caption2) }
             .foregroundStyle(selected ? LovePalette.violet : Color.secondary)
             .padding(.horizontal, 9).padding(.vertical, 8)
-            .glassEffect(.regular.tint(selected ? LovePalette.violet.opacity(0.14) : .clear), in: Capsule())
+            .background(selected ? LovePalette.violet.opacity(0.16) : LoveSurface.inset, in: Capsule())
     }
     private var recordingControls: some View {
         AdaptiveLoveRow(spacing: 16) {
@@ -302,19 +306,16 @@ struct FartRecorderView: View {
                 Button { Haptics.impact(.light); studio.togglePause() } label: { Image(systemName: studio.mode == .paused ? "play.fill" : "pause.fill").font(.title2).contentTransition(.symbolEffect(.replace)).frame(width: 60, height: 60).loveInteractiveGlass(in: Circle()) }.buttonStyle(.lovePress).accessibilityLabel(studio.mode == .paused ? "Aufnahme fortsetzen" : "Aufnahme pausieren")
                 Button { Haptics.impact(.medium); studio.finishRecording() } label: {
                     ZStack {
-                        let level = studio.mode == .recording ? min(1, max(0, studio.liveLevels.last ?? 0)) : 0
-                        Circle().fill(LovePalette.pink.opacity(0.16)).frame(width: 84 + level * 62, height: 84 + level * 62)
-                        Circle().strokeBorder(LovePalette.pink.opacity(0.32), lineWidth: 2).frame(width: 98 + level * 96, height: 98 + level * 96).opacity(1 - level * 0.55)
+                        RecorderLevelRing(level: studio.mode == .recording ? min(1, max(0, studio.liveLevels.last ?? 0)) : 0, reduceMotion: reduceMotion)
                         Image(systemName: "stop.fill").font(.title).foregroundStyle(.white).frame(width: 82, height: 82)
                             .background(LovePalette.heart, in: Circle())
                             .overlay { Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1) }
                     }
-                    .frame(width: 150, height: 150)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: studio.liveLevels.last ?? 0)
+                    .frame(width: 140, height: 140)
                 }.buttonStyle(.lovePress).accessibilityLabel("Aufnahme stoppen")
             } else if studio.mode == .review {
-                Button { studio.playDraft() } label: { Label(studio.playingID == studio.draft?.id ? "Stoppen" : "Anhören", systemImage: studio.playingID == studio.draft?.id ? "stop.fill" : "play.fill") }.buttonStyle(.glass).controlSize(.large)
-                Button("Neu aufnehmen", systemImage: "arrow.counterclockwise") { discard = true }.buttonStyle(.glass).controlSize(.large)
+                Button { studio.playDraft() } label: { Label(studio.playingID == studio.draft?.id ? "Stoppen" : "Anhören", systemImage: studio.playingID == studio.draft?.id ? "stop.fill" : "play.fill") }.buttonStyle(.bordered).controlSize(.large)
+                Button("Neu aufnehmen", systemImage: "arrow.counterclockwise") { discard = true }.buttonStyle(.bordered).controlSize(.large)
             } else {
                 Button {
                     guard let ownerID = appState.me?.id else { return }
@@ -323,14 +324,11 @@ struct FartRecorderView: View {
                     Task { await studio.start(ownerID: ownerID); starting = false }
                 } label: {
                     ZStack {
-                        Circle().fill(LovePalette.pink.opacity(0.14)).frame(width: 128, height: 128)
-                            .scaleEffect(idleBreath ? 1.06 : 0.86).opacity(idleBreath ? 0.35 : 0.9)
+                        Circle().fill(LovePalette.pink.opacity(0.12)).frame(width: 124, height: 124)
                         Group { if starting { ProgressView().tint(.white) } else { Image(systemName: "mic.fill").font(.system(size: 32)) } }
                             .foregroundStyle(.white).frame(width: 90, height: 90).background(LovePalette.heart, in: Circle())
-                            .glassEffect(.regular.tint(LovePalette.pink.opacity(0.3)).interactive(), in: Circle())
-                            .shadow(color: LovePalette.pink.opacity(0.3), radius: 18, y: 8)
+                            .overlay { Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1) }
                     }.frame(width: 140, height: 140)
-                    .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { idleBreath = true } } }
                 }.buttonStyle(.lovePress).disabled(starting).accessibilityLabel("Aufnahme starten")
             }
         }.frame(maxWidth: .infinity)
@@ -350,7 +348,7 @@ struct FartRecorderView: View {
                     if success { dismiss() }
                 }
             } label: { HStack { if saving { ProgressView().tint(.white) }; Label("Duftpost senden", systemImage: "paperplane.fill").frame(maxWidth: .infinity) } }
-                .buttonStyle(.glassProminent).tint(LovePalette.violet).controlSize(.large)
+                .buttonStyle(.borderedProminent).tint(LovePalette.violet).controlSize(.large)
                 .disabled(saving || studio.draft == nil || title.count > 100 || caption.count > 500)
                 .accessibilityIdentifier("duftpost-send")
     }

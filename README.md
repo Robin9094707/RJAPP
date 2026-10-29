@@ -2,7 +2,7 @@
 
 Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widgets und Alltag.
 
-**Aktuelle App: 5.0.0 (500), Server 5.0.0.** Neu gestaltet mit durchgängigem Liquid Glass, flüssigen Animationen, neuem Duftstudio-Recorder, Kino-AirPlay mit Überblendungen, Live-Vorschau und Herz-Signalen, spürbar flüssigerer Synchronisierung sowie automatischer IPA-Bereitstellung durch den Server: [Release 5.0.0](RELEASE-5.0.0.md).
+**Aktuelle App: 6.0.0 (600), Server 6.0.0.** Gründliche Überarbeitung: ruhiges, einheitliches Design mit festen Karten (Liquid Glass nur noch in den Systemleisten), deutlich weniger Animationen für flüssiges Scrollen auch auf älteren iPhones, reparierte Notfallaufnahme und ein neuer nahtloser Startbildschirm: [Release 6.0.0](RELEASE-6.0.0.md).
 
 ## Neu: Unser Kino
 
@@ -12,7 +12,7 @@ Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widg
 - Kinozeit, Filmverlauf und bestätigtes Zurücksetzen für beide.
 - Native YouTube-Suche ohne eigenen API-Schlüssel; Anmeldung und direkte YouTube-Wiedergabe innerhalb der App. Google kann eingebettete Anmeldungen und Videos einschränken.
 - Optional Apple Home: eigene und geteilte Häuser auswählen, Kameravorschauen und Live-Ansicht. HomeKit muss beim Signieren erhalten bleiben.
-- Gläserne Kino- und Zuhause-Karten auf dem Dashboard.
+- Kino- und Zuhause-Karten auf dem Dashboard.
 
 Plex-Fernsteuerung setzt einen kompatiblen Empfänger und passende Serverrechte voraus. Der Schlaftimer pausiert die Wiedergabe; er schaltet Apple TV nicht aus. Echte Dienstverbindungen und die konkrete Signierung brauchen eine Geräteprüfung.
 
@@ -20,7 +20,7 @@ Plex-Fernsteuerung setzt einen kompatiblen Empfänger und passende Serverrechte 
 
 Server stoppen, Konfiguration und Datenordner sichern, nur `Backend/rj_love_server.py` ersetzen und neu starten. Konfiguration, Konto-IDs und Datenpfad unverändert behalten. Die neue IPA mit demselben Signierteam, derselben Bundle-ID und identischer App Group über die bestehende App installieren. Die App nicht löschen.
 
-Die Datenbank wird ausschließlich additiv erweitert. App 5.0.0 benötigt Server 5.0.0. Server 5.0.0 zeigt älteren Apps (4.3.x) ihr eingebautes Update-Fenster; der IPA-Download und die Feather-Quelle bleiben für sie erreichbar. Eine `RJ-Love…ipa` neben der Serverdatei (oder in `rjlove_data/updates/`) wird automatisch als neues Release bereitgestellt.
+Die Datenbank wird ausschließlich additiv erweitert. App 6.0.0 benötigt Server 6.0.0. Server 6.0.0 zeigt älteren Apps (5.x und 4.x) ihr eingebautes Update-Fenster; der IPA-Download und die Feather-Quelle bleiben für sie erreichbar. Eine `RJ-Love…ipa` neben der Serverdatei (oder in `rjlove_data/updates/`) wird automatisch als neues Release bereitgestellt.
 
 ## Installation
 

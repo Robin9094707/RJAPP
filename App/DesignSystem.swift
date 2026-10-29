@@ -19,61 +19,58 @@ enum LovePalette {
 
 /// Shared spacing and shape tokens, so every screen breathes the same way.
 enum LoveMetrics {
-    static let cardRadius:CGFloat=28
-    static let tileRadius:CGFloat=22
-    static let cardPadding:CGFloat=20
+    static let cardRadius:CGFloat=24
+    static let tileRadius:CGFloat=20
+    static let cardPadding:CGFloat=18
     static let screenPadding:CGFloat=20
-    static let stackSpacing:CGFloat=18
+    static let stackSpacing:CGFloat=16
 }
 
-/// Motion tokens. Every animation in the app goes through these so the rhythm stays consistent.
+/// Motion tokens. Every animation in the app goes through these so the rhythm stays calm and consistent.
+/// 6.0: short, critically damped curves only. Nothing bounces, nothing loops forever.
 enum LoveMotion {
-    static let spring=Animation.spring(response:0.48,dampingFraction:0.86)
-    static let snappy=Animation.spring(response:0.32,dampingFraction:0.78)
-    static let bouncy=Animation.spring(response:0.42,dampingFraction:0.58)
-    static let gentle=Animation.smooth(duration:0.45)
-    static let fade=Animation.easeInOut(duration:0.35)
-    static func entrance(_ index:Int)->Animation {spring.delay(Double(min(max(index,0),10))*0.05)}
+    static let spring=Animation.smooth(duration:0.3)
+    static let snappy=Animation.easeOut(duration:0.18)
+    static let bouncy=Animation.smooth(duration:0.25)
+    static let gentle=Animation.easeInOut(duration:0.25)
+    static let fade=Animation.easeInOut(duration:0.2)
+    static func entrance(_ index:Int)->Animation {fade}
     /// Returns nil while Reduce Motion is active so changes happen without movement.
     static func respecting(_ reduceMotion:Bool,_ animation:Animation=spring)->Animation? {reduceMotion ? nil:animation}
 }
 
+/// Opaque surface colors. Content sits on solid, grouped-style cards; Liquid Glass stays reserved for
+/// system chrome (navigation bar, tab bar, toolbars), which keeps scrolling smooth on older iPhones.
+enum LoveSurface {
+    /// Same color iOS uses for grouped list rows, so cards and Forms match (also elevated in sheets).
+    static let card=Color(uiColor:.secondarySystemGroupedBackground)
+    static let inset=Color(uiColor:.tertiarySystemGroupedBackground)
+    static let hairline=Color.primary.opacity(0.07)
+}
+
 // MARK: - Backgrounds
 
-/// A calm, static Liquid-Glass-friendly backdrop. It is rendered once per screen and never animates,
-/// which keeps scrolling smooth even with many glass cards above it.
+/// A calm, static backdrop: a deep night-blue fade in dark mode, a soft paper tone in light mode.
+/// A plain gradient is the cheapest full-screen fill; it is drawn once and never animates.
 struct LoveBackground:View {
     @Environment(\.colorScheme) private var scheme
-    private static let points:[SIMD2<Float>]=[
-        SIMD2<Float>(0,0),SIMD2<Float>(0.5,0),SIMD2<Float>(1,0),
-        SIMD2<Float>(0,0.5),SIMD2<Float>(0.62,0.42),SIMD2<Float>(1,0.5),
-        SIMD2<Float>(0,1),SIMD2<Float>(0.45,1),SIMD2<Float>(1,1)
-    ]
-    private static let light:[Color]=[
-        Color(red:0.99,green:0.93,blue:0.95),Color(red:0.97,green:0.95,blue:0.99),Color(red:0.93,green:0.94,blue:0.99),
-        Color(red:0.98,green:0.95,blue:0.97),Color(red:0.96,green:0.96,blue:0.98),Color(red:0.95,green:0.93,blue:0.99),
-        Color(red:0.95,green:0.97,blue:0.99),Color(red:0.98,green:0.94,blue:0.96),Color(red:0.99,green:0.95,blue:0.93)
-    ]
-    private static let dark:[Color]=[
-        Color(red:0.15,green:0.05,blue:0.10),Color(red:0.07,green:0.06,blue:0.10),Color(red:0.08,green:0.07,blue:0.15),
-        Color(red:0.06,green:0.05,blue:0.08),Color(red:0.04,green:0.04,blue:0.06),Color(red:0.09,green:0.06,blue:0.13),
-        Color(red:0.04,green:0.06,blue:0.09),Color(red:0.09,green:0.04,blue:0.08),Color(red:0.11,green:0.06,blue:0.05)
-    ]
+    private static let dark=LinearGradient(colors:[Color(red:0.075,green:0.07,blue:0.16),Color(red:0.035,green:0.035,blue:0.075),Color(red:0.02,green:0.02,blue:0.035)],startPoint:.top,endPoint:.bottom)
+    private static let light=LinearGradient(colors:[Color(red:0.975,green:0.955,blue:0.975),Color(red:0.95,green:0.95,blue:0.97)],startPoint:.top,endPoint:.bottom)
     var body:some View {
-        MeshGradient(width:3,height:3,points:Self.points,colors:scheme == .dark ? Self.dark:Self.light)
+        Rectangle().fill(scheme == .dark ? Self.dark:Self.light)
             .ignoresSafeArea().accessibilityHidden(true).allowsHitTesting(false)
     }
 }
 
-/// A slowly drifting aurora for immersive moments (splash screen, TV). Static with Reduce Motion.
+/// A slowly drifting aurora for the AirPlay stage. Static on the phone and with Reduce Motion.
 struct LoveAurora:View {
     var colors:[Color]=[LovePalette.plum,LovePalette.violet,Color(red:0.10,green:0.06,blue:0.20),LovePalette.pink,Color(red:0.05,green:0.04,blue:0.10),LovePalette.blue,Color(red:0.12,green:0.05,blue:0.14),LovePalette.coral,Color(red:0.06,green:0.05,blue:0.12)]
     var speed:Double=0.12
-    var animated=true
+    var animated=false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body:some View {
-        TimelineView(.animation(minimumInterval:1.0/24.0,paused:!animated || reduceMotion)) { context in
-            MeshGradient(width:3,height:3,points:Self.points(at:context.date.timeIntervalSinceReferenceDate*speed),colors:colors)
+        TimelineView(.animation(minimumInterval:1.0/15.0,paused:!animated || reduceMotion)) { context in
+            MeshGradient(width:3,height:3,points:Self.points(at:animated && !reduceMotion ? context.date.timeIntervalSinceReferenceDate*speed:0),colors:colors)
         }.ignoresSafeArea().accessibilityHidden(true).allowsHitTesting(false)
     }
     /// Computed in Double: the reference-date timestamp is far too large for Float precision.
@@ -108,8 +105,34 @@ struct LoveSettingsRow:View {
     let symbol:String
     var tint:Color=LovePalette.pink
     var body:some View {
-        HStack(spacing:14){LoveIcon(symbol:symbol,tint:tint);VStack(alignment:.leading,spacing:4){Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary);if let subtitle{Text(subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)}};Spacer(minLength:8);Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)}.padding(.vertical,4).contentShape(Rectangle())
+        HStack(spacing:14){LoveIcon(symbol:symbol,tint:tint,size:34);VStack(alignment:.leading,spacing:3){Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary);if let subtitle{Text(subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)}};Spacer(minLength:8);Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)}.padding(.vertical,2).contentShape(Rectangle())
     }
+}
+
+/// A classic grouped section: a quiet header above one solid card, like iOS Settings.
+struct LoveGroup<Content: View>: View {
+    let title: String?
+    var footer: String? = nil
+    @ViewBuilder var content: () -> Content
+    init(_ title: String? = nil, footer: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title; self.footer = footer; self.content = content
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, 6)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            VStack(alignment: .leading, spacing: 10) { content() }.loveCard()
+            if let footer {
+                Text(footer).font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 6).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+/// Row separator aligned with the row text, not the icon.
+struct LoveRowDivider: View {
+    var body: some View { Divider().padding(.leading, 48) }
 }
 
 // MARK: - Glass surfaces
@@ -134,60 +157,34 @@ struct AdaptiveLoveRow<Content: View>: View {
     }
 }
 
-private struct LoveGlassHighlight<S:Shape>:ViewModifier {
-    let shape:S
-    @Environment(\.colorScheme) private var scheme
-    func body(content:Content)->some View {
-        content.overlay {
-            shape.stroke(LinearGradient(colors:[.white.opacity(scheme == .dark ? 0.22:0.55),.white.opacity(scheme == .dark ? 0.03:0.12)],startPoint:.top,endPoint:.bottom),lineWidth:0.8)
-                .allowsHitTesting(false)
-        }
-    }
-}
-
 extension View {
-    /// Native iOS 26 Liquid Glass with a soft specular rim.
-    func loveGlass<S: Shape>(in shape: S, tint: Color = LovePalette.violet.opacity(0.03)) -> some View {
-        self.glassEffect(.regular.tint(tint), in: shape).modifier(LoveGlassHighlight(shape:shape))
+    /// A solid card surface in any shape. Kept under its 5.0 name so every screen switches at once;
+    /// the optional tint is laid over the card as a faint wash.
+    func loveGlass<S: Shape>(in shape: S, tint: Color = .clear) -> some View {
+        self.background { ZStack { shape.fill(LoveSurface.card); shape.fill(tint) } }
+            .overlay { shape.stroke(LoveSurface.hairline, lineWidth: 0.5).allowsHitTesting(false) }
     }
-    /// Interactive glass for tappable surfaces: it reacts to touches with the system shimmer.
-    func loveInteractiveGlass<S: Shape>(in shape: S, tint: Color = LovePalette.violet.opacity(0.03)) -> some View {
-        self.glassEffect(.regular.tint(tint).interactive(), in: shape).modifier(LoveGlassHighlight(shape:shape))
+    /// Tappable variant; press feedback comes from the button style.
+    func loveInteractiveGlass<S: Shape>(in shape: S, tint: Color = .clear) -> some View {
+        loveGlass(in: shape, tint: tint)
+    }
+    /// Dark, readable backing for text over photos and video (AirPlay stage, camera).
+    func loveScrim<S: Shape>(in shape: S, opacity: Double = 0.42) -> some View {
+        self.background(.black.opacity(opacity), in: shape)
     }
 
     func loveCard()->some View {modifier(LoveCardSurface())}
 
-    /// Staggered first appearance. Driven by a flag owned by the screen, so lazily recreated rows never re-animate.
-    func loveReveal(_ shown:Bool,index:Int=0)->some View {modifier(LoveReveal(shown:shown,index:index))}
+    /// 6.0: screens appear at once. Kept as a no-op so callers stay unchanged.
+    func loveReveal(_ shown:Bool,index:Int=0)->some View {self}
 
-    /// Cards gently settle as they scroll into view and recede at the edges.
-    func loveScrollEffect()->some View {modifier(LoveScrollEffect())}
-}
-
-private struct LoveReveal:ViewModifier {
-    let shown:Bool
-    let index:Int
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    func body(content:Content)->some View {
-        let visible=shown || reduceMotion
-        content.opacity(visible ? 1:0).offset(y:visible ? 0:22).scaleEffect(visible ? 1:0.97,anchor:.top)
-            .animation(reduceMotion ? nil:LoveMotion.entrance(index),value:shown)
-    }
-}
-
-private struct LoveScrollEffect:ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    func body(content:Content)->some View {
-        let still=reduceMotion
-        content.scrollTransition(.interactive,axis:.vertical) { effect,phase in
-            effect.scaleEffect(still || phase.isIdentity ? 1:0.955).opacity(still || phase.isIdentity ? 1:0.62)
-        }
-    }
+    /// 6.0: no scroll-driven scaling; plain, fast scrolling.
+    func loveScrollEffect()->some View {self}
 }
 
 // MARK: - Buttons
 
-/// Springy press feedback for custom tappable surfaces (cards, tiles, chips).
+/// Quiet press feedback for custom tappable surfaces (cards, tiles, chips).
 struct LovePressStyle:ButtonStyle {
     func makeBody(configuration:Configuration)->some View {
         LovePressBody(configuration:configuration)
@@ -198,9 +195,9 @@ struct LovePressStyle:ButtonStyle {
         @Environment(\.isEnabled) private var enabled
         var body:some View {
             configuration.label
-                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.965:1)
-                .opacity(enabled ? (configuration.isPressed ? 0.88:1):0.45)
-                .animation(reduceMotion ? nil:LoveMotion.snappy,value:configuration.isPressed)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98:1)
+                .opacity(enabled ? (configuration.isPressed ? 0.75:1):0.45)
+                .animation(reduceMotion ? nil:.easeOut(duration:0.12),value:configuration.isPressed)
                 .contentShape(Rectangle())
         }
     }
@@ -251,25 +248,21 @@ struct StatusChip: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .foregroundStyle(tint)
-            .glassEffect(.regular.tint(tint.opacity(0.12)), in: Capsule())
+            .background(tint.opacity(0.13), in: Capsule())
             .accessibilityLabel(title)
     }
 }
 
-/// A small glowing status dot that softly breathes while active.
+/// A small status dot with a soft halo. Static: a looping pulse costs a frame every refresh.
 struct LovePulseDot: View {
     var color: Color = .green
     var active = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pulsing = false
     var body: some View {
         ZStack {
-            Circle().fill(color.opacity(0.35)).frame(width: 14, height: 14)
-                .scaleEffect(pulsing ? 1.25 : 0.5).opacity(pulsing ? 0 : 0.9)
+            Circle().fill(color.opacity(active ? 0.25 : 0.12)).frame(width: 13, height: 13)
             Circle().fill(color).frame(width: 7, height: 7)
         }
         .frame(width: 14, height: 14)
-        .onAppear { if active && !reduceMotion { withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) { pulsing = true } } }
         .accessibilityHidden(true)
     }
 }
@@ -387,7 +380,7 @@ struct LoveMetric: View {
                 .contentTransition(.numericText())
             Text(title).font(.caption).foregroundStyle(.secondary)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(17)
-            .background(LinearGradient(colors: [tint.opacity(0.11), tint.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: LoveMetrics.tileRadius, style: .continuous))
+            .background(tint.opacity(0.09), in: RoundedRectangle(cornerRadius: LoveMetrics.tileRadius, style: .continuous))
             .overlay { RoundedRectangle(cornerRadius: LoveMetrics.tileRadius, style: .continuous).strokeBorder(tint.opacity(0.12), lineWidth: 0.6) }
             .accessibilityElement(children: .combine)
     }
@@ -412,9 +405,9 @@ struct LoveHeartBurst: View {
         .allowsHitTesting(false).accessibilityHidden(true)
         .onChange(of: trigger) { _, _ in
             guard !reduceMotion else { return }
-            let burst = Burst(particles: (0..<10).map { _ in Particle(x: .random(in: -80...80), rise: .random(in: 120...210), size: .random(in: 12...26), delay: .random(in: 0...0.16), spin: .random(in: -30...30)) })
+            let burst = Burst(particles: (0..<7).map { _ in Particle(x: .random(in: -80...80), rise: .random(in: 120...210), size: .random(in: 12...26), delay: .random(in: 0...0.16), spin: .random(in: -30...30)) })
             bursts.append(burst)
-            if bursts.count > 4 { bursts.removeFirst(bursts.count - 4) }
+            if bursts.count > 2 { bursts.removeFirst(bursts.count - 2) }
             let id = burst.id
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(1.8))
@@ -436,7 +429,7 @@ private struct LoveFloatingHeart: View {
             .offset(x: flying ? particle.x : particle.x * 0.15, y: flying ? -particle.rise : 0)
             .opacity(faded ? 0 : 1)
             .onAppear {
-                withAnimation(.spring(response: 1.1, dampingFraction: 0.9).delay(particle.delay)) { flying = true }
+                withAnimation(.easeOut(duration: 1.0).delay(particle.delay)) { flying = true }
                 withAnimation(.easeIn(duration: 0.55).delay(particle.delay + 0.75)) { faded = true }
             }
     }

@@ -14,7 +14,7 @@ struct PlannerView:View {
             VStack(alignment:.leading,spacing:12){LoveEyebrow(text:"Zeit füreinander");Text("Was wir vorhaben.").font(.system(size:32,weight:.medium,design:.serif));Text("Ein Date, ein wichtiger Termin oder jedes Jahr wieder unser Tag.").foregroundStyle(.secondary)}.loveCard()
             DatePicker("Unser Kalender",selection:$day,displayedComponents:.date).datePickerStyle(.graphical).loveGlass(in:RoundedRectangle(cornerRadius:26))
             Toggle("Alle Termine anzeigen",isOn:$all)
-            Button("Gemeinsam etwas planen",systemImage:"calendar.badge.plus"){creating=true}.buttonStyle(.glassProminent).controlSize(.large)
+            Button("Gemeinsam etwas planen",systemImage:"calendar.badge.plus"){creating=true}.buttonStyle(.borderedProminent).controlSize(.large)
             ForEach(entries.filter{all || Calendar.current.isDate(next($0),inSameDayAs:day)}){record in
                 Button{editing=record}label:{VStack(alignment:.leading,spacing:9){
                     HStack{Image(systemName:record.payload.recurrence=="yearly" ? "heart.circle.fill":"calendar").foregroundStyle(LovePalette.pink);Text(record.payload.title ?? "Unsere Zeit").font(.headline);Spacer();if record.payload.alarmEnabled==true{Image(systemName:"alarm.fill")}}
@@ -27,7 +27,7 @@ struct PlannerView:View {
             VStack(alignment:.leading,spacing:12){
                 Text("Mit Apple verbinden").font(.headline)
                 Text(PlannerService.shared.status).font(.caption).foregroundStyle(.secondary)
-                Button("Kalender und Erinnerungen verbinden"){Task{_ = await app.calendar.requestAccess();_ = await app.calendar.requestReminderAccess();await PlannerService.shared.reconcile(app:app)}}.buttonStyle(.glass)
+                Button("Kalender und Erinnerungen verbinden"){Task{_ = await app.calendar.requestAccess();_ = await app.calendar.requestReminderAccess();await PlannerService.shared.reconcile(app:app)}}.buttonStyle(.bordered)
                 Text("Nur eure in RJ Love angelegten Einträge werden verbunden. Änderungen an diesen verknüpften Apple-Einträgen werden beim Öffnen abgeglichen. Fällige Hinweise kommen über deinen gewählten Push-Dienst. Deine Ruhezeiten werden auf dem Server berücksichtigt.").font(.footnote).foregroundStyle(.secondary)
             }.loveCard()
         }.padding(20)}.background(LoveBackground()).navigationTitle("Unsere Zeit")

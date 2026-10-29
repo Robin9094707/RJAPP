@@ -9,47 +9,43 @@ struct SettingsView:View {
     var body:some View {
         ScrollView {VStack(alignment:.leading,spacing:24){
             profileHero
-            VStack(alignment:.leading,spacing:16) {
-                LoveSectionTitle("Ganz nach dir",subtitle:"Deine persönliche App")
+            LoveGroup("Ganz nach dir") {
                 NavigationLink { HomeEditorView() } label: { LoveSettingsRow(title:"Startseite & Navigation",subtitle:"Alle Karten, Schnellzugriffe und bis zu fünf Tabs",symbol:"slider.horizontal.3") }
-                Divider()
+                LoveRowDivider()
                 NavigationLink { TVSettingsView() } label: { LoveSettingsRow(title:"AirPlay gestalten",subtitle:"Widgets, Kamera und Vorschau",symbol:"airplay.video",tint:LovePalette.violet) }
-                Divider()
+                LoveRowDivider()
                 NavigationLink { SettingsBackupView() } label: { LoveSettingsRow(title:"Automatische Sicherung",subtitle:"Deine Einstellungen auf eurem Server",symbol:"arrow.triangle.2.circlepath",tint:LovePalette.cyan) }
-                Divider()
+                LoveRowDivider()
                 NavigationLink { HomeKitView() } label: { LoveSettingsRow(title:"Unser Zuhause",subtitle:"Kameras, Szenen und Geräte",symbol:"house.fill",tint:LovePalette.cyan) }
-                Divider()
+                LoveRowDivider()
                 NavigationLink { DocumentsView() } label: { LoveSettingsRow(title:"Gemeinsame Dokumente",subtitle:"Dateien, Ordner und Favoriten",symbol:"folder.fill",tint:LovePalette.blue) }
-            }.loveCard()
-            VStack(alignment:.leading,spacing:16){
-                LoveSectionTitle("Dein Alltag",subtitle:"Alles Wichtige für euer kleines Wir")
+            }
+            LoveGroup("Dein Alltag") {
                 NavigationLink{CinemaView()}label:{LoveSettingsRow(title:"Unser Kino & AirPlay",subtitle:"YouTube, Plex und euer Fernsehabend",symbol:"play.tv.fill",tint:LovePalette.violet)}
-                Divider()
+                LoveRowDivider()
                 NavigationLink{StatusEditorView()}label:{LoveSettingsRow(title:"Mein Status",subtitle:app.myStatus?.visibleStatus ?? "Wie geht es dir gerade?",symbol:"person.crop.circle.badge.clock",tint:LovePalette.pink)}.accessibilityIdentifier("settings-status")
-                Divider()
+                LoveRowDivider()
                 NavigationLink{PartnerProfileView()}label:{LoveSettingsRow(title:app.partner?.displayName ?? "Dein Lieblingsmensch",subtitle:"Profil, Aktivität & Datenstände",symbol:"heart.fill",tint:LovePalette.violet)}
-                Divider()
+                LoveRowDivider()
                 NavigationLink{DropPoopView()}label:{LoveSettingsRow(title:"Drop-Poop",subtitle:"Euer privates Thronarchiv mit Karte",symbol:"toilet.fill",tint:LovePalette.coral)}
-                Divider()
+                LoveRowDivider()
                 NavigationLink{HealthDashboardView()}label:{LoveSettingsRow(title:"Health & Schlaf",subtitle:"Wohlgefühl und geteilte Werte",symbol:"heart.text.square.fill",tint:LovePalette.coral)}
-                Divider()
+                LoveRowDivider()
                 NavigationLink{LiveActivitySettingsView()}label:{LoveSettingsRow(title:"Live-Aktivität",subtitle:"Euer Platz auf dem Sperrbildschirm",symbol:"livephoto",tint:LovePalette.cyan)}
-            }.loveCard()
-            VStack(alignment:.leading,spacing:16){
-                LoveSectionTitle("Deine Entscheidung",subtitle:"Freigaben und Ruhe, so wie du sie brauchst")
+            }
+            LoveGroup("Deine Entscheidung",footer:"Freigaben und Ruhe, so wie du sie brauchst.") {
                 NavigationLink{AISettingsView()}label:{LoveSettingsRow(title:"KI-Rückblick",subtitle:"Optional · Freigaben & Kostenkontrolle",symbol:"sparkles",tint:LovePalette.violet)}
-                Divider()
+                LoveRowDivider()
                 detail(.sharing,"location.fill",LovePalette.cyan,"Standort, Fotos und Health")
-                Divider();detail(.privacy,"hand.raised.fill",LovePalette.violet,"Fotowünsche, Wiedergabe & Tagesrückblick")
-                Divider();detail(.permissions,"checkmark.shield.fill",LovePalette.pink,"Die Berechtigungen auf deinem iPhone")
-            }.loveCard()
-            VStack(alignment:.leading,spacing:16){
-                LoveSectionTitle("Euer privater Raum")
+                LoveRowDivider();detail(.privacy,"hand.raised.fill",LovePalette.violet,"Fotowünsche, Wiedergabe & Tagesrückblick")
+                LoveRowDivider();detail(.permissions,"checkmark.shield.fill",LovePalette.pink,"Die Berechtigungen auf deinem iPhone")
+            }
+            LoveGroup("Euer privater Raum") {
                 NavigationLink{AppUpdateView()}label:{LoveSettingsRow(title:"App aktualisieren",subtitle:"Version "+RJVersion.app,symbol:"arrow.down.app.fill",tint:LovePalette.violet)}
-                Divider();detail(.storage,"externaldrive.fill",LovePalette.coral,"Eure geteilten Erinnerungen")
-                Divider();NavigationLink{AccountView()}label:{LoveSettingsRow(title:"Mein Zugang",subtitle:"Benutzername & Passwort",symbol:"person.badge.key.fill",tint:LovePalette.cyan)}
-                Divider();detail(.connection,"network",LovePalette.cyan,"Server, Synchronisation & Diagnose")
-            }.loveCard()
+                LoveRowDivider();detail(.storage,"externaldrive.fill",LovePalette.coral,"Eure geteilten Erinnerungen")
+                LoveRowDivider();NavigationLink{AccountView()}label:{LoveSettingsRow(title:"Mein Zugang",subtitle:"Benutzername & Passwort",symbol:"person.badge.key.fill",tint:LovePalette.cyan)}
+                LoveRowDivider();detail(.connection,"network",LovePalette.cyan,"Server, Synchronisation & Diagnose")
+            }
             DisclosureGroup("Weitere Möglichkeiten") {
                 VStack(spacing:16){
                     NavigationLink{DeliveryCenterView()}label:{LoveSettingsRow(title:"Push, Wecker & Hintergrund",symbol:"bell.badge.fill")}

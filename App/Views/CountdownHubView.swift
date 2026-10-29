@@ -23,7 +23,7 @@ struct CountdownHubView:View {
                         VStack(spacing:12){Image(systemName:"heart.circle.fill").font(.system(size:52));Text("Unseren Jahrestag eintragen").font(.title3.bold());Text("Ab dann zählt hier eure gemeinsame Zeit.").font(.subheadline)}.frame(maxWidth:.infinity).padding(26).loveCard()
                     }.buttonStyle(.lovePress).tint(LovePalette.pink)
                 }
-                Button("Eigenen Countdown hinzufügen",systemImage:"plus.circle.fill"){anniversary=false;adding=true}.buttonStyle(.glassProminent).controlSize(.large)
+                Button("Eigenen Countdown hinzufügen",systemImage:"plus.circle.fill"){anniversary=false;adding=true}.buttonStyle(.borderedProminent).controlSize(.large)
                 ForEach(entries.filter{$0.id != ourDay?.id}) {record in
                     if let item=LoveCountdown(record:record) {
                         Button{editing=record}label:{CountdownCard(item:item,featured:false)}.buttonStyle(.lovePress)
@@ -31,7 +31,7 @@ struct CountdownHubView:View {
                     }
                 }
                 Label("Widget hinzufügen → RJ Love → Mein Countdown. Im Widget lange drücken und euren gewünschten Countdown auswählen.",systemImage:"rectangle.on.rectangle").font(.footnote).foregroundStyle(.secondary).loveCard()
-                NavigationLink{PlannerView()}label:{Label("Zum gemeinsamen Kalender",systemImage:"calendar")}.buttonStyle(.glass)
+                NavigationLink{PlannerView()}label:{Label("Zum gemeinsamen Kalender",systemImage:"calendar")}.buttonStyle(.bordered)
             }.padding(20)
         }.background(LoveBackground()).navigationTitle("Jahrestag & Countdowns").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented:$adding){CountdownEditor(initial:nil,anniversary:anniversary)}

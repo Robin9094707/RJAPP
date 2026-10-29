@@ -323,7 +323,7 @@ struct LoveTVScreen: View {
                 if tv.mode == .drawing { TVDrawingSurface().aspectRatio(16.0/9.0,contentMode: .fit).padding(28) }
                 else { TVGameBoard().padding(28) }
                 TVSignalsCard().padding(20).frame(width: size.width*0.2)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous)).padding(24)
+                    .loveScrim(in: RoundedRectangle(cornerRadius: 28, style: .continuous), opacity: 0.3).padding(24)
             }.frame(width: size.width, height: size.height).background(Color(red:0.08,green:0.06,blue:0.12))
         case .cinema:
             if cinema.active {
@@ -414,7 +414,6 @@ private struct TVAmbientStage: View {
     @State private var tv = TVPresentation.shared
     @Environment(\.loveTVPreview) private var preview
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathe = false
     private var names: String { "\(tv.app?.me?.displayName ?? "Du") & \(tv.app?.partner?.displayName ?? "Schatzi")" }
     private var nextCountdown: String? {
         let start = Calendar.current.startOfDay(for: .now)
@@ -437,7 +436,7 @@ private struct TVAmbientStage: View {
                         Image(systemName: "heart.fill").font(.system(size: min(92, size.height * 0.1)))
                             .foregroundStyle(LovePalette.heart)
                             .shadow(color: LovePalette.pink.opacity(0.55), radius: 28)
-                            .scaleEffect(breathe ? 1.06 : 0.95)
+                            
                     }
                     Text(context.date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)))
                         .font(.system(size: min(210, size.height * 0.27), weight: .ultraLight, design: .rounded)).monospacedDigit()
@@ -465,7 +464,7 @@ private struct TVAmbientStage: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .onAppear { if !night && !reduceMotion && !preview { withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) { breathe = true } } }
+
     }
 }
 
@@ -478,7 +477,7 @@ private struct TVChip: View {
             .font(.system(size: max(14, min(24, size.width * 0.016)), weight: .medium))
             .lineLimit(1)
             .padding(.horizontal, size.width * 0.014).padding(.vertical, size.height * 0.014)
-            .glassEffect(.regular.tint(.white.opacity(0.04)), in: Capsule())
+            .loveScrim(in: Capsule(), opacity: 0.38)
             .environment(\.colorScheme, .dark)
     }
 }
@@ -550,7 +549,7 @@ private struct TVMomentCaption: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, size.height * 0.032).padding(.vertical, size.height * 0.022)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: size.height * 0.03, style: .continuous))
+            .loveScrim(in: RoundedRectangle(cornerRadius: size.height * 0.03, style: .continuous))
             .environment(\.colorScheme, .dark)
             .frame(maxWidth: size.width * 0.5, alignment: .leading)
             .padding(size.height * 0.055)
@@ -576,7 +575,7 @@ private struct TVSignalOverlay: View {
                     Text(shown.owner == together.userID ? "Von dir" : "Von deinem Lieblingsmenschen")
                         .font(.system(size: size.height * 0.035, weight: .medium, design: .rounded)).foregroundStyle(.white)
                         .padding(.horizontal, size.height * 0.035).padding(.vertical, size.height * 0.018)
-                        .glassEffect(.regular, in: Capsule())
+                        .loveScrim(in: Capsule())
                         .environment(\.colorScheme, .dark)
                 }
                 .scaleEffect(lifted || reduceMotion ? 1 : 0.55)
@@ -672,7 +671,7 @@ struct TVInfoPanel: View {
                         PlexCinemaInformation(details: cinema.room?.details)
                         Label(cinema.playing ? "Zusammen mittendrin" : "Zeit für eine kleine Pause",systemImage: cinema.playing ? "play.fill" : "pause.fill")
                             .padding(.horizontal, 14).padding(.vertical, 9)
-                            .glassEffect(.regular, in: Capsule())
+                            .background(LoveSurface.inset, in: Capsule())
                     } else { Text(tv.app?.partner?.presence?.statusMessage ?? "Ein Abend. Nur für uns.").foregroundStyle(.secondary).lineLimit(4) }
                     Spacer()
                     if let end = cinema.sleepUntil {

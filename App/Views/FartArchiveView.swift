@@ -19,23 +19,31 @@ struct FartStudioView: View {
     @State private var until = Date.now
     @State private var showingDates = false
     @State private var dates: [String: Date] = [:]
+    /// Precomputed lowercase-insensitive search text per clip; formatting dates on every keystroke was the main cost.
+    @State private var searchIndex: [String: String] = [:]
     @State private var calendarDate = Date.now
     @State private var selectedDay: Date?
     @State private var yearMode = false
+    @State private var revealed = false
+    @State private var mascotAwake = false
     private var cal: Calendar { Calendar.autoupdatingCurrent }
     private func date(_ clip: FartClip) -> Date { dates[clip.id] ?? clip.date ?? .distantPast }
     private var clips: [FartClip] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let me = app.me?.id
+        let start = cal.startOfDay(for: from), end = cal.startOfDay(for: until)
         let selected = app.farts.filter { clip in
-            if owner == "mine" && clip.ownerID != app.me?.id { return false }
-            if owner == "partner" && clip.ownerID == app.me?.id { return false }
+            if owner == "mine" && clip.ownerID != me { return false }
+            if owner == "partner" && clip.ownerID == me { return false }
             if category != "all" && clip.category != category { return false }
-            if favorites && !clip.reactions.contains(where: { $0.userID == app.me?.id && $0.emoji == "❤️" }) { return false }
-            let day = cal.startOfDay(for: date(clip))
-            if useDates && (day < cal.startOfDay(for: from) || day > cal.startOfDay(for: until)) { return false }
-            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                let author = clip.ownerID == app.me?.id ? app.me?.displayName : app.partner?.displayName
-                let haystack = [clip.title,clip.caption,clip.category,author ?? "",FartSituation(rawValue: clip.situation ?? "alltag")?.title ?? "",date(clip).formatted(date: .long, time: .shortened),date(clip).formatted(date: .numeric, time: .omitted),clip.recordedAt ?? clip.createdAt,clip.ratings.first?.comment ?? ""].joined(separator: " ")
-                if !haystack.localizedStandardContains(query.trimmingCharacters(in: .whitespacesAndNewlines)) { return false }
+            if favorites && !clip.reactions.contains(where: { $0.userID == me && $0.emoji == "❤️" }) { return false }
+            if useDates {
+                let day = cal.startOfDay(for: date(clip))
+                if day < start || day > end { return false }
+            }
+            if !needle.isEmpty {
+                let haystack = searchIndex[clip.id] ?? Self.searchText(clip, date: date(clip), author: clip.ownerID == me ? app.me?.displayName : app.partner?.displayName)
+                if !haystack.localizedStandardContains(needle) { return false }
             }
             return true
         }
@@ -48,74 +56,61 @@ struct FartStudioView: View {
             }
         }
     }
-    private var calendarClips: [FartClip] {
+    private static func searchText(_ clip: FartClip, date: Date, author: String?) -> String {
+        [clip.title,clip.caption,clip.category,author ?? "",FartSituation(rawValue: clip.situation ?? "alltag")?.title ?? "",date.formatted(date: .long, time: .shortened),date.formatted(date: .numeric, time: .omitted),clip.recordedAt ?? clip.createdAt,clip.ratings.first?.comment ?? ""].joined(separator: " ")
+    }
+    private func calendarClips(_ clips: [FartClip]) -> [FartClip] {
         clips.filter { clip in
             if let selectedDay { return cal.isDate(date(clip), inSameDayAs: selectedDay) }
             return cal.isDate(date(clip), equalTo: calendarDate, toGranularity: yearMode ? .year : .month)
         }
     }
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 10) {
-                Picker("Duftstudio-Bereich", selection: $room) {
-                    ForEach(DuftRoom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).accessibilityIdentifier("duft-room")
-                if room == .kalender {
-                    Picker("Kalenderansicht", selection: $yearMode) { Text("Monat").tag(false); Text("Jahr").tag(true) }
-                        .pickerStyle(.segmented).accessibilityIdentifier("duft-calendar-scale")
-                    Button("Heute anzeigen") {
-                        calendarDate = .now
-                        selectedDay = nil
-                        yearMode = false
-                    }.font(.caption.bold()).accessibilityIdentifier("duft-calendar-today")
+        let visible = clips
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: LoveMetrics.stackSpacing) {
+                if room == .sammlung && query.isEmpty { hero.loveReveal(revealed, index: 0) }
+                if room == .sammlung {
+                    HStack(spacing:12) {
+                        NavigationLink {FartLibraryView()} label:{Label("Schatzkiste & Import",systemImage:"square.and.arrow.down").frame(maxWidth:.infinity,minHeight:40)}
+                        NavigationLink {EveningPlaylistView()} label:{Label("Abendplayer",systemImage:"play.square.stack.fill").frame(maxWidth:.infinity,minHeight:40)}.accessibilityIdentifier("evening-playlist-link")
+                    }.font(.caption.bold()).buttonStyle(.glass).loveReveal(revealed, index: 1)
+                    HStack {
+                        Button {Haptics.selection();favorites.toggle()} label:{Label("Lieblinge",systemImage:favorites ? "heart.fill":"heart").contentTransition(.symbolEffect(.replace))}.tint(favorites ? LovePalette.pink:LovePalette.violet)
+                        Spacer()
+                        Menu {Picker("Sortieren",selection:$order) {ForEach(DuftOrder.allCases,id:\.self) {Text($0.rawValue).tag($0)}}} label:{Label("Sortieren",systemImage:"arrow.up.arrow.down")}
+                        Button {filtersExpanded=true;showingDates=true} label:{Image(systemName:"calendar")}.accessibilityLabel("Zeitraum filtern")
+                    }.font(.subheadline).buttonStyle(.glass).loveReveal(revealed, index: 2)
                 }
-                if !query.isEmpty {
-                    HStack {Text("\(clips.count) Treffer").font(.caption.bold()).accessibilityIdentifier("duft-results");Spacer();Button("Suche leeren"){query=""}.font(.caption)}
+                if app.studio.queueCount>0{HStack{Image(systemName:"music.note.list").foregroundStyle(LovePalette.violet);Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)").contentTransition(.numericText());Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).buttonStyle(.glass).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18,style:.continuous)).transition(.move(edge:.top).combined(with:.opacity))}
+                DisclosureGroup("Verfeinern · \(visible.count) Werke",isExpanded:$filtersExpanded){filters(count: visible.count).padding(.top,12)}.font(.subheadline.bold()).tint(LovePalette.violet).loveCard().loveReveal(revealed, index: 3)
+                if app.loadingFartArchive { HStack(spacing: 10) { ProgressView(); Text("Euer vollständiges Archiv wird geladen …") }.font(.footnote).foregroundStyle(.secondary).transition(.opacity) }
+                switch room {
+                case .sammlung:
+                    if visible.isEmpty { empty }
+                    else { ForEach(visible) { clip in FartClipCard(clip: clip).loveScrollEffect() } }
+                case .kalender:
+                    let dayClips = calendarClips(visible)
+                    FartCalendarPanel(clips: visible, date: $calendarDate, selectedDay: $selectedDay, yearMode: $yearMode)
+                    HStack {
+                        Text((selectedDay ?? calendarDate).formatted(selectedDay != nil ? .dateTime.day().month(.wide).year() : yearMode ? .dateTime.year() : .dateTime.month(.wide).year())).font(.headline)
+                        Spacer()
+                        Text("\(dayClips.count)").font(.subheadline.bold()).foregroundStyle(LovePalette.violet).contentTransition(.numericText())
+                    }
+                    if selectedDay != nil { Button("Alle Tage dieses Monats zeigen") { selectedDay = nil }.font(.caption) }
+                    if dayClips.isEmpty { empty }
+                    else { ForEach(dayClips) { clip in FartClipCard(clip: clip).loveScrollEffect() } }
+                case .karte: FartAtlasView(clips: visible)
+                case .bilanz: FartInsightsView(clips: visible)
                 }
-            }.padding(.horizontal, 20).padding(.vertical, 10).background(.ultraThinMaterial)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if room == .sammlung && query.isEmpty { hero }
-                    if room == .sammlung {
-                        HStack(spacing:12) {
-                            NavigationLink {FartLibraryView()} label:{Label("Schatzkiste & Import",systemImage:"square.and.arrow.down").frame(maxWidth:.infinity,minHeight:44)}
-                            NavigationLink {EveningPlaylistView()} label:{Label("Abendplayer",systemImage:"play.square.stack.fill").frame(maxWidth:.infinity,minHeight:44)}.accessibilityIdentifier("evening-playlist-link")
-                        }.font(.caption.bold()).buttonStyle(.bordered)
-                        HStack {
-                            Button {favorites.toggle()} label:{Label("Lieblinge",systemImage:favorites ? "heart.fill":"heart")}.tint(favorites ? LovePalette.pink:LovePalette.violet)
-                            Spacer()
-                            Menu {Picker("Sortieren",selection:$order) {ForEach(DuftOrder.allCases,id:\.self) {Text($0.rawValue).tag($0)}}} label:{Label("Sortieren",systemImage:"arrow.up.arrow.down")}
-                            Button {filtersExpanded=true;showingDates=true} label:{Image(systemName:"calendar")}.accessibilityLabel("Zeitraum filtern")
-                        }.font(.subheadline).buttonStyle(.bordered)
-                    }
-                    if app.studio.queueCount>0{HStack{Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)");Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18))}
-                    DisclosureGroup("Verfeinern · \(clips.count) Werke",isExpanded:$filtersExpanded){filters.padding(.top,12)}.font(.subheadline.bold()).loveCard()
-                    if app.loadingFartArchive { ProgressView("Euer vollständiges Archiv wird geladen …").font(.footnote) }
-                    switch room {
-                    case .sammlung:
-                        if clips.isEmpty { empty }
-                        else { ForEach(clips) { clip in FartClipCard(clip: clip) } }
-                    case .kalender:
-                        FartCalendarPanel(clips: clips, date: $calendarDate, selectedDay: $selectedDay, yearMode: $yearMode)
-                        HStack {
-                            Text((selectedDay ?? calendarDate).formatted(selectedDay != nil ? .dateTime.day().month(.wide).year() : yearMode ? .dateTime.year() : .dateTime.month(.wide).year())).font(.headline)
-                            Spacer()
-                            Text("\(calendarClips.count)").font(.subheadline.bold()).foregroundStyle(LovePalette.violet)
-                        }
-                        if selectedDay != nil { Button("Alle Tage dieses Monats zeigen") { selectedDay = nil }.font(.caption) }
-                        if calendarClips.isEmpty { empty }
-                        else { ForEach(calendarClips) { clip in FartClipCard(clip: clip) } }
-                    case .karte: FartAtlasView(clips: clips)
-                    case .bilanz: FartInsightsView(clips: clips)
-                    }
-                    Text("Euer privates Baucharchiv. Nur ihr zwei hört mit.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 10)
-                }.padding(20)
-            }.id(room).accessibilityIdentifier("duft-archive-scroll").refreshable { _ = await app.syncNow(showErrors: true) }
-            Button { app.openFartRecorder() } label: {
-                Label(app.studio.draft == nil ? "Neues Meisterwerk aufnehmen" : "Deinen Entwurf fortsetzen", systemImage: app.studio.draft == nil ? "cloud.fill" : "waveform").frame(maxWidth: .infinity)
-            }.buttonStyle(.borderedProminent).controlSize(.large).tint(LovePalette.violet)
-                .padding(.horizontal, 20).padding(.vertical, 10).background(.ultraThinMaterial).accessibilityIdentifier("duft-record")
-        }.background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
+                Text("Euer privates Baucharchiv. Nur ihr zwei hört mit.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 10)
+            }.padding(.horizontal, LoveMetrics.screenPadding).padding(.vertical, 14)
+            .frame(maxWidth: 760).frame(maxWidth: .infinity)
+        }
+        .id(room).scrollIndicators(.hidden).accessibilityIdentifier("duft-archive-scroll").refreshable { _ = await app.syncNow(showErrors: true) }
+        .safeAreaInset(edge: .top, spacing: 0) { controlBar(results: visible.count) }
+        .safeAreaInset(edge: .bottom, spacing: 0) { recordBar }
+        .background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, prompt: "Titel, Datum, Person, Jury-Kommentar …")
             .sheet(isPresented: $showingDates) { dateFilter }
             .task {
@@ -128,34 +123,94 @@ struct FartStudioView: View {
                 #endif
                 await app.loadFartArchive()
             }
-            .onChange(of: app.farts, initial: true) { _, value in dates = Dictionary(uniqueKeysWithValues: value.compactMap { clip in clip.date.map { (clip.id,$0) } }) }
+            .onAppear { revealed = true }
+            .onChange(of: app.farts, initial: true) { _, value in rebuildIndex(value) }
             .onDisappear { app.fartArchiveVisible = false; if !EveningPlaylistService.shared.active {app.studio.stopPlayback()} }
             .onChange(of: yearMode) { _, _ in selectedDay = nil }
-            .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: room)
+            .onChange(of: room) { _, _ in Haptics.selection() }
+            .animation(reduceMotion ? nil : LoveMotion.gentle, value: room)
+            .animation(reduceMotion ? nil : LoveMotion.spring, value: app.studio.queueCount)
+            .animation(reduceMotion ? nil : LoveMotion.gentle, value: app.loadingFartArchive)
+    }
+    private func rebuildIndex(_ value: [FartClip]) {
+        var nextDates: [String: Date] = [:]
+        var nextIndex: [String: String] = [:]
+        let me = app.me?.id
+        for clip in value {
+            let when = clip.date ?? .distantPast
+            if let date = clip.date { nextDates[clip.id] = date }
+            nextIndex[clip.id] = Self.searchText(clip, date: when, author: clip.ownerID == me ? app.me?.displayName : app.partner?.displayName)
+        }
+        dates = nextDates
+        searchIndex = nextIndex
+    }
+    private func controlBar(results: Int) -> some View {
+        VStack(spacing: 10) {
+            Picker("Duftstudio-Bereich", selection: $room) {
+                ForEach(DuftRoom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).accessibilityIdentifier("duft-room")
+            if room == .kalender {
+                HStack {
+                    Picker("Kalenderansicht", selection: $yearMode) { Text("Monat").tag(false); Text("Jahr").tag(true) }
+                        .pickerStyle(.segmented).accessibilityIdentifier("duft-calendar-scale")
+                    Button("Heute") {
+                        calendarDate = .now
+                        selectedDay = nil
+                        yearMode = false
+                    }.font(.caption.bold()).buttonStyle(.glass).accessibilityIdentifier("duft-calendar-today").accessibilityLabel("Heute anzeigen")
+                }.transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if !query.isEmpty {
+                HStack {Text("\(results) Treffer").font(.caption.bold()).contentTransition(.numericText()).accessibilityIdentifier("duft-results");Spacer();Button("Suche leeren"){query=""}.font(.caption)}
+            }
+        }
+        .padding(10)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 14).padding(.top, 6).padding(.bottom, 4)
+        .animation(reduceMotion ? nil : LoveMotion.spring, value: room == .kalender)
+    }
+    private var recordBar: some View {
+        Button { Haptics.impact(.soft); app.openFartRecorder() } label: {
+            Label(app.studio.draft == nil ? "Neues Meisterwerk aufnehmen" : "Deinen Entwurf fortsetzen", systemImage: app.studio.draft == nil ? "mic.fill" : "waveform")
+                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
+        }.buttonStyle(.glassProminent).controlSize(.large).tint(LovePalette.violet)
+            .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 8).accessibilityIdentifier("duft-record")
     }
     private var hero: some View {
-        VStack(alignment:.leading,spacing:20) {
+        VStack(alignment:.leading,spacing:18) {
             HStack(alignment:.center,spacing:10) {
-                VStack(alignment:.leading,spacing:12) {
-                    LoveEyebrow(text:"Kleine Kunst. Große Liebe.")
-                    Text("Dein Duftstudio.").font(.system(size:28,weight:.medium,design:.serif)).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("duft-archive-title")
+                VStack(alignment:.leading,spacing:10) {
+                    LoveEyebrow(text:"Kleine Kunst. Große Liebe.", tint: LovePalette.violet)
+                    Text("Dein Duftstudio.").font(.loveDisplay(30)).fixedSize(horizontal:false,vertical:true).accessibilityIdentifier("duft-archive-title")
                     Text("Ein privates Tonstudio für euren ganz eigenen Humor.").font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer(minLength:0)
-                PuffMascot(active:false).frame(width:78,height:90).clipped()
+                PuffMascot(active:mascotAwake).frame(width:84,height:92).clipped()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        Haptics.impact(.light)
+                        mascotAwake = true
+                        Task { try? await Task.sleep(for: .seconds(2.4)); mascotAwake = false }
+                    }
+                    .accessibilityHidden(true)
             }
-            HStack(spacing:12) {
-                studioStat(app.farts.count.formatted(),"Meisterwerke","cloud.fill")
-                studioStat(Set(app.farts.compactMap{$0.date.map{cal.startOfDay(for:$0)}}).count.formatted(),"Dufttage","calendar")
-                studioStat(app.farts.reduce(0){$0+($1.commentCount ?? 0)}.formatted(),"Kommentare","bubble.left.fill")
+            HStack(spacing:10) {
+                studioStat(app.farts.count,"Meisterwerke","cloud.fill")
+                studioStat(Set(app.farts.compactMap{$0.date.map{cal.startOfDay(for:$0)}}).count,"Dufttage","calendar")
+                studioStat(app.farts.reduce(0){$0+($1.commentCount ?? 0)},"Kommentare","bubble.left.fill")
             }
-
         }.loveCard()
     }
-    private func studioStat(_ value:String,_ title:String,_ symbol:String)->some View {
-        VStack(alignment:.leading,spacing:7){Image(systemName:symbol).foregroundStyle(LovePalette.violet);Text(value).font(.system(.title2,design:.rounded).bold());Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)}.frame(maxWidth:.infinity,alignment:.leading).padding(12).background(LovePalette.violet.opacity(0.07),in:RoundedRectangle(cornerRadius:18))
+    private func studioStat(_ value:Int,_ title:String,_ symbol:String)->some View {
+        VStack(alignment:.leading,spacing:7){
+            Image(systemName:symbol).symbolRenderingMode(.hierarchical).foregroundStyle(LovePalette.violet)
+            Text(value.formatted()).font(.system(.title2,design:.rounded).bold()).contentTransition(.numericText(value: Double(value))).animation(LoveMotion.snappy, value: value)
+            Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+        }.frame(maxWidth:.infinity,alignment:.leading).padding(12)
+            .background(LinearGradient(colors:[LovePalette.violet.opacity(0.12),LovePalette.violet.opacity(0.04)],startPoint:.topLeading,endPoint:.bottomTrailing),in:RoundedRectangle(cornerRadius:18,style:.continuous))
+            .accessibilityElement(children:.combine)
     }
-    private var filters: some View {
+    private func filters(count: Int) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -165,12 +220,12 @@ struct FartStudioView: View {
                     Menu {
                         Picker("Kategorie", selection: $category) { Text("Alle Kategorien").tag("all"); ForEach(FartCategory.allCases) { Text($0.emoji + " " + $0.rawValue).tag($0.rawValue) } }
                     } label: { Label(category == "all" ? "Alle Duftnoten" : category, systemImage: "wind") }
-                    Button { favorites.toggle() } label: { Label("Lieblinge", systemImage: favorites ? "heart.fill" : "heart") }.tint(favorites ? LovePalette.pink : LovePalette.violet)
+                    Button { Haptics.selection(); favorites.toggle() } label: { Label("Lieblinge", systemImage: favorites ? "heart.fill" : "heart") }.tint(favorites ? LovePalette.pink : LovePalette.violet)
                     Button { showingDates = true } label: { Label(useDates ? "Zeitraum aktiv" : "Zeitraum", systemImage: "calendar") }
-                }.font(.caption.bold()).buttonStyle(.bordered)
+                }.font(.caption.bold()).buttonStyle(.glass).padding(.vertical, 2)
             }
             HStack {
-                Text("\(clips.count) Treffer").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier(query.isEmpty ? "duft-results":"duft-filter-results")
+                Text("\(count) Treffer").font(.caption).foregroundStyle(.secondary).contentTransition(.numericText()).accessibilityIdentifier(query.isEmpty ? "duft-results":"duft-filter-results")
                 Spacer()
                 Menu { Picker("Sortieren", selection: $order) { ForEach(DuftOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) } } } label: { Label(order.rawValue, systemImage: "arrow.up.arrow.down").font(.caption) }
             }
@@ -208,7 +263,7 @@ struct FartCalendarPanel: View {
                 Text(date.formatted(yearMode ? .dateTime.year() : .dateTime.month(.wide).year())).font(.headline).multilineTextAlignment(.center).accessibilityIdentifier("duft-calendar-heading")
                 Spacer(minLength: 0)
                 Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 40, height: 40) }.accessibilityLabel(yearMode ? "Nächstes Jahr" : "Nächster Monat")
-            }.buttonStyle(.bordered)
+            }.buttonStyle(.glass)
             if yearMode { yearGrid } else { monthGrid }
         }.padding(12).frame(maxWidth: .infinity).loveGlass(in: RoundedRectangle(cornerRadius: 26))
             .onAppear {
@@ -243,7 +298,7 @@ struct FartCalendarPanel: View {
                             }.frame(maxWidth: .infinity, minHeight: 46).foregroundStyle(chosen ? Color.white : amount>0 ? LovePalette.violet : Color.primary)
                                 .background(chosen ? LovePalette.violet : amount>0 ? LovePalette.violet.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
                                 .overlay { if cal.isDateInToday(day) { RoundedRectangle(cornerRadius: 12).stroke(LovePalette.pink, lineWidth: 1) } }
-                        }.buttonStyle(.plain).accessibilityLabel(day.formatted(date: .long, time: .omitted) + ", \(amount) Aufnahmen")
+                        }.buttonStyle(.lovePress).accessibilityLabel(day.formatted(date: .long, time: .omitted) + ", \(amount) Aufnahmen")
                     } else { Color.clear.frame(height: 46).accessibilityHidden(true) }
                 }
             }
@@ -262,7 +317,7 @@ struct FartCalendarPanel: View {
                         Text("Aufnahmen").font(.system(size: 9)).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity,alignment: .leading).padding(10)
                         .background(LovePalette.violet.opacity(values[month] == nil ? 0.04 : 0.15),in: RoundedRectangle(cornerRadius: 16))
-                }.buttonStyle(.plain).accessibilityLabel(value.formatted(.dateTime.month(.wide).year()) + ", \(values[month] ?? 0) Aufnahmen")
+                }.buttonStyle(.lovePress).accessibilityLabel(value.formatted(.dateTime.month(.wide).year()) + ", \(values[month] ?? 0) Aufnahmen")
             }
         }
     }
@@ -287,7 +342,7 @@ struct FartAtlasView: View {
                     }
                 }.mapControls { MapCompass(); MapScaleView() }.frame(height: 330).clipShape(RoundedRectangle(cornerRadius: 26))
                 Text("\(located.count) mit Ort · \(clips.count-located.count) ohne Ort").font(.caption).foregroundStyle(.secondary)
-                ForEach(located) { clip in Button { selection = clip.id } label: { Label(clip.title, systemImage: "mappin.circle.fill").frame(maxWidth: .infinity,alignment: .leading) }.buttonStyle(.bordered) }
+                ForEach(located) { clip in Button { selection = clip.id } label: { Label(clip.title, systemImage: "mappin.circle.fill").frame(maxWidth: .infinity,alignment: .leading) }.buttonStyle(.glass) }
             }
         }.sheet(item: Binding(get: { located.first { $0.id == selection } }, set: { selection = $0?.id })) { clip in
             NavigationStack {

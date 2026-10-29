@@ -72,7 +72,7 @@ struct AudioTrimControls: View {
                 Button(preview.playing ? "Stoppen" : "Ausschnitt anhören", systemImage: preview.playing ? "stop.fill" : "play.fill") {
                     do { if preview.playing { preview.stop() } else { try preview.play(url: url, start: start, end: end) } }
                     catch { self.error = error.localizedDescription }
-                }.buttonStyle(.bordered)
+                }.buttonStyle(.glass)
                 Spacer()
                 Text(String(format: "%.2f s", end - start)).font(.headline.monospacedDigit()).foregroundStyle(LovePalette.violet)
             }
@@ -114,7 +114,7 @@ struct FartEditorView: View {
                                 saving = false
                             }
                         } label: { HStack { if saving { ProgressView() }; Label("Schnitt in der Cloud speichern", systemImage: "icloud.and.arrow.up").frame(maxWidth: .infinity) } }
-                        .buttonStyle(.borderedProminent).controlSize(.large).disabled(saving || title.count > 100)
+                        .buttonStyle(.glassProminent).controlSize(.large).disabled(saving || title.count > 100)
                         Text("Das Original und frühere Schnitte bleiben im Serverarchiv für Backups erhalten. Eure Bewertungen bleiben an dieser Duftpost.").font(.footnote).foregroundStyle(.secondary)
                     } else if error == nil { ProgressView("Aufnahme laden …") }
                     if let error { Text(error).foregroundStyle(.orange) }

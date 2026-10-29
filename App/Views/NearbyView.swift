@@ -40,7 +40,7 @@ struct NearbyView: View {
                 Button(appState.nearby.running ? "Suche beenden" : "Nahbereichssuche starten", systemImage: "dot.radiowaves.left.and.right") {
                     if appState.nearby.running { appState.nearby.pauseAutomaticSearch(api: appState.api) }
                     else { Task {await appState.nearby.start(api: appState.api)} }
-                }.buttonStyle(.borderedProminent).controlSize(.large).disabled(!appState.nearby.supported)
+                }.buttonStyle(.glassProminent).controlSize(.large).disabled(!appState.nearby.supported)
                 DisclosureGroup("Verbindung prüfen & Diagnose") {
                     VStack(alignment:.leading,spacing:12) {
                         Text("Die Standortkarte und UWB sind getrennte Funktionen. Ein fehlender Token beweist keine verweigerte Freigabe. Für den Pfeil Kamera-Unterstützung aktivieren; zuerst ohne Hintergrundoption auf beiden Geräten testen.").font(.subheadline)

@@ -26,7 +26,7 @@ struct DeliveryCenterView: View {
                 if let error { Label(error, systemImage: "exclamationmark.bubble.fill").font(.footnote).foregroundStyle(.orange).loveCard() }
                 if let message { Text(message).font(.footnote).foregroundStyle(LovePalette.cyan).loveCard() }
                 Button("Status aktualisieren", systemImage: "arrow.clockwise") { Task { await load() } }
-                    .buttonStyle(.bordered).disabled(loading || dirty)
+                    .buttonStyle(.glass).disabled(loading || dirty)
             }.padding(20)
         }
         .background(LoveBackground()).navigationTitle("Push & Wecker").navigationBarTitleDisplayMode(.inline)
@@ -97,13 +97,13 @@ struct DeliveryCenterView: View {
             }
             if settings.provider == "ntfy" || settings.fallbackNtfy { ntfySettings }
             Button("Einstellungen speichern", systemImage: "checkmark.circle.fill") { Task { await save() } }
-                .buttonStyle(.borderedProminent).disabled(loading || !dirty)
+                .buttonStyle(.glassProminent).disabled(loading || !dirty)
             Button("Testnachricht an mich", systemImage: "bell.badge.fill") {
                 Task {
                     do { try await app.api.testExternalPush(); message = "Test angefordert. Prüfe die gewählte Push-App."; await refreshStatus() }
                     catch { self.error = error.localizedDescription }
                 }
-            }.buttonStyle(.bordered).disabled(loading || dirty || !status.ready)
+            }.buttonStyle(.glass).disabled(loading || dirty || !status.ready)
         }.font(.subheadline).loveCard()
     }
 
@@ -157,7 +157,7 @@ struct DeliveryCenterView: View {
                     Text("Alle 45 Sekunden · endet nach Bestätigung, bei Ruhezeit oder deiner gewählten Zeitgrenze.").font(.caption).foregroundStyle(.secondary)
                     Button("Bin wach · beenden", systemImage: "checkmark.circle.fill") {
                         Task { do { try await app.api.acknowledgePushAlarm(id: alarm.id); await refreshStatus() } catch { self.error = error.localizedDescription } }
-                    }.buttonStyle(.borderedProminent)
+                    }.buttonStyle(.glassProminent)
                     Divider()
                 }
             }.loveCard()
@@ -226,7 +226,7 @@ private struct QuietScheduleEditor: View {
                         Button(weekdays[day]) {
                             if schedule.days.contains(day) { schedule.days.removeAll { $0 == day } }
                             else { schedule.days.append(day); schedule.days.sort() }
-                        }.buttonStyle(.bordered).tint(schedule.days.contains(day) ? LovePalette.pink : .secondary)
+                        }.buttonStyle(.glass).tint(schedule.days.contains(day) ? LovePalette.pink : .secondary)
                             .accessibilityLabel("\(weekdays[day]): \(schedule.days.contains(day) ? "aktiv" : "inaktiv")")
                     }
                 }

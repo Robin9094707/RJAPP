@@ -58,7 +58,7 @@ struct LovePlayView: View {
                 if coupons.isEmpty {
                     Button { showCoupon = true } label: {
                         Label("Deinen ersten Gutschein verschenken", systemImage: "gift.fill").frame(maxWidth: .infinity)
-                    }.buttonStyle(.bordered).controlSize(.large)
+                    }.buttonStyle(.glass).controlSize(.large)
                 }
                 ForEach(coupons) { coupon in couponCard(coupon) }
                 Text("Nähe braucht keinen perfekten Plan. Nur ein bisschen Zeit füreinander.").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity).multilineTextAlignment(.center).padding(.vertical)
@@ -76,14 +76,14 @@ struct LovePlayView: View {
                     withAnimation(.spring(response: 0.4)) { spinning.toggle() }
                     let choices = ideas.filter { setting == "Egal" || $0.0 == setting }.map(\.1).filter { $0 != dateIdea }
                     dateIdea = choices.randomElement() ?? ideas[0].1; dateSaved = false; Haptics.impact(.soft)
-                }.buttonStyle(.borderedProminent).tint(LovePalette.violet)
+                }.buttonStyle(.glassProminent).tint(LovePalette.violet)
                 Button(dateSaved ? "Gemerkte Idee" : "Merken", systemImage: dateSaved ? "checkmark" : "heart") {
                     saving = true
                     Task {
                         if await appState.saveRecord(kind: .wish, payload: RecordPayload(title: "Unser nächstes kleines Date", text: dateIdea, completed: false)) != nil { dateSaved = true }
                         saving = false
                     }
-                }.buttonStyle(.bordered).disabled(saving || dateSaved)
+                }.buttonStyle(.glass).disabled(saving || dateSaved)
             }
         }.loveCard()
     }
@@ -97,7 +97,7 @@ struct LovePlayView: View {
                     if await appState.saveRecord(kind: .gratitude, payload: RecordPayload(title: "Heute mag ich an dir …", text: gratitude.trimmingCharacters(in: .whitespacesAndNewlines))) != nil { gratitude = "" }
                     saving = false
                 }
-            }.buttonStyle(.bordered).disabled(saving || gratitude.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || gratitude.count > 4000)
+            }.buttonStyle(.glass).disabled(saving || gratitude.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || gratitude.count > 4000)
         }.loveCard()
     }
     private func couponCard(_ coupon: SharedRecord) -> some View {
@@ -118,7 +118,7 @@ struct LovePlayView: View {
                 Button("Jetzt einlösen", systemImage: "checkmark.seal") {
                     var payload = coupon.payload; payload.completed = true
                     Task { _ = await appState.saveRecord(id: coupon.id, kind: .coupon, payload: payload) }
-                }.buttonStyle(.borderedProminent).tint(LovePalette.pink)
+                }.buttonStyle(.glassProminent).tint(LovePalette.pink)
             } else {
                 Text(redeemed ? "Dieses kleine Versprechen gehört schon zu eurer Geschichte. 💗" : "Dein Lieblingsmensch kann diesen Gutschein hier einlösen.").font(.caption).foregroundStyle(.secondary)
             }

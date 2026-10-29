@@ -97,7 +97,7 @@ struct TVGameBoard: View {
                                 .font(.system(size: side*0.16,weight: .medium,design: .rounded))
                                 .frame(maxWidth: .infinity).frame(height: (side-16)/3)
                                 .background(.regularMaterial,in: RoundedRectangle(cornerRadius: 18))
-                        }.buttonStyle(.plain).disabled(!interactive).accessibilityLabel("Spielfeld \(index+1)").accessibilityValue(together.state.board.indices.contains(index) && !together.state.board[index].isEmpty ? together.state.board[index] : "Leer").accessibilityIdentifier("tv-game-cell-\(index)")
+                        }.buttonStyle(.lovePress).disabled(!interactive).accessibilityLabel("Spielfeld \(index+1)").accessibilityValue(together.state.board.indices.contains(index) && !together.state.board[index].isEmpty ? together.state.board[index] : "Leer").accessibilityIdentifier("tv-game-cell-\(index)")
                     }
                 }.frame(width: side)
             }.frame(maxWidth: .infinity,maxHeight: .infinity)
@@ -111,7 +111,7 @@ struct TVGameRemote: View {
             Text("Tic-Tac-Toe für uns zwei").font(.title2.bold())
             TVGameBoard(interactive: true).frame(height: 380)
             Text(together.state.players["X"] == together.userID ? "Du spielst X · Schatzi spielt O" : together.state.players["O"] == together.userID ? "Du spielst O · Schatzi spielt X" : "Starte eine neue Runde.").font(.caption).foregroundStyle(.secondary)
-            Button("Neue Runde",systemImage: "arrow.clockwise") { Task { await together.action("new_game") } }.buttonStyle(.borderedProminent).accessibilityIdentifier("tv-game-new")
+            Button("Neue Runde",systemImage: "arrow.clockwise") { Task { await together.action("new_game") } }.buttonStyle(.glassProminent).accessibilityIdentifier("tv-game-new")
             if let error = together.error { Text(error).font(.footnote).foregroundStyle(.orange) }
         }.loveCard().task { await together.refresh() }
     }

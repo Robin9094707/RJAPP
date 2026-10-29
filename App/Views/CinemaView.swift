@@ -66,7 +66,7 @@ struct CinemaView: View {
                     HStack {
                         VStack(alignment: .leading) { Text(room.title).font(.headline); Text(room.provider == "youtube" ? "YouTube" : "Plex · ausgewählter Film").font(.caption).foregroundStyle(.secondary) }
                         Spacer()
-                        Button("Beitreten") { tv.mode = .cinema; Task { await cinema.join(room) } }.buttonStyle(.bordered).disabled(cinema.busy || (room.provider == "plex" && !room.plexShared))
+                        Button("Beitreten") { tv.mode = .cinema; Task { await cinema.join(room) } }.buttonStyle(.glass).disabled(cinema.busy || (room.provider == "plex" && !room.plexShared))
                     }
                 }
             }.loveCard()
@@ -112,7 +112,7 @@ struct CinemaNowPlayingView: View {
                 PlexCinemaInformation(details: cinema.room?.details)
                 if cinema.player == nil {
                     Label(cinema.room?.details?.external == true ? "Plex läuft auf dem verbundenen Abspielgerät" : "Du steuerst euren gemeinsamen Film",systemImage: "appletv.fill").font(.subheadline)
-                    Button("Auch auf diesem iPhone abspielen",systemImage: "iphone.and.play.circle") { Task { await cinema.playOnThisDevice() } }.buttonStyle(.borderedProminent).disabled(cinema.room?.plexShared != true)
+                    Button("Auch auf diesem iPhone abspielen",systemImage: "iphone.and.play.circle") { Task { await cinema.playOnThisDevice() } }.buttonStyle(.glassProminent).disabled(cinema.room?.plexShared != true)
                 } else if cinema.room != nil {
                     Button("Nur mitsteuern · diesen Stream beenden",systemImage: "tv") { cinema.stopThisDevice() }.font(.caption)
                 }
@@ -165,15 +165,15 @@ struct CinemaYouTubeBrowser: View {
             if !consent {
                 Text("YouTube wird von Google bereitgestellt. Beim Öffnen gehen unter anderem IP-Adresse, Geräteinformationen und die Videoauswahl an Google. Anmeldungen erfolgen ausschließlich auf der echten Google-/YouTube-Seite. Deine Abos und Anmeldedaten werden nicht mit Schatzi geteilt.").font(.footnote)
                 links
-                Button("YouTube aktivieren") { consent = true }.buttonStyle(.borderedProminent).accessibilityIdentifier("cinema-youtube-consent")
+                Button("YouTube aktivieren") { consent = true }.buttonStyle(.glassProminent).accessibilityIdentifier("cinema-youtube-consent")
             } else {
                 TextField("YouTube suchen oder Video-Link einfügen",text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit { openSearch() }.accessibilityIdentifier("cinema-youtube-query")
-                Button("Suchen / Video öffnen",systemImage: "magnifyingglass") { openSearch() }.buttonStyle(.borderedProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Suchen / Video öffnen",systemImage: "magnifyingglass") { openSearch() }.buttonStyle(.glassProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Text("Native Videosuche ohne API-Schlüssel. Tippe auf ein Ergebnis, um es direkt abzuspielen. Deine eigene YouTube-Anmeldung und Abos bleiben auf diesem iPhone.").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     webButton("YouTube",symbol: "play.rectangle",path: "/")
-                    Button("Meine Abos",systemImage: "person.2") { Task { await native.subscriptions() } }.buttonStyle(.bordered)
+                    Button("Meine Abos",systemImage: "person.2") { Task { await native.subscriptions() } }.buttonStyle(.glass)
                     webButton("Anmelden",symbol: "person.crop.circle",path: "/signin")
                 }.font(.subheadline)
                 Text("Anmelden öffnet YouTube direkt in der App. Google kann Anmeldungen in eingebetteten Ansichten einschränken. Kontoinhalte und Premium bleiben an dein Konto gebunden; der gemeinsame Player kann bei geschützten Videos eine eigene Freigabe verlangen.").font(.caption).foregroundStyle(.secondary)
@@ -187,7 +187,7 @@ struct CinemaYouTubeBrowser: View {
                             AsyncImage(url: URL(string: "https://i.ytimg.com/vi/"+item.id+"/mqdefault.jpg")) { image in image.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.12) }.frame(width: 100,height: 58).clipped().clipShape(RoundedRectangle(cornerRadius: 10))
                             VStack(alignment: .leading,spacing: 4) { Text(item.title).font(.subheadline.bold()).lineLimit(3); Text(item.channel).font(.caption).foregroundStyle(.secondary) }; Spacer(minLength: 0)
                         }
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.lovePress)
                 }
                 if native.hasMore { Button("Weitere Videos") { Task { await native.more() } }.disabled(native.busy) }
                 Button("YouTube direkt in der App öffnen",systemImage: "play.rectangle") { browser = YouTubeWebDestination(url: URL(string: "https://m.youtube.com/")!) }.font(.caption)
@@ -214,7 +214,7 @@ struct CinemaYouTubeBrowser: View {
         }.font(.caption)
     }
     private func webButton(_ title: String,symbol: String,path: String) -> some View {
-        Button(title,systemImage: symbol) { browser = YouTubeWebDestination(url: URL(string: "https://m.youtube.com"+path)!) }.buttonStyle(.bordered)
+        Button(title,systemImage: symbol) { browser = YouTubeWebDestination(url: URL(string: "https://m.youtube.com"+path)!) }.buttonStyle(.glass)
     }
     private func openSearch() {
         if let id = YouTubeLink.videoID(query) { Task { await choose(id,"YouTube · "+id) }; return }
@@ -239,7 +239,7 @@ struct CinemaPlexBrowser: View {
             Text("Deine Plex-Mediathek").font(.headline)
             Text("Melde dich direkt bei Plex an. Dein Konto bleibt privat. Im Kompatibilitätsmodus wandelt dein Plex-Server Videos für iPhone und AirPlay in H.264/AAC um – auch aus anderen Containern und Codecs. Der Server muss Transcoding erlauben und die Quelle unterstützen. Geschützte Plex-Streamingangebote sind nicht enthalten.").font(.caption).foregroundStyle(.secondary)
             if !plex.authenticated {
-                Button("Mit Plex verbinden",systemImage: "person.badge.key.fill") { Task { await plex.signIn() } }.buttonStyle(.borderedProminent).disabled(plex.busy)
+                Button("Mit Plex verbinden",systemImage: "person.badge.key.fill") { Task { await plex.signIn() } }.buttonStyle(.glassProminent).disabled(plex.busy)
             } else {
                 HStack { Button("Server laden") { Task { await plex.loadServers() } }; Spacer(); Button("Trennen",role: .destructive) { Task { await cinema.disconnectPlexBridge(); UserDefaults.standard.set(false,forKey: "rjlove.plex.bridge."+cinema.namespace); if cinema.provider == "plex" { await cinema.leave() }; plex.disconnect() } } }.font(.subheadline)
                 if !plex.profileName.isEmpty { Text("Profil: " + plex.profileName).font(.subheadline.bold()) }
@@ -289,36 +289,62 @@ struct CinemaPlexBrowser: View {
 struct CinemaTVRemote: View {
     @State private var tv = TVPresentation.shared
     @State private var together = TVTogetherService.shared
+    @Namespace private var modeSelection
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         VStack(alignment: .leading,spacing: 16) {
-            Label(tv.connected ? "Fernseher verbunden" : "Fernseher verbinden",systemImage: "airplay.video").font(.headline)
-            Text("Im iOS-Kontrollzentrum Bildschirm­synchronisierung wählen. RJ Love zeigt eine eigene TV-Oberfläche, dein iPhone bleibt die Fernbedienung. Die AirPlay-Taste am Player ist für direkte Videowiedergabe.").font(.footnote).foregroundStyle(.secondary)
-            Picker("TV-Ansicht",selection: $tv.mode) { ForEach(TVMode.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu).accessibilityIdentifier("tv-mode-picker")
+            HStack(spacing: 10) {
+                LovePulseDot(color: tv.connected ? .green : .orange, active: tv.connected)
+                Text(tv.connected ? "Fernseher verbunden" : "Fernseher verbinden").font(.headline)
+                Spacer()
+                Image(systemName: "airplay.video").font(.title3).foregroundStyle(LovePalette.violet).symbolEffect(.pulse, options: .repeating, isActive: tv.connected)
+            }
+            TVScaledPreview { LoveTVScreen() }
+                .accessibilityLabel(tv.connected ? "Live-Vorschau deines Fernsehers" : "Vorschau der TV-Bühne")
+            Text(tv.connected ? "Live-Vorschau eurer Bühne. Dein iPhone bleibt die Fernbedienung." : "Im iOS-Kontrollzentrum Bildschirm­synchronisierung wählen. RJ Love zeigt eine eigene TV-Oberfläche, dein iPhone bleibt die Fernbedienung. Die AirPlay-Taste am Player ist für direkte Videowiedergabe.").font(.footnote).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) {
+                ForEach(TVMode.allCases) { mode in
+                    let selected = tv.mode == mode
+                    Button {
+                        Haptics.selection()
+                        withAnimation(reduceMotion ? nil : LoveMotion.snappy) { tv.mode = mode }
+                    } label: {
+                        VStack(spacing: 7) {
+                            Image(systemName: mode.symbol).font(.title3).symbolRenderingMode(.hierarchical)
+                            Text(mode.rawValue).font(.caption.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.75)
+                        }
+                        .foregroundStyle(selected ? Color.white : Color.primary)
+                        .frame(maxWidth: .infinity, minHeight: 66).padding(.horizontal, 6)
+                        .background {
+                            if selected {
+                                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(LovePalette.dusk)
+                                    .matchedGeometryEffect(id: "tv-mode", in: modeSelection)
+                            }
+                        }
+                        .loveGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }.buttonStyle(.lovePress).accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }.accessibilityIdentifier("tv-mode-picker")
                 .onChange(of: tv.mode) { _, mode in if [.moments,.wall,.dashboard].contains(mode) { Task { await tv.loadMoments() } } }
-            NavigationLink { TVSettingsView() } label: { Label("AirPlay gestalten & Widgets sortieren",systemImage: "slider.horizontal.3") }.buttonStyle(.borderedProminent).accessibilityIdentifier("tv-customize")
+            NavigationLink { TVSettingsView() } label: { Label("AirPlay gestalten & Widgets sortieren",systemImage: "slider.horizontal.3").frame(maxWidth: .infinity) }.buttonStyle(.glassProminent).accessibilityIdentifier("tv-customize")
             if tv.mode == .cinema { Toggle("Uhr & Schatzi-Infos neben dem Video",isOn: $tv.showInfo) }
             if tv.mode == .moments || tv.mode == .wall || tv.mode == .dashboard {
-                if tv.mode == .wall || tv.mode == .dashboard { TVMomentWall(limit: 6).frame(height: 240) }
-                else if let image = tv.image { Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240).clipShape(RoundedRectangle(cornerRadius: 15)) }
-                HStack {
-                    Button("Zurück",systemImage: "backward.end.fill") { tv.advance(-1) }
-                    Spacer()
-                    Button(tv.slideshow ? "Diashow stoppen" : "Diashow starten") { tv.toggleSlideshow() }
-                    Spacer()
-                    Button("Weiter",systemImage: "forward.end.fill") { tv.advance(1) }
-                }.font(.caption)
-                Text("\(tv.moments.count) Fotos und Live-Photo-Standbilder").font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button { Haptics.impact(.light); tv.advance(-1) } label: { Image(systemName: "backward.end.fill").frame(width: 44, height: 36) }.accessibilityLabel("Zurück")
+                    Button { Haptics.selection(); tv.toggleSlideshow() } label: {
+                        Label(tv.slideshow ? "Diashow stoppen" : "Diashow starten", systemImage: tv.slideshow ? "pause.fill" : "play.fill")
+                            .contentTransition(.symbolEffect(.replace)).frame(maxWidth: .infinity, minHeight: 36)
+                    }
+                    Button { Haptics.impact(.light); tv.advance(1) } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 36) }.accessibilityLabel("Weiter")
+                }.font(.subheadline.weight(.semibold)).buttonStyle(.glass)
+                Text("\(tv.moments.count) Fotos und Live-Photo-Standbilder").font(.caption).foregroundStyle(.secondary).contentTransition(.numericText())
                 if let error = tv.error { Text(error).font(.footnote).foregroundStyle(.orange) }
             }
-            HStack {
-                Button("Zusammen malen",systemImage: "pencil.tip") { tv.mode = .drawing }.accessibilityIdentifier("tv-open-drawing")
-                Spacer()
-                Button("Tic-Tac-Toe",systemImage: "square.grid.3x3") { tv.mode = .game }.accessibilityIdentifier("tv-open-game")
-            }.buttonStyle(.bordered)
             Text("Live-Ansichten brauchen die geöffnete App. Akku und freigegebene Daten werden im Vordergrund aktualisiert. Plex kann im Hintergrund weiterspielen; eigene Dashboards und Spiele lassen sich bei gesperrter App nicht dauerhaft live halten.").font(.caption).foregroundStyle(.secondary)
         }.loveCard()
-        if tv.mode == .drawing { TVDrawingRemote() }
-        if tv.mode == .game { TVGameRemote() }
+        .animation(reduceMotion ? nil : LoveMotion.spring, value: tv.mode)
+        if tv.mode == .drawing { TVDrawingRemote().transition(.opacity.combined(with: .move(edge: .bottom))) }
+        if tv.mode == .game { TVGameRemote().transition(.opacity.combined(with: .move(edge: .bottom))) }
         TVSignalRemote()
     }
 }

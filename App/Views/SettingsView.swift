@@ -263,7 +263,7 @@ private struct PermissionRow: View {
             Spacer()
             if let actionTitle {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.glass)
                     .controlSize(.small)
             }
         }

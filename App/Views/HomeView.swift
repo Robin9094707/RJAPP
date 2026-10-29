@@ -7,9 +7,11 @@ struct HomeView: View {
     @State private var showingWakeComposer = false
     @State private var showingStatusEditor = false
     @State private var heartPulse = false
+    @State private var heartBursts = 0
     @State private var showingHealth = false
     @State private var showingNearby = false
     @State private var editingHome = false
+    @State private var revealed = false
     @Namespace private var profileTransition
     private var homeTint: Color { appState.homeLayout.theme == "ocean" ? LovePalette.cyan : appState.homeLayout.theme == "violet" ? LovePalette.violet : LovePalette.pink }
     private var partnerName: String { appState.partner?.displayName ?? "Dein Lieblingsmensch" }
@@ -17,19 +19,23 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
-                header
-                connection
-                ForEach(appState.homeLayout.cards) { card in
+            LazyVStack(alignment: .leading, spacing: LoveMetrics.stackSpacing) {
+                header.loveReveal(revealed, index: 0)
+                connection.loveReveal(revealed, index: 1)
+                ForEach(Array(appState.homeLayout.cards.enumerated()), id: \.element.id) { index, card in
                     homeCard(card).accessibilityIdentifier("home-card-" + card.id)
+                        .loveReveal(revealed, index: index + 2)
+                        .loveScrollEffect()
                 }
                 if appState.homeLayout.cards.isEmpty {
                     ContentUnavailableView("Platz für dein Wir", systemImage: "square.grid.2x2", description: Text("Füge über Anpassen deine Lieblingskarten hinzu."))
                 }
-                Text("Ein kleiner Ort. Nur für euch zwei.")
+                Label("Ein kleiner Ort. Nur für euch zwei.", systemImage: "heart")
                     .font(.footnote).foregroundStyle(.tertiary).frame(maxWidth: .infinity).padding(.vertical, 16)
-            }.padding(.horizontal, 22).padding(.bottom, 20)
+            }.padding(.horizontal, LoveMetrics.screenPadding).padding(.bottom, 24)
+            .frame(maxWidth: 760).frame(maxWidth: .infinity)
         }
+        .scrollIndicators(.hidden)
         .background(LoveBackground()).tint(homeTint)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $editingHome) { HomeEditorView() }
@@ -38,6 +44,7 @@ struct HomeView: View {
         .sheet(isPresented: $showingHealth) { NavigationStack { HealthDashboardView() } }
         .sheet(isPresented: $showingNearby) { NavigationStack { NearbyView() } }
         .refreshable { await appState.syncNow(showErrors: false) }
+        .onAppear { revealed = true }
     }
 
     @ViewBuilder private func homeCard(_ card: HomeCard) -> some View {
@@ -58,16 +65,46 @@ struct HomeView: View {
         case .documents: homeLink(card,detail:"Dateien, Ordner & Favoriten") { DocumentsView() }
         case .heart:
             if card.size == .compact {
-                Button { Task { await appState.sendThought() } } label: {
-                    HStack { Image(systemName: "heart.fill").foregroundStyle(homeTint).font(.title); VStack(alignment: .leading) { Text("Ein Herz für " + partnerName).font(.headline); Text("Du: \(appState.myThoughtCount) · Dein Lieblingsmensch: \(appState.partnerThoughtCount)").font(.caption).foregroundStyle(.secondary) }; Spacer() }.loveCard()
-                }.buttonStyle(.plain)
+                Button { sendHeart() } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "heart.fill").font(.title2).foregroundStyle(LovePalette.heart)
+                            .symbolEffect(.bounce, value: heartBursts)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Ein Herz für " + partnerName).font(.headline)
+                            Text("Du: \(appState.myThoughtCount) · Dein Lieblingsmensch: \(appState.partnerThoughtCount)").font(.caption).foregroundStyle(.secondary)
+                                .contentTransition(.numericText()).animation(LoveMotion.snappy, value: appState.myThoughtCount)
+                        }
+                        Spacer()
+                    }.loveCard().overlay { LoveHeartBurst(trigger: heartBursts, tint: homeTint) }
+                }.buttonStyle(.lovePress)
             } else { heartSpace }
         case .partner:
-            if card.size == .compact { HStack { PartnerAvatar(name: partnerName, size: 38); Text(partnerName).font(.headline); Spacer(); BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState) }.loveCard().onTapGesture{appState.showingPartnerProfile=true} }
+            if card.size == .compact {
+                Button { appState.showingPartnerProfile = true } label: {
+                    HStack(spacing: 12) {
+                        PartnerAvatar(name: partnerName, size: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(partnerName).font(.headline)
+                            if let status = appState.partner?.presence?.visibleStatus { Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                        }
+                        Spacer()
+                        BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState)
+                    }.loveCard()
+                }.buttonStyle(.lovePress)
+            }
             else { partnerCard }
         case .quickActions:HomeShortcutsView(shortcuts:appState.homeLayout.actions,title:"Deine Schnellaktionen",compact:card.size == .compact)
         case .studio:
-            if card.size == .compact { Button { appState.selectedTab = .moments; appState.experienceSection = .farts } label: { Label("Duftstudio öffnen", systemImage: "wind").frame(maxWidth: .infinity, alignment: .leading).padding(16).loveGlass(in: RoundedRectangle(cornerRadius: 24)) }.buttonStyle(.plain) }
+            if card.size == .compact {
+                Button { appState.selectedTab = .moments; appState.experienceSection = .farts } label: {
+                    HStack(spacing: 14) {
+                        LoveIcon(symbol: "wind", tint: LovePalette.violet, size: 40)
+                        Text("Duftstudio öffnen").font(.headline)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    }.padding(14).loveGlass(in: RoundedRectangle(cornerRadius: LoveMetrics.tileRadius, style: .continuous))
+                }.buttonStyle(.lovePress)
+            }
             else { studioSpotlight }
         case .messenger: homeLink(card, detail: "Fotos, Worte & deine Stimme") { MessengerView() }
         case .history: homeLink(card, detail: "Jeder kleine Ich-denke-an-dich-Moment") { ThoughtHistoryView() }
@@ -76,7 +113,7 @@ struct HomeView: View {
         case .milestone: homeLink(card,detail:"Jahrestag, gemeinsame Tage und eure Countdowns") {CountdownHubView()}
         case .health:
             if card.size == .compact {
-                HStack { Label("RJ-Schlafindex", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "–").bold() }.loveCard()
+                HStack { Label("RJ-Schlafindex", systemImage: "moon.stars.fill").foregroundStyle(LovePalette.violet); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "–").bold().contentTransition(.numericText()) }.loveCard()
             } else { healthCard }
         case .live:
             if card.size == .compact { homeLink(card, detail: "Deine Live-Aktivitäten") { DeliveryCenterView() } }
@@ -89,125 +126,169 @@ struct HomeView: View {
     private func homeLink<Destination: View>(_ card: HomeCard, detail: String, @ViewBuilder destination: @escaping () -> Destination) -> some View {
         NavigationLink { destination() } label: {
             HStack(spacing: 14) {
-                LoveIcon(symbol:card.kind.symbol,tint:homeTint)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(card.kind.title).font(.headline)
+                LoveIcon(symbol:card.kind.symbol,tint:homeTint,size: card.size == .large ? 46 : 40)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(card.kind.title).font(.headline).foregroundStyle(.primary)
                     if card.size == .large { Text(detail).font(.caption).foregroundStyle(.secondary) }
                 }
-                Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(card.size == .large ? 18 : 14).loveGlass(in:RoundedRectangle(cornerRadius:24))
-        }.buttonStyle(.plain)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(card.size == .large ? 18 : 14)
+                .loveGlass(in:RoundedRectangle(cornerRadius:LoveMetrics.tileRadius + 2, style: .continuous))
+        }.buttonStyle(.lovePress)
     }
 
     private var studioSpotlight: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Button {
                 appState.selectedTab = .moments; appState.experienceSection = .farts
             } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "wind").font(.title2).foregroundStyle(LovePalette.violet)
+                HStack(spacing: 14) {
+                    LoveIcon(symbol: "wind", tint: LovePalette.violet, size: 48)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Euer neues Duftstudio").font(.subheadline.bold())
+                        Text("Euer Duftstudio").font(.headline)
                         Text("Kalender, Karte & kleine Klassiker").font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity,alignment: .leading)
                 }
-            }.buttonStyle(.plain)
-            Button { appState.openFartRecorder() } label: {
-                Image(systemName: "mic.fill").font(.title3).foregroundStyle(.white).frame(width: 48,height: 48).background(LovePalette.violet.gradient,in: Circle())
-            }.accessibilityLabel("Duftaufnahme starten")
+            }.buttonStyle(.lovePress)
+            Button { Haptics.impact(.soft); appState.openFartRecorder() } label: {
+                Image(systemName: "mic.fill").font(.title3.weight(.semibold)).foregroundStyle(.white).frame(width: 52,height: 52)
+                    .background(LovePalette.dusk, in: Circle())
+                    .overlay { Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1) }
+                    .shadow(color: LovePalette.violet.opacity(0.3), radius: 10, y: 5)
+            }.buttonStyle(.lovePress).accessibilityLabel("Duftaufnahme starten")
         }.loveCard()
     }
 
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: .now)
+        let base: String
+        switch hour {
+        case 5..<11: base = "Guten Morgen"
+        case 11..<17: base = "Schön, dass du da bist"
+        case 17..<22: base = "Guten Abend"
+        default: base = "Gute Nacht"
+        }
+        guard let first = appState.me?.displayName.split(separator: " ").first, !first.isEmpty else { return base }
+        return base + ", " + first
+    }
+
     private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 7) {
-                LoveEyebrow(text: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                Text(appState.homeLayout.title).font(.system(size: 32, weight: .medium, design: .serif)).tracking(-0.5).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-home-title")
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                LoveEyebrow(text: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)), tint: homeTint)
+                Text(greeting).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                Text(appState.homeLayout.title).font(.loveDisplay(34)).tracking(-0.6).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-home-title")
             }
             Spacer(minLength: 4)
             Button { editingHome = true } label: {
-                Image(systemName: "slider.horizontal.3").font(.headline).frame(width: 44, height: 44).background(homeTint.opacity(0.12), in: Circle())
-            }.accessibilityLabel("Startseite anpassen").accessibilityIdentifier("home-customize")
+                Image(systemName: "slider.horizontal.3").font(.headline).foregroundStyle(homeTint).frame(width: 46, height: 46)
+                    .loveInteractiveGlass(in: Circle(), tint: homeTint.opacity(0.06))
+            }.buttonStyle(.lovePress).accessibilityLabel("Startseite anpassen").accessibilityIdentifier("home-customize")
             Button { appState.showingProfile = true } label: {
-                PartnerAvatar(name: appState.me?.displayName ?? "R", size: 46)
-            }.matchedTransitionSource(id:"profile",in:profileTransition).accessibilityLabel("Dein Profil und Einstellungen").accessibilityIdentifier("home-profile")
-        }.padding(.top, 20)
+                PartnerAvatar(name: appState.me?.displayName ?? "R", size: 48)
+            }.buttonStyle(.lovePress).matchedTransitionSource(id:"profile",in:profileTransition).accessibilityLabel("Dein Profil und Einstellungen").accessibilityIdentifier("home-profile")
+        }.padding(.top, 18)
     }
 
     private var connection: some View {
-        HStack(spacing: 7) {
-            Circle().fill(isFresh ? Color.green : Color.orange).frame(width: 6, height: 6)
+        HStack(spacing: 8) {
+            LovePulseDot(color: isFresh ? .green : .orange, active: isFresh || appState.isSyncing)
             Text(appState.isSyncing ? "Ein Moment für euch …" : isFresh ? "Euer privater Raum ist verbunden" : appState.connectionMessage)
-                .font(.caption).foregroundStyle(.secondary)
-            Spacer()
+                .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                .contentTransition(.opacity)
             if appState.isUsingHTTPS { Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.tertiary) }
         }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .glassEffect(.regular, in: Capsule())
+        .animation(LoveMotion.gentle, value: appState.isSyncing)
+        .accessibilityElement(children: .combine)
     }
     private var isFresh: Bool { appState.lastSync.map { Date.now.timeIntervalSince($0) < 40 } ?? false }
 
+    private func sendHeart() {
+        heartBursts += 1
+        Task { await appState.sendThought() }
+    }
+
     private var heartSpace: some View {
         VStack(spacing: 18) {
-            LoveEyebrow(text: "Robin & Raphaela")
+            LoveEyebrow(text: "Robin & Raphaela", tint: homeTint)
             Text("Ein kleiner Gedanke.\nGanz nah bei dir.")
-                .font(.system(size: 27, weight: .medium, design: .serif)).multilineTextAlignment(.center).lineSpacing(3)
+                .font(.loveDisplay(27)).multilineTextAlignment(.center).lineSpacing(3)
             ZStack {
                 ForEach(0..<3) { ring in
-                    Circle().stroke(LovePalette.pink.opacity(0.12 - Double(ring) * 0.025), lineWidth: 1)
-                        .frame(width: CGFloat(130 + ring * 27), height: CGFloat(130 + ring * 27))
-                        .scaleEffect(heartPulse && !reduceMotion ? 1.06 : 1)
+                    Circle().stroke(homeTint.opacity(0.14 - Double(ring) * 0.035), lineWidth: 1)
+                        .frame(width: CGFloat(130 + ring * 28), height: CGFloat(130 + ring * 28))
+                        .scaleEffect(heartPulse && !reduceMotion ? 1.08 + Double(ring) * 0.03 : 1)
+                        .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.55).delay(Double(ring) * 0.05), value: heartPulse)
                 }
+                LoveHeartBurst(trigger: heartBursts, tint: homeTint)
                 Button {
-                    Task { await appState.sendThought() }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.45)) { heartPulse = true }
-                    Task { try? await Task.sleep(for: .milliseconds(400)); withAnimation { heartPulse = false } }
+                    sendHeart()
+                    heartPulse = true
+                    Task { try? await Task.sleep(for: .milliseconds(380)); heartPulse = false }
                 } label: {
-                    Image(systemName: "heart.fill").font(.system(size: 45, weight: .light))
-                        .foregroundStyle(.white.gradient).frame(width: 116, height: 116)
-                        .background(LinearGradient(colors: [Color(red: 0.98, green: 0.49, blue: 0.57), LovePalette.pink, Color(red: 0.60, green: 0.16, blue: 0.36)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
-                        .overlay(Circle().stroke(.white.opacity(0.4), lineWidth: 1.5))
-                        .shadow(color: LovePalette.pink.opacity(0.3), radius: 22, y: 10)
+                    Image(systemName: "heart.fill").font(.system(size: 46, weight: .light))
+                        .foregroundStyle(.white.gradient).frame(width: 118, height: 118)
+                        .background(LovePalette.heart, in: Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.45), lineWidth: 1.5))
+                        .overlay(alignment: .top) { Ellipse().fill(.white.opacity(0.22)).frame(width: 70, height: 26).blur(radius: 6).offset(y: 12) }
+                        .shadow(color: homeTint.opacity(0.35), radius: 24, y: 12)
                         .scaleEffect(heartPulse && !reduceMotion ? 1.12 : 1)
-                }.buttonStyle(.plain).accessibilityLabel("Herzgedanken an \(partnerName) senden")
-            }.frame(maxWidth: .infinity).frame(height: 190).accessibilityIdentifier("rj-heart-space")
+                        .animation(reduceMotion ? nil : LoveMotion.bouncy, value: heartPulse)
+                        .symbolEffect(.bounce, value: heartBursts)
+                }.buttonStyle(.lovePress).accessibilityLabel("Herzgedanken an \(partnerName) senden")
+            }.frame(maxWidth: .infinity).frame(height: 196).accessibilityIdentifier("rj-heart-space")
             Text("Ein Tipp. Ein Ich-denke-an-dich.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 thoughtCount("Von dir", appState.myThoughtCount)
-                Image(systemName: "infinity").foregroundStyle(LovePalette.pink).frame(maxWidth: .infinity)
+                Image(systemName: "infinity").foregroundStyle(homeTint).frame(maxWidth: .infinity)
                 thoughtCount("Von \(partnerName)", appState.partnerThoughtCount)
             }.padding(.top, 5)
         }.frame(maxWidth: .infinity).padding(.vertical, 8).loveCard()
     }
     private func thoughtCount(_ title: String, _ count: Int) -> some View {
         VStack(spacing: 3) {
-            Text(count.formatted()).font(.system(.title2, design: .rounded, weight: .semibold)).contentTransition(.numericText())
+            Text(count.formatted()).font(.system(.title2, design: .rounded, weight: .semibold))
+                .contentTransition(.numericText(value: Double(count))).animation(LoveMotion.snappy, value: count)
             Text(title).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         }.frame(maxWidth: .infinity)
     }
 
     private var partnerCard: some View {
         VStack(alignment: .leading, spacing: 17) {
-            LoveEyebrow(text: "Dein Lieblingsmensch")
-            HStack(spacing: 13) {
-                PartnerAvatar(name: partnerName, size: 58)
+            LoveEyebrow(text: "Dein Lieblingsmensch", tint: homeTint)
+            HStack(spacing: 14) {
+                PartnerAvatar(name: partnerName, size: 60)
+                    .overlay(alignment: .bottomTrailing) {
+                        if let presence = appState.partner?.presence, presence.appState == "foreground",
+                           let seen = (presence.updatedAt ?? presence.reportedAt)?.rjDate, Date.now.timeIntervalSince(seen) < 120 {
+                            Circle().fill(.green).frame(width: 14, height: 14).overlay { Circle().strokeBorder(.white, lineWidth: 2) }
+                                .accessibilityLabel("Gerade in der App")
+                        }
+                    }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(partnerName).font(.title3.bold())
                     Text(appState.partner?.presence?.visibleStatus ?? "Euer nächster kleiner Moment wartet.")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
             }
-            if appState.partner?.presence?.isQuiet == true {Label("Bitte nicht stören",systemImage:"moon.fill").font(.caption).foregroundStyle(.secondary)}
-            Divider().opacity(0.5)
-            HStack {
-                Label(appState.partner?.presence?.motion ?? "Noch kein Bewegungsstatus", systemImage: MotionPresentation.symbol(appState.partner?.presence?.motion ?? ""))
-                    .font(.caption).foregroundStyle(.secondary)
+            if appState.partner?.presence?.isQuiet == true { StatusChip(title: "Bitte nicht stören", symbol: "moon.fill", tint: LovePalette.violet) }
+            HStack(spacing: 10) {
+                Label(MotionPresentation.title(appState.partner?.presence?.motion ?? "Unbekannt"), systemImage: MotionPresentation.symbol(appState.partner?.presence?.motion ?? ""))
+                    .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
                 BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState)
             }
+            .padding(12).background(homeTint.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             if let date = appState.partner?.presence?.updatedAt?.rjDate {
                 Text("Zuletzt geteilt \(date.formatted(.relative(presentation: .named)))").font(.caption2).foregroundStyle(.tertiary)
             }
-            Button("Profil & Aktivität ansehen",systemImage:"person.text.rectangle"){appState.showingPartnerProfile=true}.font(.subheadline.bold())
+            Button { appState.showingPartnerProfile = true } label: {
+                Label("Profil & Aktivität ansehen", systemImage: "person.text.rectangle").font(.subheadline.bold()).frame(maxWidth: .infinity)
+            }.buttonStyle(.glass)
         }.loveCard()
     }
 
@@ -230,19 +311,19 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
                 LoveSectionTitle("Ein gutes Gefühl", subtitle: "Was dein Lieblingsmensch mit dir teilt")
-                Button { showingHealth = true } label: { Image(systemName: "arrow.up.right").font(.headline) }.accessibilityLabel("Health-Übersicht öffnen")
+                Button { showingHealth = true } label: { Image(systemName: "arrow.up.right").font(.headline).frame(width: 40, height: 40).loveInteractiveGlass(in: Circle()) }.buttonStyle(.lovePress).accessibilityLabel("Health-Übersicht öffnen")
             }
             HStack(spacing: 10) {
                 LoveMetric(title: "Schritte heute", value: appState.partner?.presence?.steps?.formatted() ?? "–", symbol: "figure.walk", tint: LovePalette.cyan)
                 LoveMetric(title: "Letzter Schlaf", value: appState.partner?.presence?.sleepMinutes.map { "\($0 / 60) h \($0 % 60)" } ?? "–", symbol: "moon.zzz.fill", tint: LovePalette.violet)
             }
-            HStack { Label("RJ-Schlafindex", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "Noch kein Wert").bold() }.font(.subheadline).padding(16).background(homeTint.opacity(0.09), in: RoundedRectangle(cornerRadius: 18))
+            HStack { Label("RJ-Schlafindex", systemImage: "moon.stars.fill"); Spacer(); Text(appState.partner?.presence?.sleepScore.map { "\($0) / 100" } ?? "Noch kein Wert").bold() }.font(.subheadline).padding(16).background(homeTint.opacity(0.09), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }.loveCard()
     }
     private var liveCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: "waveform.path.ecg").foregroundStyle(LovePalette.pink)
+            HStack(spacing: 12) {
+                LoveIcon(symbol: "waveform.path.ecg", tint: homeTint, size: 40)
                 Text("Euer Wir. Immer im Blick.").font(.headline)
             }
             Text("Status, Akku und Herzgedanken auf Sperrbildschirm und Dynamic Island. Bis zu acht Stunden; bei eingeschalteter Option startet sie beim nächsten Öffnen erneut. Hintergrund-Ortung aktivierst du getrennt im Profil.")
@@ -250,11 +331,11 @@ struct HomeView: View {
             HStack {
                 Button(appState.liveActivity.isStarting ? "Startet …":appState.liveActivity.isRunning ? "Live-Aktivität beenden":"Jetzt starten",systemImage:"livephoto") {
                     Task {if appState.liveActivity.isRunning {await appState.liveActivity.stop()}else{await appState.startLiveActivity()}}
-                }.buttonStyle(.borderedProminent).disabled(appState.liveActivity.isStarting)
-                NavigationLink{LiveActivitySettingsView()}label:{Image(systemName:"slider.horizontal.3")}.buttonStyle(.bordered).accessibilityLabel("Live-Aktivität einstellen")
+                }.buttonStyle(.glassProminent).disabled(appState.liveActivity.isStarting)
+                NavigationLink{LiveActivitySettingsView()}label:{Image(systemName:"slider.horizontal.3")}.buttonStyle(.glass).accessibilityLabel("Live-Aktivität einstellen")
             }
-            if appState.liveActivity.isRunning {Label("Live-Aktivität aktiv",systemImage:"checkmark.circle.fill").font(.caption).foregroundStyle(.green)}
-        }.loveCard()
+            if appState.liveActivity.isRunning {Label("Live-Aktivität aktiv",systemImage:"checkmark.circle.fill").font(.caption).foregroundStyle(.green).transition(.opacity)}
+        }.loveCard().animation(LoveMotion.gentle, value: appState.liveActivity.isRunning)
     }
 }
 struct WakeComposerView: View {

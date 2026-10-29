@@ -29,6 +29,7 @@ struct TVSavedLayout: Codable {
     var columns:Int? = nil
     var slideSeconds:Int? = nil
     var cameraAutoLive:Bool? = nil
+    var showCaptions:Bool? = nil
 }
 struct TVDashboard: View {
     @State private var tv = TVPresentation.shared
@@ -52,11 +53,10 @@ struct TVDashboard: View {
                         .frame(width: cards.isEmpty ? geometry.size.width-48 : geometry.size.width*0.31)
                 }
             }.padding(24).frame(width: geometry.size.width,height: geometry.size.height)
-                .background(background)
+                .background { TVAuroraBackdrop(theme: tv.theme) }
+                .animation(.smooth(duration: 0.6), value: tv.widgets)
+                .animation(.smooth(duration: 0.6), value: tv.columns)
         }
-    }
-    private var background: some View {
-        LinearGradient(colors: tv.theme == .light ? [Color(red:0.97,green:0.94,blue:0.96),Color(red:0.89,green:0.92,blue:0.97)] : (tv.theme == .dark ? [.black,Color(white:0.025)] : [Color(red:0.1,green:0.07,blue:0.14),.black]),startPoint: .topLeading,endPoint: .bottomTrailing)
     }
 }
 struct TVDashboardCard: View {
@@ -66,10 +66,11 @@ struct TVDashboardCard: View {
         GeometryReader { geometry in
             VStack(alignment: .leading,spacing: 10) {
                 Label(kind.title,systemImage: kind.symbol).font(.system(size: max(13,min(24,geometry.size.height*0.12)),weight: .semibold)).foregroundStyle(LovePalette.pink)
+                    .symbolRenderingMode(.hierarchical)
                 content.font(.system(size: max(15,min(28,geometry.size.height*0.15))))
                     .frame(maxWidth: .infinity,maxHeight: .infinity,alignment: .leading)
-            }.padding(18).frame(width: geometry.size.width,height: geometry.size.height,alignment: .topLeading)
-                .loveGlass(in: RoundedRectangle(cornerRadius:24))
+            }.padding(20).frame(width: geometry.size.width,height: geometry.size.height,alignment: .topLeading)
+                .loveGlass(in: RoundedRectangle(cornerRadius:28,style:.continuous))
         }
     }
     @ViewBuilder private var content: some View {
@@ -111,11 +112,12 @@ struct TVDashboardCard: View {
 }
 private struct TVClockCard: View {
     var body: some View {
-        TimelineView(.periodic(from: .now,by: 1)) { context in
+        TimelineView(.everyMinute) { context in
             VStack(alignment: .leading,spacing: 5) {
-                Text(context.date,style: .time).font(.system(.largeTitle,design: .rounded,weight: .light)).monospacedDigit().minimumScaleFactor(0.5)
+                Text(context.date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))).font(.system(size: 64,weight: .light,design: .rounded)).monospacedDigit().minimumScaleFactor(0.4)
+                    .contentTransition(.numericText())
                 Text(context.date.formatted(date: .complete,time: .omitted)).font(.callout).foregroundStyle(.secondary)
-            }
+            }.animation(.smooth, value: context.date)
         }
     }
 }
@@ -215,11 +217,15 @@ struct TVMomentWall: View {
                         Color.secondary.opacity(0.08)
                         if let image = tv.wallImages[record.id] {
                             Image(uiImage: image).resizable().aspectRatio(contentMode: tv.fillPhotos ? .fill : .fit)
-                        } else { Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary) }
+                                .transition(.opacity.combined(with: .scale(scale: 1.04)))
+                        } else { Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary).transition(.opacity) }
                     }.frame(height: max(40,(geometry.size.height-Double(rows-1)*12)/Double(rows)))
-                        .frame(maxWidth: .infinity).clipped().clipShape(RoundedRectangle(cornerRadius: 18))
+                        .frame(maxWidth: .infinity).clipped().clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .animation(.easeInOut(duration: 0.7), value: tv.wallImages[record.id] != nil)
+                        .transition(.opacity)
                 }
             }.frame(maxWidth: .infinity,maxHeight: .infinity)
+            .animation(.smooth(duration: 0.9), value: visible.map(\.id))
             if visible.isEmpty { ContentUnavailableView("Eure Momente",systemImage: "photo.stack",description: Text("Teilt Fotos in eurer Galerie.")) }
         }
     }
@@ -229,8 +235,13 @@ struct TVSettingsView: View {
     var body: some View {
         Form {
             Section {
-                TVDashboard().frame(height:220).allowsHitTesting(false).clipShape(RoundedRectangle(cornerRadius:20)).accessibilityLabel("Vorschau deines TV-Dashboards")
-                Label(tv.connected ? "Fernseher verbunden" : "Vorschau · noch kein Fernseher verbunden",systemImage:"airplay.video").font(.caption)
+                TVScaledPreview { TVDashboard() }
+                    .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+                    .accessibilityLabel("Vorschau deines TV-Dashboards")
+                HStack(spacing: 8) {
+                    LovePulseDot(color: tv.connected ? .green : .orange, active: tv.connected)
+                    Text(tv.connected ? "Fernseher verbunden" : "Vorschau · noch kein Fernseher verbunden").font(.caption)
+                }
             }
             Section("Euer Bildschirm") {
                 Picker("Ansicht",selection: $tv.mode) { ForEach(TVMode.allCases) { Text($0.rawValue).tag($0) } }
@@ -261,6 +272,7 @@ struct TVSettingsView: View {
                 Picker("Fotos gleichzeitig",selection: $tv.wallCount) { ForEach([4,6,9,12],id: \.self) { Text("\($0)").tag($0) } }
                 Picker("Diashow-Wechsel",selection:$tv.slideSeconds) {ForEach([5,10,15,30,60],id:\.self) {Text("\($0) Sekunden").tag($0)}}
                 Toggle("Fotos bildfüllend zuschneiden",isOn: $tv.fillPhotos)
+                Toggle("Titel und Datum zu Fotos zeigen",isOn: $tv.showCaptions)
                 Toggle("Infos neben dem Kino-Player",isOn: $tv.showInfo)
             }
             Section { Text("Die Anordnung wird automatisch in deinem Konto auf eurem RJ-Server gesichert. Zeichnungen, Spielzüge und Signale teilen eure beiden angemeldeten Apps. iOS aktualisiert die eigene TV-Oberfläche zuverlässig im Vordergrund; eine gesperrte oder beendete App kann keinen dauerhaft live aktualisierten TV-Bildschirm garantieren.").font(.footnote) }
@@ -283,10 +295,11 @@ private struct TVCameraSettings:View {
 private struct TVHomeCameraWidget:View {
     @State private var home=HomeKitDashboard.shared
     @State private var tv=TVPresentation.shared
+    @Environment(\.loveTVPreview) private var preview
     var body:some View {
         Group {
             if home.enabled,let camera=home.selectedCamera {
-                if tv.connected {HomeCameraTile(accessory:camera,autoplay:tv.cameraAutoLive,external:true).id(camera.uniqueIdentifier)}
+                if tv.connected && !preview {HomeCameraTile(accessory:camera,autoplay:tv.cameraAutoLive,external:true).id(camera.uniqueIdentifier)}
                 else {Label(camera.name + " · live am Fernseher",systemImage:"video.fill").font(.callout)}
             } else {Text("Wähle eine HomeKit-Kamera auf deinem iPhone.").font(.callout).foregroundStyle(.secondary)}
         }.task {if home.enabled {home.activate()}}
@@ -295,12 +308,13 @@ private struct TVHomeCameraWidget:View {
 private struct TVDocumentsWidget:View {
     @State private var tv=TVPresentation.shared
     @State private var data=DocumentLibrary()
+    @Environment(\.loveTVPreview) private var preview
     var body:some View {
         VStack(alignment:.leading,spacing:8) {
-            Text("\(data.folders.count) Ordner · \(data.files.count) Dateien").font(.callout)
+            Text("\(data.folders.count) Ordner · \(data.files.count) Dateien").font(.callout).contentTransition(.numericText())
             if let file=data.files.first {Text(file.filename).font(.headline).lineLimit(2)}
         }.task {
-            while !Task.isCancelled {
+            while !Task.isCancelled && !preview {
                 if let api=tv.app?.api,let value=try? await api.documents() {data=value}
                 do {try await Task.sleep(for:.seconds(30))} catch {return}
             }

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import gzip
 import contextlib
 import datetime as dt
 import math
@@ -52,8 +53,9 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "4.3.1"
-MINIMUM_APP_VERSION = "4.3.0"
+APP_VERSION = "5.0.0"
+# Apps older than this receive HTTP 426 and show their built-in "Zeit für die neue App" view.
+MINIMUM_APP_VERSION = "5.0.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -1246,6 +1248,10 @@ class RJLoveApplication:
         self.push_limiter = LoginLimiter(120)
         self.notification_hub = NotificationHub(self)
         self.cinema = CinemaService(self)
+        self.release_lock = threading.Lock()
+        self._release_signature: tuple | None = None
+        with contextlib.suppress(OSError):
+            (self.data_directory / "updates").mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def atomic_write(path: Path, data: bytes) -> None:
@@ -1260,6 +1266,110 @@ class RJLoveApplication:
             os.replace(temporary, path)
         finally:
             temporary.unlink(missing_ok=True)
+
+    def bundled_release_folders(self) -> list[Path]:
+        """Folders searched for an IPA that should be offered to both apps automatically."""
+        return [Path(__file__).resolve().parent, self.data_directory / "updates"]
+
+    @staticmethod
+    def read_ipa_version(path: Path) -> tuple[str, str] | None:
+        import zipfile, plistlib
+        try:
+            with zipfile.ZipFile(path) as archive:
+                candidates = [n for n in archive.namelist() if n.startswith("Payload/") and n.count("/") == 2 and n.endswith(".app/Info.plist")]
+                if len(candidates) != 1 or archive.getinfo(candidates[0]).file_size > 200000:
+                    return None
+                info = plistlib.loads(archive.read(candidates[0]))
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile, plistlib.InvalidFileException):
+            return None
+        if not isinstance(info, dict) or info.get("CFBundleIdentifier") != "eu.rjuhas.rjlove":
+            return None
+        version = str(info.get("CFBundleShortVersionString", ""))
+        build = str(info.get("CFBundleVersion", ""))
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not build or len(build) > 20:
+            return None
+        return version, build
+
+    @staticmethod
+    def release_key(version: str, build: str) -> tuple:
+        return (version_tuple(version), int(build) if str(build).isdigit() else 0)
+
+    def import_bundled_releases(self) -> str | None:
+        """Publish a newer RJ Love IPA placed next to this script or in <data>/updates.
+
+        Existing releases, assets and user data are never modified; a new release row is only added
+        when the IPA is valid, unknown and newer than the latest published one. Cheap to call often:
+        files are only read when their name, size or modification time changed.
+        """
+        candidates: list[Path] = []
+        folders = self.bundled_release_folders()
+        for index, folder in enumerate(folders):
+            try:
+                entries = sorted(folder.iterdir())
+            except OSError:
+                continue
+            for entry in entries:
+                name = entry.name.lower()
+                if not name.endswith(".ipa") or not entry.is_file():
+                    continue
+                if index == 0 and not name.startswith(("rj-love", "rjlove", "rj_love", "rj love")):
+                    continue
+                candidates.append(entry)
+        signature = []
+        for path in candidates:
+            with contextlib.suppress(OSError):
+                stat = path.stat()
+                signature.append((str(path), stat.st_size, stat.st_mtime_ns))
+        signature_key = tuple(signature)
+        with self.release_lock:
+            if signature_key == self._release_signature:
+                return None
+            self._release_signature = signature_key
+            published = None
+            limit = int(self.config["server"].get("max_media_mb", 256)) * 1024 * 1024
+            for path in candidates:
+                meta = self.read_ipa_version(path)
+                if not meta:
+                    self.logger.warning("IPA %s ignoriert: keine gültige RJ-Love-App.", path.name)
+                    continue
+                version, build = meta
+                try:
+                    size = path.stat().st_size
+                    if not 0 < size <= limit:
+                        continue
+                    digest = hashlib.sha256()
+                    with path.open("rb") as stream:
+                        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                    checksum = digest.hexdigest()
+                    with self.database.connect() as db:
+                        latest = db.execute("SELECT version,build FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
+                        known = db.execute("SELECT 1 FROM app_releases JOIN assets ON assets.id=app_releases.asset_id WHERE assets.sha256=?", (checksum,)).fetchone()
+                    if known or (latest and self.release_key(version, build) <= self.release_key(latest["version"], latest["build"])):
+                        continue
+                    asset_id = str(uuid.uuid4())
+                    now = iso_now()
+                    relative = f"media/releases/{asset_id}/original.ipa"
+                    target = self.media_path(relative)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    temporary = target.with_name("original.ipa.tmp")
+                    shutil.copyfile(path, temporary)
+                    os.replace(temporary, target)
+                    with self.media_lock, self.database.connect() as db:
+                        db.execute("BEGIN IMMEDIATE")
+                        db.execute("INSERT INTO assets VALUES(?,?,?,?,?,?,?,1,?)", (asset_id, "rj-server", path.name[:200], "application/octet-stream", size, checksum, relative, now))
+                        db.execute("INSERT INTO app_releases VALUES(?,?,?,?,?)", (str(uuid.uuid4()), asset_id, version, build, now))
+                    published = version
+                    self.logger.info("IPA %s (%s) aus %s automatisch für Feather bereitgestellt.", version, build, path.name)
+                except (OSError, sqlite3.Error, ValueError) as exc:
+                    self.logger.warning("IPA %s konnte nicht bereitgestellt werden: %s", path.name, exc)
+            return published
+
+    def safe_import_bundled_releases(self) -> None:
+        try:
+            self.import_bundled_releases()
+        except Exception as exc:  # A release scan must never break a request.
+            self.logger.warning("IPA-Prüfung übersprungen: %s", exc)
 
     def clip_directory(self, row: Any) -> Path:
         # The hierarchy uses server-configured account IDs and validated UUIDs only.
@@ -3039,14 +3149,41 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return forwarded
         return self.client_address[0]
 
+    def accepts_gzip(self) -> bool:
+        """An explicit gzip preference wins over the wildcard, regardless of order (RFC 9110)."""
+        qualities: dict[str, float] = {}
+        for part in self.headers.get("Accept-Encoding", "").split(","):
+            name, _, params = part.strip().partition(";")
+            name = name.strip().lower()
+            if name not in {"gzip", "*"}:
+                continue
+            quality = 1.0
+            for param in params.split(";"):
+                key, _, value = param.strip().partition("=")
+                if key.strip().lower() == "q":
+                    try:
+                        quality = float(value)
+                    except ValueError:
+                        quality = 0.0
+            qualities[name] = quality
+        return qualities.get("gzip", qualities.get("*", 0.0)) > 0
+
     def send_json(self, status: int | HTTPStatus, body: Any) -> None:
         encoded = json_bytes(body)
+        compressed = False
+        # Bootstrap and archives are polled often; gzip makes them several times smaller on mobile data.
+        if len(encoded) >= 1024 and self.command != "HEAD" and self.accepts_gzip():
+            encoded = gzip.compress(encoded, compresslevel=5, mtime=0)
+            compressed = True
         self.send_response(int(status))
         if int(status) == 426:
             self.close_connection = True
             self.send_header("Connection", "close")
         if int(status)==416 and hasattr(self,"_range_total"):self.send_header("Content-Range",f"bytes */{self._range_total}")
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if compressed:
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -3092,7 +3229,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             version = self.headers.get("X-RJ-App-Version", "")
             protocol = self.headers.get("X-RJ-Protocol", "")
             if version_tuple(version) < version_tuple(MINIMUM_APP_VERSION):
-                raise APIError(426, "app_update_required", f"Bitte RJ Love auf mindestens {MINIMUM_APP_VERSION} aktualisieren. Der Python-Server ist {APP_VERSION}. Eure Daten und Anmeldungen bleiben erhalten.")
+                raise APIError(426, "app_update_required", f"RJ Love {MINIMUM_APP_VERSION} ist da: Bitte die App aktualisieren. Der Python-Server ist {APP_VERSION}. Eure Daten und Anmeldungen bleiben erhalten.")
             if protocol != str(PROTOCOL_VERSION):
                 raise APIError(426, "protocol_update_required", "App und Python-Server benötigen dieselbe unterstützte Protokollgeneration. Bitte beide aus dem aktuellen Komplettpaket aktualisieren.")
         return parsed.path, parts, parse_qs(parsed.query)
@@ -3625,6 +3762,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             incoming=[self._record_dict(r) for r in rows if json.loads(r["payload"]).get("target_id")==user_id]
             self.send_json(200,{"outgoing":outgoing,"incoming":incoming});return True
         if len(parts)==3 and parts[0]=="updates":
+            if parts[2] in {"source.json","latest.ipa"}:self.app.safe_import_bundled_releases()
             with self.app.database.connect() as db:
                 allowed=db.execute("SELECT * FROM update_feeds WHERE token_hash=?",(hashlib.sha256(parts[1].encode()).hexdigest(),)).fetchone()
                 release=db.execute("SELECT * FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
@@ -3719,12 +3857,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if len(parts)==3 and parts[:2]==["v1","assets"]:
             user_id=self.current_user();self._asset_bytes(parts[2],user_id=user_id);return True
         if path=="/v1/app-release/ipa":
-            self.current_user()
+            self.current_user();self.app.safe_import_bundled_releases()
             with self.app.database.connect() as db:row=db.execute("SELECT asset_id FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
             if not row:raise APIError(404,"no_release","Keine IPA veröffentlicht.")
             self._asset_bytes(row["asset_id"],public=True);return True
         if path=="/v1/app-release":
-            self.current_user()
+            self.current_user();self.app.safe_import_bundled_releases()
             with self.app.database.connect() as db: row=db.execute("SELECT id,version,build,created_at FROM app_releases ORDER BY created_at DESC LIMIT 1").fetchone()
             self.send_json(200,{"release":dict(row) if row else None});return True
         return False
@@ -4777,6 +4915,7 @@ def main() -> int:
                 app.close()
         app.configure_push_automatically(force=True)
         app.logger.info("Push: %s", app.push_setup_status)
+        app.safe_import_bundled_releases()
         server = build_server(app)
     except Exception as exc:
         print(f"RJ Love kann nicht starten: {exc}", file=sys.stderr)

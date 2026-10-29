@@ -17,10 +17,37 @@ struct CachedAppSnapshot: Codable, Sendable {
 
 enum AppCache {
     private static let cacheVersion = 1
+    /// Encoding and writing happen on this serial queue, never on the main thread.
+    private static let queue = DispatchQueue(label: "eu.rjuhas.rjlove.offline-cache", qos: .utility)
+    private static let state = PendingState()
 
     private struct Envelope: Codable {
         let version: Int
         let snapshot: CachedAppSnapshot
+    }
+
+    /// Coalesces bursts of saves: only the newest snapshot of a generation is written.
+    private final class PendingState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var generation = 0
+        private var latest: CachedAppSnapshot?
+        func enqueue(_ snapshot: CachedAppSnapshot) -> Int {
+            lock.lock(); defer { lock.unlock() }
+            latest = snapshot
+            return generation
+        }
+        func take(for expected: Int) -> CachedAppSnapshot? {
+            lock.lock(); defer { lock.unlock() }
+            guard expected == generation else { return nil }
+            let value = latest
+            latest = nil
+            return value
+        }
+        func invalidate() {
+            lock.lock(); defer { lock.unlock() }
+            generation += 1
+            latest = nil
+        }
     }
 
     static func load(matching profile: ServerProfile) -> CachedAppSnapshot? {
@@ -35,6 +62,15 @@ enum AppCache {
     }
 
     static func save(_ snapshot: CachedAppSnapshot) {
+        let generation = state.enqueue(snapshot)
+        queue.async {
+            // A later save replaces this one; a logout invalidates both.
+            guard let value = state.take(for: generation) else { return }
+            write(value)
+        }
+    }
+
+    private static func write(_ snapshot: CachedAppSnapshot) {
         guard let fileURL else { return }
         do {
             try FileManager.default.createDirectory(
@@ -56,8 +92,10 @@ enum AppCache {
     }
 
     static func clear() {
+        state.invalidate()
         guard let fileURL else { return }
-        try? FileManager.default.removeItem(at: fileURL)
+        // Remove synchronously after any write already in flight, so no stale snapshot survives a logout.
+        queue.sync { try? FileManager.default.removeItem(at: fileURL) }
     }
 
     private static var fileURL: URL? {

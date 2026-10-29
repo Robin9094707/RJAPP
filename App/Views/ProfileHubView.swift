@@ -59,7 +59,7 @@ struct SettingsView:View {
             }.font(.subheadline.bold()).loveCard()
             Button("Von diesem iPhone abmelden",role:.destructive){logout=true}.font(.subheadline).frame(maxWidth:.infinity).padding(.vertical,10)
             Text("Ein sicherer kleiner Platz für euch zwei.").font(.caption).foregroundStyle(.tertiary).frame(maxWidth:.infinity)
-        }.padding(20)}.background(LoveBackground()).navigationTitle("Dein Profil").navigationBarTitleDisplayMode(.inline).buttonStyle(.plain)
+        }.padding(20)}.background(LoveBackground()).navigationTitle("Dein Profil").navigationBarTitleDisplayMode(.inline).buttonStyle(.lovePress)
         .confirmationDialog("Wirklich abmelden?",isPresented:$logout,titleVisibility:.visible){Button("Abmelden",role:.destructive){Task{await app.logout()}};Button("Bleiben",role:.cancel){}}message:{Text("Du kannst dich mit deinem bestehenden Zugang jederzeit wieder anmelden.")}
     }
     private var profileHero:some View {

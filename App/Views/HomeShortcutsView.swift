@@ -9,20 +9,24 @@ struct HomeShortcutsView:View {
     var body:some View {
         if !items.isEmpty {
             VStack(alignment:.leading,spacing:12){
-                HStack{Text(title).font(.subheadline.bold());Spacer();Text("Deine Auswahl").font(.caption2).foregroundStyle(.secondary)}
+                HStack{Text(title).font(.headline);Spacer();Text("Deine Auswahl").font(.caption2.weight(.medium)).foregroundStyle(.secondary)}
                 LazyVGrid(columns:[GridItem(.adaptive(minimum:94),spacing:10)],spacing:10){
                     ForEach(items){shortcut in
                         Group {
                             if shortcut.action.immediate {Button{perform(shortcut.action)}label:{tile(shortcut)}}
                             else {NavigationLink{QuickActionDestination(action:shortcut.action)}label:{tile(shortcut)}}
-                        }.buttonStyle(.plain).accessibilityIdentifier("shortcut-"+shortcut.action.rawValue)
+                        }.buttonStyle(.lovePress).accessibilityIdentifier("shortcut-"+shortcut.action.rawValue)
                     }
                 }
             }.accessibilityIdentifier("home-shortcuts")
         }
     }
     private func tile(_ shortcut:HomeShortcut)->some View {
-        VStack(spacing:9){Image(systemName:shortcut.action.symbol).font(.title3).foregroundStyle(LovePalette.pink);Text(shortcut.title).font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2).frame(minHeight:30)}.frame(maxWidth:.infinity,minHeight:compact ? 44:75).padding(10).loveGlass(in:RoundedRectangle(cornerRadius:20))
+        VStack(spacing:8){
+            LoveIcon(symbol:shortcut.action.symbol,tint:LovePalette.pink,size:compact ? 30:38)
+            Text(shortcut.title).font(.caption.weight(.semibold)).foregroundStyle(.primary).multilineTextAlignment(.center).lineLimit(2).frame(minHeight:30)
+        }.frame(maxWidth:.infinity,minHeight:compact ? 44:82).padding(10)
+            .loveGlass(in:RoundedRectangle(cornerRadius:LoveMetrics.tileRadius,style:.continuous))
     }
     private func perform(_ action:HomeQuickAction) {switch action {case .recordFart:app.openFartRecorder(quick:true);case .status:app.showingStatus=true;case .partner:app.showingPartnerProfile=true;case .profile:app.showingProfile=true;default:break}}
 }

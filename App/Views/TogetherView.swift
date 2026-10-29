@@ -100,7 +100,7 @@ struct TogetherView: View {
                     }
                     .loveCard()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.lovePress)
                 .contextMenu {
                     Button("Bearbeiten", systemImage: "pencil") { editor = RecordEditorRoute(kind: .note, record: note) }
                     Button("Löschen", systemImage: "trash", role: .destructive) { deleting = note }
@@ -179,7 +179,7 @@ struct TogetherView: View {
                                 catch { appState.alert = AppAlert(title: "Kalender", message: error.localizedDescription) }
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glass)
                         Spacer()
                         Button("Bearbeiten") { editor = RecordEditorRoute(kind: .calendar, record: event) }
                         Button(role: .destructive) { deleting = event } label: { Image(systemName: "trash") }

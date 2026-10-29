@@ -17,9 +17,9 @@ struct UpdateRequirement: Error, LocalizedError, Equatable {
     var errorDescription: String? { message }
 }
 enum RJVersion {
-    static let minimumServer = "4.3.1"
+    static let minimumServer = "5.0.0"
     static let protocolVersion = 5
-    static var app: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "4.3.1" }
+    static var app: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "5.0.0" }
     static func older(_ lhs: String, than rhs: String) -> Bool {
         let a = lhs.split(separator: ".").compactMap { Int($0) }
         let b = rhs.split(separator: ".").compactMap { Int($0) }
@@ -49,35 +49,41 @@ struct UpdateRequiredView: View {
     @State private var showingUpdater=false
     @State private var checking = false
     @State private var error: String?
+    private var serverUpdate: Bool { update.requirement?.target == "server" }
     var body: some View {
         ZStack {
             LoveBackground()
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    Image(systemName: "arrow.down.circle.fill").font(.system(size: 52)).foregroundStyle(LovePalette.violet)
+                VStack(alignment: .leading, spacing: 20) {
+                    Image(systemName: serverUpdate ? "server.rack" : "arrow.down.app.fill")
+                        .font(.system(size: 30, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 66, height: 66)
+                        .background(LovePalette.dusk, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .symbolEffect(.bounce, value: checking)
                     LoveEyebrow(text: "Gemeinsam auf dem neuesten Stand")
-                    Text(update.requirement?.target == "server" ? "Ein Update für euren Server." : "Zeit für die neue App.").font(.system(size: 32, weight: .medium, design: .serif))
+                    Text(serverUpdate ? "Ein Update für euren Server." : "Zeit für die neue App.").font(.loveDisplay(32))
                     Text(update.requirement?.message ?? "App und Server bitte gemeinsam aktualisieren.").font(.body)
-                    Text("Eure Aufnahmen und Anmeldungen bleiben erhalten. Währenddessen werden keine inkompatiblen Änderungen gesendet.").font(.footnote).foregroundStyle(.secondary)
-                    Link("Aktuelles Komplettpaket auf GitHub", destination: URL(string: "https://github.com/Robin9094707/RJAPP/actions")!).buttonStyle(.borderedProminent)
-                    if update.requirement?.target == "app" {
-                        Button("IPA abrufen & mit Feather aktualisieren",systemImage:"arrow.down.app.fill"){showingUpdater=true}.buttonStyle(.borderedProminent)
+                    Label("Eure Aufnahmen und Anmeldungen bleiben erhalten. Währenddessen werden keine inkompatiblen Änderungen gesendet.", systemImage: "lock.shield.fill").font(.footnote).foregroundStyle(.secondary)
+                    if !serverUpdate {
+                        Button("IPA abrufen & mit Feather aktualisieren",systemImage:"arrow.down.app.fill"){showingUpdater=true}
+                            .buttonStyle(.glassProminent).controlSize(.large).frame(maxWidth: .infinity)
                     }
-                    Button(checking ? "Prüfe …" : "Nach dem Update erneut prüfen") {
+                    Link(destination: URL(string: "https://github.com/Robin9094707/RJAPP/actions")!) {
+                        Label("Aktuelles Komplettpaket auf GitHub", systemImage: "shippingbox.fill").frame(maxWidth: .infinity)
+                    }.buttonStyle(.glass).controlSize(.large)
+                    Button {
                         checking = true
                         Task {
                             do { try await app.api.checkCompatibility(); update.requirement = nil; _ = await app.syncNow() }
                             catch { self.error = error.localizedDescription }
                             checking = false
                         }
-                    }.buttonStyle(.bordered).disabled(checking)
+                    } label: {
+                        HStack { if checking { ProgressView().controlSize(.small) }; Text(checking ? "Prüfe …" : "Nach dem Update erneut prüfen") }.frame(maxWidth: .infinity)
+                    }.buttonStyle(.glass).disabled(checking)
                     if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
-                }.loveCard().padding(20)
+                }.loveCard().padding(20).frame(maxWidth: 640).frame(maxWidth: .infinity)
             }
         }.accessibilityIdentifier("rj-update-required").sheet(isPresented:$showingUpdater){NavigationStack{AppUpdateView().toolbar{ToolbarItem(placement:.cancellationAction){Button("Zurück"){showingUpdater=false}}}}}
     }
 }
-
-
-
-

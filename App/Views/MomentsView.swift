@@ -81,8 +81,8 @@ struct MomentsView:View {
     }
     private var captureControls:some View {
         HStack{
-            Button("Aufnehmen",systemImage:"camera.fill"){camera=true}.buttonStyle(.borderedProminent).accessibilityIdentifier("moments-capture")
-            Button("Hinzufügen",systemImage:"plus"){picker=true}.buttonStyle(.bordered)
+            Button("Aufnehmen",systemImage:"camera.fill"){camera=true}.buttonStyle(.glassProminent).accessibilityIdentifier("moments-capture")
+            Button("Hinzufügen",systemImage:"plus"){picker=true}.buttonStyle(.glass)
             Spacer()
             filtersMenu
         }
@@ -170,7 +170,7 @@ private struct MomentGridTile:View {
     private var title:String{(record.payload.mediaKind=="video" ? "Video: ":"Foto: ")+(record.payload.caption ?? "Unser Moment")}
     var body:some View {
         Button(action:action){MomentPreview(record:record).frame(width:side,height:side).clipped().contentShape(Rectangle())}
-            .buttonStyle(.plain).accessibilityIdentifier("gallery-tile-"+record.id).accessibilityLabel(title)
+            .buttonStyle(.lovePress).accessibilityIdentifier("gallery-tile-"+record.id).accessibilityLabel(title)
     }
 }
 struct StorageSummaryView:View {
@@ -255,7 +255,7 @@ struct MomentDetailView: View {
                         .font(.title2)
                         .padding(9)
                         .background(hasMyReaction(emoji) ? LovePalette.pink.opacity(0.22) : Color.secondary.opacity(0.09), in: Circle())
-                        .buttonStyle(.plain)
+                        .buttonStyle(.lovePress)
                         .accessibilityLabel("Mit \(emoji) reagieren")
                 }
             }
@@ -286,7 +286,7 @@ struct MomentDetailView: View {
                                 Image(systemName: "trash")
                                     .font(.caption)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.lovePress)
                             .disabled(saving)
                             .accessibilityLabel("Kommentar von \(value.authorName) löschen")
                         }

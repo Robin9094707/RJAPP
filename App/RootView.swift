@@ -8,8 +8,8 @@ struct RootView:View {
         ZStack {
             LoveBackground()
             switch appState.phase {
-            case .setup:ServerSetupView()
-            case .restoring:ProgressView(appState.connectionMessage).padding(30)
+            case .setup:ServerSetupView().transition(.opacity)
+            case .restoring:LoveLaunchView(message:appState.connectionMessage).transition(.opacity)
             case .authenticated:
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--preview-tv-dashboard") {TVPreviewView()}
@@ -38,7 +38,9 @@ struct RootView:View {
                 #endif
             }
         }.frame(maxWidth:.infinity,maxHeight:.infinity).accessibilityIdentifier("rj-root").previewAccessibilityEnvironment()
-            .overlay{if update.requirement != nil && !appState.showingFartRecorder && appState.pendingQuickCapture == nil {UpdateRequiredView()}}
+            .animation(LoveMotion.gentle,value:appState.phase)
+            .overlay{if update.requirement != nil && !appState.showingFartRecorder && appState.pendingQuickCapture == nil {UpdateRequiredView().transition(.opacity.combined(with:.scale(scale:0.98)))}}
+            .animation(LoveMotion.spring,value:update.requirement)
             .task{await appState.activate()}
             .alert(item:Binding(get:{appState.alert},set:{appState.alert=$0})){Alert(title:Text($0.title),message:Text($0.message),dismissButton:.default(Text("OK")))}
     }
@@ -65,9 +67,10 @@ struct MainTabView:View {
             }
         }
         .tint(LovePalette.pink)
-        .tabBarMinimizeBehavior(.never)
+        .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory(isEnabled: cinema.active && cinema.provider == "plex" && !cinema.screenVisible && cinema.foreground && !cinema.miniPlayerHidden) { CinemaMiniPlayer() }
         .onChange(of:cinema.mediaID) { _,_ in cinema.miniPlayerHidden = false }
+        .overlay(alignment:.top) { TVConnectionBanner() }
         .task { CinemaCoordinator.shared.configure(app: appState); appState.acceptQuickCaptureRequest() }
         .task(id:appState.quickCaptureAttempt) {
             if appState.pendingQuickCapture != nil { extraDestination=nil; await appState.presentQuickCapture() }
@@ -76,7 +79,7 @@ struct MainTabView:View {
         .safeAreaInset(edge:.top) {
             if appState.pendingQuickCapture != nil && !appState.showingFartRecorder && !journey.presented {
                 Button("Notfallaufnahme öffnen",systemImage:"cloud.fill") { appState.acceptQuickCaptureRequest() }
-                    .buttonStyle(.borderedProminent).padding(8)
+                    .buttonStyle(.glassProminent).tint(LovePalette.violet).padding(8).transition(.move(edge:.top).combined(with:.opacity))
             }
         }
         .onChange(of: appState.me?.id) { _, _ in CinemaCoordinator.shared.configure(app: appState) }
@@ -100,32 +103,9 @@ struct MainTabView:View {
         .sheet(item:$extraDestination) { action in NavigationStack { QuickActionDestination(action:action).toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { extraDestination=nil } } } } }
         .sheet(isPresented:$state.showingProfile) { NavigationStack { SettingsView().toolbar { ToolbarItem(placement:.confirmationAction) { Button("Fertig") { state.showingProfile=false } } } }.presentationDragIndicator(.visible) }
         .sheet(isPresented:$state.showingFartRecorder,onDismiss:{appState.offerForegroundMoments()}){FartRecorderView(autoStart:appState.quickFartRecording)}
-        .sheet(isPresented:$state.showingChangelog,onDismiss:{appState.offerForegroundMoments()}){ChangelogView()}
+        .fullScreenCover(isPresented:$state.showingChangelog,onDismiss:{appState.offerForegroundMoments()}){WhatsNewView()}
         .sheet(item:$state.pendingSweet,onDismiss:{appState.offerForegroundMoments()}){SweetPlaybackView(record:$0)}
         .fullScreenCover(item:$state.pendingPhotoRequest,onDismiss:{appState.offerForegroundMoments()}){InstantCameraView(request:$0)}
         .fullScreenCover(isPresented:$journey.presented,onDismiss:{Task{_ = await appState.syncNow(showErrors:false)}}){SetupJourneyView()}
     }
 }
-struct ChangelogView:View {
-    @Environment(AppState.self) private var app
-    var body:some View {
-        NavigationStack {
-            ScrollView {VStack(alignment:.leading,spacing:22){
-                LoveIcon(symbol:"heart.fill",tint:LovePalette.pink,size:70)
-                Text("Schneller aufnehmen.\nDateien im Blick.").font(.system(size:38,weight:.medium,design:.serif))
-                Text("Willkommen in RJ Love 4.3.1").font(.title3.bold())
-                Label("Notfallaufnahme zuverlässig über Kontrollzentrum und Kurzbefehle",systemImage:"cloud.fill")
-                Label("Gespeicherte Anmeldung robuster wiederherstellen",systemImage:"key.fill")
-                Label("Bild- und PDF-Miniaturen sowie Vorschauen direkt in der App",systemImage:"doc.richtext")
-                Label("Dateien und Ordner umbenennen, verschieben, suchen und sortieren",systemImage:"folder.fill")
-                Label("App-Einstellungen automatisch sichern und wiederherstellen",systemImage:"arrow.triangle.2.circlepath")
-                Label("Standort mit Genauigkeitskreis und klarer Aktualisierung",systemImage:"location.circle")
-                Text("Original oder optional platzsparend teilen: Ihr entscheidet. Eure bisherigen Erinnerungen bleiben erhalten. Ortsmarkierungen werden nur mit den entsprechenden Freigaben gespeichert.").font(.subheadline).foregroundStyle(.secondary)
-                Text("Unsere Beziehungsmonate und Drop-Poop könnt ihr über Startseite anpassen als eigene Karten hinzufügen. Neue Schnellzugriffe, Widgets und ein Kontrollzentrum-Button bringen euch direkt hin.").font(.footnote).foregroundStyle(.secondary)
-                Button("Schön, los geht’s") {app.didReadChangelog()}.buttonStyle(.borderedProminent).controlSize(.large)
-            }.padding(26)}.background(LoveBackground()).navigationTitle("Neu für euch")
-        }.interactiveDismissDisabled()
-    }
-}
-
-

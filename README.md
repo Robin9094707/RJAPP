@@ -2,7 +2,7 @@
 
 Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widgets und Alltag.
 
-**Aktuelle App: 4.3.1 (431), Server 4.3.1.** Robuster Notfallstart über Kontrollzentrum und Kurzbefehle, sicherere Sitzungswiederherstellung und erweiterter Dateimanager mit Miniaturen, Vorschauen, Umbenennen und Verschieben: [Release 4.3.1](RELEASE-4.3.1.md).
+**Aktuelle App: 5.0.0 (500), Server 5.0.0.** Neu gestaltet mit durchgängigem Liquid Glass, flüssigen Animationen, neuem Duftstudio-Recorder, Kino-AirPlay mit Überblendungen, Live-Vorschau und Herz-Signalen, spürbar flüssigerer Synchronisierung sowie automatischer IPA-Bereitstellung durch den Server: [Release 5.0.0](RELEASE-5.0.0.md).
 
 ## Neu: Unser Kino
 
@@ -20,7 +20,7 @@ Plex-Fernsteuerung setzt einen kompatiblen Empfänger und passende Serverrechte 
 
 Server stoppen, Konfiguration und Datenordner sichern, nur `Backend/rj_love_server.py` ersetzen und neu starten. Konfiguration, Konto-IDs und Datenpfad unverändert behalten. Die neue IPA mit demselben Signierteam, derselben Bundle-ID und identischer App Group über die bestehende App installieren. Die App nicht löschen.
 
-Die Datenbank wird ausschließlich additiv erweitert. App 4.3.1 benötigt Server 4.3.1. Server 4.3.1 akzeptiert weiterhin App 4.3.0 (Protokoll 5), damit beide Geräte nacheinander aktualisiert werden können.
+Die Datenbank wird ausschließlich additiv erweitert. App 5.0.0 benötigt Server 5.0.0. Server 5.0.0 zeigt älteren Apps (4.3.x) ihr eingebautes Update-Fenster; der IPA-Download und die Feather-Quelle bleiben für sie erreichbar. Eine `RJ-Love…ipa` neben der Serverdatei (oder in `rjlove_data/updates/`) wird automatisch als neues Release bereitgestellt.
 
 ## Installation
 
@@ -34,7 +34,7 @@ Details: [Installation](INSTALLATION.md), [Funktionen](FEATURES.md), [Datenschut
 
 ## Build
 
-GitHub Actions baut auf `main` App und Widgets als unsignierte IPA und liefert die einzelne Serverdatei sowie ein Komplettpaket. Elf schnelle HTTP-Prüfungen sowie Swift-Tests für Layout und Notfallübergabe prüfen Kino, Dokumente, Einstellungen und Migration. Keine zusätzlichen Simulator-Jobs. Compiler- und Paketprüfung bleiben erhalten.
+GitHub Actions baut auf `main` und für Pull Requests App und Widgets als unsignierte IPA und liefert die einzelne Serverdatei sowie ein Komplettpaket. Fünfzehn schnelle HTTP-Prüfungen sowie Swift-Tests für Layout und Notfallübergabe prüfen Kino, Dokumente, Einstellungen und Migration. Keine zusätzlichen Simulator-Jobs. Compiler- und Paketprüfung bleiben erhalten.
 
 YouTube verwendet [YouTubeKit](https://github.com/b5i/YouTubeKit), fest auf eine Revision gebunden; der Lizenztext liegt in den App-Ressourcen. Google-/YouTube-Anmeldedaten bleiben auf dem jeweiligen iPhone. Plex-Brücken speichern Zugangstokens ausschließlich befristet im Serverspeicher.
 

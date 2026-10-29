@@ -31,7 +31,7 @@ struct LoveHubView: View {
                         }
                         ForEach(entries) { record in entryCard(record) }
                         Button("Hinzufügen", systemImage: "plus") { composing = kind }
-                            .buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity)
+                            .buttonStyle(.glassProminent).controlSize(.large).frame(maxWidth: .infinity)
                     }.padding(22)
                 }
             }
@@ -118,7 +118,7 @@ private struct HubComposerView: View {
                             ForEach(moods, id: \.self) { emoji in
                                 Button { mood = emoji } label: {
                                     Text(emoji).font(.largeTitle).padding(8).background(mood == emoji ? LovePalette.pink.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 14))
-                                }.buttonStyle(.plain).accessibilityLabel(emoji).accessibilityAddTraits(mood == emoji ? .isSelected : [])
+                                }.buttonStyle(.lovePress).accessibilityLabel(emoji).accessibilityAddTraits(mood == emoji ? .isSelected : [])
                             }
                         }
                     }

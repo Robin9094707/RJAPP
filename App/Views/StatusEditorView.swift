@@ -16,12 +16,12 @@ struct StatusEditorView:View {
             VStack(alignment:.leading,spacing:18){LoveSectionTitle("Für eine kleine Weile");Picker("Dauer",selection:$hours){Text("Bis ich es ändere").tag(0);ForEach([1,2,4,8],id:\.self){Text("\($0) Stunden").tag($0)}}.tint(LovePalette.pink);Divider();Toggle(isOn:$quiet){Label("Bitte nicht stören",systemImage:"moon.fill")}.onChange(of:quiet){_,value in if value,hours==0{hours=8}};Text("Bis zu acht Stunden Ruhe vor normalen RJ-Love-Mitteilungen. Bewusste Weckrufe bleiben möglich. Dein iOS-Fokus wird nicht verändert.").font(.caption).foregroundStyle(.secondary)}.loveCard()
             Button("Meinen Status entfernen",role:.destructive){save(clear:true)}.font(.subheadline).disabled(saving).frame(maxWidth:.infinity).padding(.vertical,8)
         }.padding(20)}.background(LoveBackground()).navigationTitle("Mein Status").navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge:.bottom){Button(saving ? "Wird geteilt …":"Status teilen",systemImage:"checkmark"){save()}.buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth:.infinity).disabled(saving || text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || text.count>120).padding(.horizontal,20).padding(.vertical,12).background(.bar)}
+        .safeAreaInset(edge:.bottom){Button(saving ? "Wird geteilt …":"Status teilen",systemImage:"checkmark"){save()}.buttonStyle(.glassProminent).controlSize(.large).frame(maxWidth:.infinity).disabled(saving || text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || text.count>120).padding(.horizontal,20).padding(.vertical,12).background(.bar)}
         .interactiveDismissDisabled(saving)
         .onAppear{guard !loaded else{return};loaded=true;text=app.myStatus==nil ? app.statusMessage:app.myStatus?.visibleStatus ?? "";quiet=app.myStatus?.isQuiet ?? false}
     }
     private func preset(_ emoji:String,_ value:String)->some View {
-        Button{text=emoji+" "+value;Haptics.impact(.soft)}label:{VStack(alignment:.leading,spacing:9){Text(emoji).font(.title2);Text(value).font(.caption.weight(.medium)).foregroundStyle(.primary)}.frame(maxWidth:.infinity,alignment:.leading).padding(13).background(LovePalette.pink.opacity(text==emoji+" "+value ? 0.14:0.055),in:RoundedRectangle(cornerRadius:18))}.buttonStyle(.plain)
+        Button{text=emoji+" "+value;Haptics.impact(.soft)}label:{VStack(alignment:.leading,spacing:9){Text(emoji).font(.title2);Text(value).font(.caption.weight(.medium)).foregroundStyle(.primary)}.frame(maxWidth:.infinity,alignment:.leading).padding(13).background(LovePalette.pink.opacity(text==emoji+" "+value ? 0.14:0.055),in:RoundedRectangle(cornerRadius:18))}.buttonStyle(.lovePress)
     }
     private func save(clear:Bool=false){saving=true;Task{if await app.setStatus(text:clear ? "":text,hours:clear ? 0:hours,quiet:clear ? false:quiet){dismiss()};saving=false}}
 }

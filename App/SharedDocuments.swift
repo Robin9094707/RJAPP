@@ -143,7 +143,7 @@ struct DocumentsView:View {
             }
         }
         .safeAreaInset(edge:.bottom) {
-            Button("Datei hochladen",systemImage:"square.and.arrow.up") {importing=true}.buttonStyle(.borderedProminent).controlSize(.large).disabled(busy).frame(maxWidth:.infinity).padding(12).background(.ultraThinMaterial)
+            Button("Datei hochladen",systemImage:"square.and.arrow.up") {importing=true}.buttonStyle(.glassProminent).controlSize(.large).disabled(busy).frame(maxWidth:.infinity).padding(12).background(.ultraThinMaterial)
         }
         .refreshable {await load()}
         .task(id:folderID) {await load()}
@@ -214,7 +214,7 @@ struct DocumentsView:View {
                         Text("\(library.files.filter {$0.folderID == folder.id}.count) Dateien").font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth:.infinity,alignment:.leading)
                 }
-            }.buttonStyle(.plain)
+            }.buttonStyle(.lovePress)
             Button {Task {await favorite(folder)}} label:{Image(systemName:library.favorites.contains(folder.id) ? "star.fill":"star").foregroundStyle(LovePalette.coral).frame(width:44,height:44)}.disabled(busy).accessibilityLabel("Favorit für "+folder.name+" ändern")
             if folder.ownerID == app.me?.id {Menu {
                 Button("Umbenennen",systemImage:"pencil") {beginRename(DocumentEditTarget(id:folder.id,kind:"folders",name:folder.name,parentID:folder.parentID))}
@@ -234,7 +234,7 @@ struct DocumentsView:View {
                         if let date=file.createdAt.rjDate {Text(date.formatted(date:.abbreviated,time:.shortened)).font(.caption2).foregroundStyle(.tertiary)}
                     }.frame(maxWidth:.infinity,alignment:.leading)
                 }
-            }.buttonStyle(.plain).disabled(busy)
+            }.buttonStyle(.lovePress).disabled(busy)
             fileMenu(file)
 
         }.loveCard().overlay {if file.id == highlightID {RoundedRectangle(cornerRadius:26).stroke(LovePalette.blue.opacity(0.5),lineWidth:2).allowsHitTesting(false)}}
@@ -253,7 +253,7 @@ struct DocumentsView:View {
     }
     private func fileTile(_ file:SharedDocument)->some View {
         VStack(alignment:.leading,spacing:8) {
-            Button {Task {await open(file)}} label:{DocumentThumbnail(file:file,api:app.api).frame(height:130)}.buttonStyle(.plain).disabled(busy).accessibilityLabel("Vorschau für "+file.filename)
+            Button {Task {await open(file)}} label:{DocumentThumbnail(file:file,api:app.api).frame(height:130)}.buttonStyle(.lovePress).disabled(busy).accessibilityLabel("Vorschau für "+file.filename)
             Text(file.filename).font(.subheadline.bold()).lineLimit(2).frame(height:40,alignment:.topLeading)
             HStack {Text(ByteCountFormatter.string(fromByteCount:file.sizeBytes,countStyle:.file)).font(.caption).foregroundStyle(.secondary);Spacer(minLength:0);fileMenu(file)}
         }.padding(12).background(.regularMaterial,in:RoundedRectangle(cornerRadius:20))

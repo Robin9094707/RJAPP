@@ -205,7 +205,7 @@ struct PartnerMapView: View {
             .frame(maxWidth: .infinity, minHeight: 68)
             .loveGlass(in:RoundedRectangle(cornerRadius:18,style:.continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.lovePress)
     }
 }
 

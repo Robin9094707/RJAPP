@@ -17,7 +17,7 @@ struct RelationshipHomeCard:View {
                     if let days=item.days(at:context.date){Text(days==0 ? "Heute ist euer Jahrestag 💗":"Euer nächster Jahrestag in \(days) Tagen").font(.caption).foregroundStyle(LovePalette.pink)}
                 }else{Text("Jeder Monat ein bisschen mehr wir.").font(.system(size:28,weight:.medium,design:.serif));Text("Tragt euren Beziehungsbeginn ein. Wir zählen eure Monate, Monatstage und den nächsten Jahrestag.").font(.subheadline).foregroundStyle(.secondary)}
             }.loveCard()
-        }}.buttonStyle(.plain).accessibilityIdentifier("relationship-home-card")
+        }}.buttonStyle(.lovePress).accessibilityIdentifier("relationship-home-card")
     }
     private func metric(_ value:String,_ title:String,_ icon:String)->some View {VStack(alignment:.leading,spacing:7){Image(systemName:icon).foregroundStyle(LovePalette.pink);Text(value).font(.system(.title,design:.rounded,weight:.semibold));Text(title).font(.caption).foregroundStyle(.secondary)}.frame(maxWidth:.infinity,alignment:.leading)}
 }

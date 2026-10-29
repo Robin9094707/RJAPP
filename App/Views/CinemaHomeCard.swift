@@ -13,7 +13,7 @@ struct CinemaHomeCard: View {
                     if let device = cinema.room?.details?.device { Label(device,systemImage: "tv").font(.caption).foregroundStyle(.secondary) }
                 } else { Text("Plex, YouTube und AirPlay. Zusammen schauen, auch wenn ihr gerade nicht nebeneinander sitzt.").font(.subheadline).foregroundStyle(.secondary) }
             }.loveCard()
-        }.buttonStyle(.plain)
+        }.buttonStyle(.lovePress)
     }
 }
 struct PlexCinemaInformation: View {

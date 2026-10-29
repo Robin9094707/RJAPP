@@ -278,6 +278,7 @@ final class AppState {
         AppCache.clear()
         WidgetSharedStore.clearPendingThoughts()
         WidgetSharedStore.saveSnapshot(WidgetSnapshot())
+        lastWidgetContent=nil
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -833,8 +834,16 @@ final class AppState {
         value.milestoneTitle=featured?.title
         value.milestoneDate=featured?.nextDate()?.rjISO8601
         WidgetSharedStore.saveSnapshot(value)
-        WidgetCenter.shared.reloadAllTimelines()
+        // Reload widgets only when visible content changed (or as a periodic refresh of the
+        // relative "last sync" label) instead of on every 12-second poll.
+        var comparable=value;comparable.lastSync=nil
+        if comparable != lastWidgetContent || Date.now.timeIntervalSince(lastWidgetReload)>600 {
+            lastWidgetContent=comparable;lastWidgetReload = .now
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
+    @ObservationIgnored private var lastWidgetContent:WidgetSnapshot?
+    @ObservationIgnored private var lastWidgetReload=Date.distantPast
 
     func retainNotificationRecord(_ record: SharedRecord) {
         records.removeAll { $0.id == record.id }

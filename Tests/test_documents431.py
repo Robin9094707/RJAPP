@@ -1,4 +1,4 @@
-"""HTTP regressions: names/moves preserve assets, permissions, old clients and sessions."""
+"""HTTP regressions: names/moves preserve assets, permissions, partner clients and sessions."""
 import hashlib
 import json
 import urllib.error
@@ -37,11 +37,11 @@ class Documents431Tests(unittest.TestCase):
         # Retry is idempotent; it must neither duplicate nor lose the file.
         self.change('move','files',document['id'],folder_id=destination)
         server.Database(self.app.database.path)
-        other=self.request('/v1/documents',who=1,version='4.3.0')['files']
+        other=self.request('/v1/documents',who=1,version=server.APP_VERSION)['files']
         self.assertEqual(len(other),1);self.assertEqual(other[0]['folder_id'],destination)
         self.assertEqual(other[0]['asset_id'],document['asset_id'])
         self.assertEqual(other[0]['filename'],'Unser Brief.pdf')
-        headers={'Authorization':'Bearer '+self.tokens[1],'X-RJ-App-Version':'4.3.0','X-RJ-Protocol':'5'}
+        headers={'Authorization':'Bearer '+self.tokens[1],'X-RJ-App-Version':server.APP_VERSION,'X-RJ-Protocol':'5'}
         with urllib.request.urlopen(urllib.request.Request(self.base+'/v1/assets/'+document['asset_id'],headers=headers)) as response:self.assertEqual(response.read(),data)
         after=self.request('/v1/bootstrap',who=0)
         for key in ('me','partners','records','preferences'):self.assertEqual(before[key],after[key])

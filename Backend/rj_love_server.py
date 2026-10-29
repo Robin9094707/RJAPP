@@ -3150,9 +3150,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         return self.client_address[0]
 
     def accepts_gzip(self) -> bool:
+        """An explicit gzip preference wins over the wildcard, regardless of order (RFC 9110)."""
+        qualities: dict[str, float] = {}
         for part in self.headers.get("Accept-Encoding", "").split(","):
             name, _, params = part.strip().partition(";")
-            if name.strip().lower() not in {"gzip", "*"}:
+            name = name.strip().lower()
+            if name not in {"gzip", "*"}:
                 continue
             quality = 1.0
             for param in params.split(";"):
@@ -3162,9 +3165,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                         quality = float(value)
                     except ValueError:
                         quality = 0.0
-            if quality > 0:
-                return True
-        return False
+            qualities[name] = quality
+        return qualities.get("gzip", qualities.get("*", 0.0)) > 0
 
     def send_json(self, status: int | HTTPStatus, body: Any) -> None:
         encoded = json_bytes(body)

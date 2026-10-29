@@ -68,11 +68,13 @@ class Server50Tests(unittest.TestCase):
         stable = ('me', 'partners', 'records', 'preferences')
         decoded = json.loads(gzip.decompress(body))
         self.assertEqual({k: decoded[k] for k in stable}, {k: plain[k] for k in stable})
-        for header in ({}, {'Accept-Encoding': 'gzip;q=0'}, {'Accept-Encoding': 'identity'}):
+        for header in ({}, {'Accept-Encoding': 'gzip;q=0'}, {'Accept-Encoding': 'identity'}, {'Accept-Encoding': 'gzip;q=0, *;q=1'}, {'Accept-Encoding': '*;q=1, gzip;q=0'}):
             with self.raw('/v1/bootstrap', who=0, headers=header) as response:
                 self.assertIsNone(response.headers.get('Content-Encoding'))
                 value = json.loads(response.read())
                 self.assertEqual({k: value[k] for k in stable}, {k: plain[k] for k in stable})
+        with self.raw('/v1/bootstrap', who=0, headers={'Accept-Encoding': 'br;q=1, *;q=0.5'}) as response:
+            self.assertEqual(response.headers.get('Content-Encoding'), 'gzip')
         # Small answers stay uncompressed.
         with self.raw('/health', headers={'Accept-Encoding': 'gzip'}) as response:
             self.assertIsNone(response.headers.get('Content-Encoding'))

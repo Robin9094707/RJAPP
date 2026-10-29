@@ -143,7 +143,7 @@ struct DocumentsView:View {
             }
         }
         .safeAreaInset(edge:.bottom) {
-            Button("Datei hochladen",systemImage:"square.and.arrow.up") {importing=true}.buttonStyle(.glassProminent).controlSize(.large).disabled(busy).frame(maxWidth:.infinity).padding(12).background(.ultraThinMaterial)
+            Button("Datei hochladen",systemImage:"square.and.arrow.up") {importing=true}.buttonStyle(.borderedProminent).controlSize(.large).disabled(busy).frame(maxWidth:.infinity).padding(12).background(.ultraThinMaterial)
         }
         .refreshable {await load()}
         .task(id:folderID) {await load()}

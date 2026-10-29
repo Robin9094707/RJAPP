@@ -74,15 +74,15 @@ struct FartStudioView: View {
                     HStack(spacing:12) {
                         NavigationLink {FartLibraryView()} label:{Label("Schatzkiste & Import",systemImage:"square.and.arrow.down").frame(maxWidth:.infinity,minHeight:40)}
                         NavigationLink {EveningPlaylistView()} label:{Label("Abendplayer",systemImage:"play.square.stack.fill").frame(maxWidth:.infinity,minHeight:40)}.accessibilityIdentifier("evening-playlist-link")
-                    }.font(.caption.bold()).buttonStyle(.glass).loveReveal(revealed, index: 1)
+                    }.font(.caption.bold()).buttonStyle(.bordered).loveReveal(revealed, index: 1)
                     HStack {
                         Button {Haptics.selection();favorites.toggle()} label:{Label("Lieblinge",systemImage:favorites ? "heart.fill":"heart").contentTransition(.symbolEffect(.replace))}.tint(favorites ? LovePalette.pink:LovePalette.violet)
                         Spacer()
                         Menu {Picker("Sortieren",selection:$order) {ForEach(DuftOrder.allCases,id:\.self) {Text($0.rawValue).tag($0)}}} label:{Label("Sortieren",systemImage:"arrow.up.arrow.down")}
                         Button {filtersExpanded=true;showingDates=true} label:{Image(systemName:"calendar")}.accessibilityLabel("Zeitraum filtern")
-                    }.font(.subheadline).buttonStyle(.glass).loveReveal(revealed, index: 2)
+                    }.font(.subheadline).buttonStyle(.bordered).loveReveal(revealed, index: 2)
                 }
-                if app.studio.queueCount>0{HStack{Image(systemName:"music.note.list").foregroundStyle(LovePalette.violet);Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)").contentTransition(.numericText());Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).buttonStyle(.glass).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18,style:.continuous)).transition(.move(edge:.top).combined(with:.opacity))}
+                if app.studio.queueCount>0{HStack{Image(systemName:"music.note.list").foregroundStyle(LovePalette.violet);Text("Konzert · \(app.studio.queueIndex+1) / \(app.studio.queueCount)").contentTransition(.numericText());Spacer();Button("Weiter"){app.studio.nextInPlaylist()};Button("Stoppen"){app.studio.stopPlayback()}}.font(.caption).buttonStyle(.bordered).padding(12).loveGlass(in:RoundedRectangle(cornerRadius:18,style:.continuous)).transition(.move(edge:.top).combined(with:.opacity))}
                 DisclosureGroup("Verfeinern · \(visible.count) Werke",isExpanded:$filtersExpanded){filters(count: visible.count).padding(.top,12)}.font(.subheadline.bold()).tint(LovePalette.violet).loveCard().loveReveal(revealed, index: 3)
                 if app.loadingFartArchive { HStack(spacing: 10) { ProgressView(); Text("Euer vollständiges Archiv wird geladen …") }.font(.footnote).foregroundStyle(.secondary).transition(.opacity) }
                 switch room {
@@ -129,7 +129,7 @@ struct FartStudioView: View {
             .onChange(of: yearMode) { _, _ in selectedDay = nil }
             .onChange(of: room) { _, _ in Haptics.selection() }
             .animation(reduceMotion ? nil : LoveMotion.gentle, value: room)
-            .animation(reduceMotion ? nil : LoveMotion.spring, value: app.studio.queueCount)
+            .animation(reduceMotion ? nil : LoveMotion.fade, value: app.studio.queueCount)
             .animation(reduceMotion ? nil : LoveMotion.gentle, value: app.loadingFartArchive)
     }
     private func rebuildIndex(_ value: [FartClip]) {
@@ -157,8 +157,8 @@ struct FartStudioView: View {
                         calendarDate = .now
                         selectedDay = nil
                         yearMode = false
-                    }.font(.caption.bold()).buttonStyle(.glass).accessibilityIdentifier("duft-calendar-today").accessibilityLabel("Heute anzeigen")
-                }.transition(.move(edge: .top).combined(with: .opacity))
+                    }.font(.caption.bold()).buttonStyle(.bordered).accessibilityIdentifier("duft-calendar-today").accessibilityLabel("Heute anzeigen")
+                }.transition(.opacity)
             }
             if !query.isEmpty {
                 HStack {Text("\(results) Treffer").font(.caption.bold()).contentTransition(.numericText()).accessibilityIdentifier("duft-results");Spacer();Button("Suche leeren"){query=""}.font(.caption)}
@@ -173,7 +173,7 @@ struct FartStudioView: View {
         Button { Haptics.impact(.soft); app.openFartRecorder() } label: {
             Label(app.studio.draft == nil ? "Neues Meisterwerk aufnehmen" : "Deinen Entwurf fortsetzen", systemImage: app.studio.draft == nil ? "mic.fill" : "waveform")
                 .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
-        }.buttonStyle(.glassProminent).controlSize(.large).tint(LovePalette.violet)
+        }.buttonStyle(.borderedProminent).controlSize(.large).tint(LovePalette.violet)
             .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 8).accessibilityIdentifier("duft-record")
     }
     private var hero: some View {
@@ -222,7 +222,7 @@ struct FartStudioView: View {
                     } label: { Label(category == "all" ? "Alle Duftnoten" : category, systemImage: "wind") }
                     Button { Haptics.selection(); favorites.toggle() } label: { Label("Lieblinge", systemImage: favorites ? "heart.fill" : "heart") }.tint(favorites ? LovePalette.pink : LovePalette.violet)
                     Button { showingDates = true } label: { Label(useDates ? "Zeitraum aktiv" : "Zeitraum", systemImage: "calendar") }
-                }.font(.caption.bold()).buttonStyle(.glass).padding(.vertical, 2)
+                }.font(.caption.bold()).buttonStyle(.bordered).padding(.vertical, 2)
             }
             HStack {
                 Text("\(count) Treffer").font(.caption).foregroundStyle(.secondary).contentTransition(.numericText()).accessibilityIdentifier(query.isEmpty ? "duft-results":"duft-filter-results")
@@ -263,7 +263,7 @@ struct FartCalendarPanel: View {
                 Text(date.formatted(yearMode ? .dateTime.year() : .dateTime.month(.wide).year())).font(.headline).multilineTextAlignment(.center).accessibilityIdentifier("duft-calendar-heading")
                 Spacer(minLength: 0)
                 Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 40, height: 40) }.accessibilityLabel(yearMode ? "Nächstes Jahr" : "Nächster Monat")
-            }.buttonStyle(.glass)
+            }.buttonStyle(.bordered)
             if yearMode { yearGrid } else { monthGrid }
         }.padding(12).frame(maxWidth: .infinity).loveGlass(in: RoundedRectangle(cornerRadius: 26))
             .onAppear {
@@ -342,7 +342,7 @@ struct FartAtlasView: View {
                     }
                 }.mapControls { MapCompass(); MapScaleView() }.frame(height: 330).clipShape(RoundedRectangle(cornerRadius: 26))
                 Text("\(located.count) mit Ort · \(clips.count-located.count) ohne Ort").font(.caption).foregroundStyle(.secondary)
-                ForEach(located) { clip in Button { selection = clip.id } label: { Label(clip.title, systemImage: "mappin.circle.fill").frame(maxWidth: .infinity,alignment: .leading) }.buttonStyle(.glass) }
+                ForEach(located) { clip in Button { selection = clip.id } label: { Label(clip.title, systemImage: "mappin.circle.fill").frame(maxWidth: .infinity,alignment: .leading) }.buttonStyle(.bordered) }
             }
         }.sheet(item: Binding(get: { located.first { $0.id == selection } }, set: { selection = $0?.id })) { clip in
             NavigationStack {

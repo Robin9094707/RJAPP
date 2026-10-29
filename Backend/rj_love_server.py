@@ -53,9 +53,9 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "5.0.0"
+APP_VERSION = "6.0.0"
 # Apps older than this receive HTTP 426 and show their built-in "Zeit für die neue App" view.
-MINIMUM_APP_VERSION = "5.0.0"
+MINIMUM_APP_VERSION = "6.0.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}

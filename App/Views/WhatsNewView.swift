@@ -11,164 +11,150 @@ struct WhatsNewFeature: Identifiable {
 /// One-time welcome for a new app version. Shown once per installed version (`rjlove.changelog-seen`).
 struct WhatsNewView: View {
     @Environment(AppState.self) private var app
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var revealed = false
-    @State private var bounce = 0
-    @State private var hearts = 0
-    @State private var breathe = false
 
     static let features: [WhatsNewFeature] = [
-        WhatsNewFeature(id: "glass", symbol: "sparkles", tint: LovePalette.pink, title: "Liquid Glass, überall",
-                        detail: "Neue Glas-Tasten, Glaskarten und ein ruhiger, farbiger Hintergrund. Die Tableiste wird beim Scrollen schmal und schenkt euch mehr Platz."),
-        WhatsNewFeature(id: "motion", symbol: "wand.and.stars", tint: LovePalette.violet, title: "Flüssige Animationen",
-                        detail: "Karten gleiten sanft herein, Tasten federn bei jeder Berührung und Zahlen zählen weich hoch. Mit „Bewegung reduzieren“ bleibt alles ruhig."),
-        WhatsNewFeature(id: "heart", symbol: "heart.fill", tint: LovePalette.blush, title: "Herzgedanken mit Gefühl",
-                        detail: "Jedes Herz steigt sichtbar auf. Die Startseite begrüßt dich passend zur Tageszeit und zeigt euren Verbindungsstatus live."),
-        WhatsNewFeature(id: "studio", symbol: "waveform", tint: LovePalette.violet, title: "Duftstudio neu inszeniert",
-                        detail: "Der Aufnahmeknopf atmet mit deinem Pegel, Wiedergabe und Reaktionen antworten sofort und die Sammlung filtert schneller."),
-        WhatsNewFeature(id: "airplay", symbol: "airplay.video", tint: LovePalette.blue, title: "AirPlay wie im Kino",
-                        detail: "Weiche Überblendungen, Diashow mit Kamerafahrt und Bildhintergrund, eine neue Ambient-Uhr und eure Herz-Signale groß auf dem Fernseher. Dazu eine Live-Vorschau auf dem iPhone."),
-        WhatsNewFeature(id: "speed", symbol: "bolt.fill", tint: LovePalette.coral, title: "Spürbar flüssiger",
-                        detail: "Der Offline-Speicher schreibt im Hintergrund, Widgets laden nur bei echten Änderungen neu und Server 5.0 komprimiert seine Antworten."),
-        WhatsNewFeature(id: "update", symbol: "arrow.down.app.fill", tint: LovePalette.cyan, title: "Einfacher aktualisieren",
-                        detail: "Server 5.0 stellt eine neben der Serverdatei abgelegte IPA automatisch für Feather bereit. Ältere Apps erinnern freundlich an das Update.")
+        WhatsNewFeature(id: "calm", symbol: "rectangle.stack.fill", tint: LovePalette.pink, title: "Ruhig und klar",
+                        detail: "Feste Karten statt durchsichtiger Flächen, ein ruhiger Hintergrund und überall dieselben Abstände. Liquid Glass bleibt dort, wo es hingehört: in Tab- und Navigationsleiste."),
+        WhatsNewFeature(id: "fluid", symbol: "speedometer", tint: LovePalette.violet, title: "Spürbar flüssiger",
+                        detail: "Keine Endlos-Animationen, kein Wackeln beim Scrollen. Die App zeichnet deutlich weniger und schont Akku und ältere iPhones."),
+        WhatsNewFeature(id: "emergency", symbol: "cloud.fill", tint: LovePalette.blush, title: "Notfallaufnahme repariert",
+                        detail: "Der Recorder öffnet sich ohne Springen, der Aufnahmeknopf bleibt an seinem Platz und der Pegel reagiert sauber."),
+        WhatsNewFeature(id: "splash", symbol: "heart.fill", tint: LovePalette.coral, title: "Neuer Startbildschirm",
+                        detail: "Ein ruhiger, nahtloser Start mit eurem Bild, bis eure Sitzung bereit ist."),
+        WhatsNewFeature(id: "update", symbol: "arrow.down.app.fill", tint: LovePalette.cyan, title: "Gemeinsam mit Server 6.0",
+                        detail: "Eure Daten, Anmeldungen, Aufnahmen und Einstellungen bleiben unverändert. Ältere Apps erinnern freundlich an das Update.")
     ]
 
     var body: some View {
-        ZStack {
-            LoveAurora()
-            LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea().allowsHitTesting(false)
-            ScrollView {
-                VStack(spacing: 26) {
-                    hero
-                    VStack(spacing: 12) {
-                        ForEach(Array(Self.features.enumerated()), id: \.element.id) { index, feature in
-                            featureRow(feature).loveReveal(revealed, index: index + 3)
-                        }
-                    }
-                    Label("Eure Daten, Anmeldungen, Aufnahmen und Einstellungen bleiben unverändert erhalten.", systemImage: "lock.shield.fill")
-                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        .loveReveal(revealed, index: Self.features.count + 3)
+        ScrollView {
+            VStack(spacing: 26) {
+                hero
+                VStack(spacing: 10) {
+                    ForEach(Self.features) { featureRow($0) }
                 }
-                .padding(.horizontal, 22).padding(.top, 28).padding(.bottom, 24)
-                .frame(maxWidth: 620).frame(maxWidth: .infinity)
+                Label("Eure Daten, Anmeldungen, Aufnahmen und Einstellungen bleiben unverändert erhalten.", systemImage: "lock.shield.fill")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
-            .scrollIndicators(.hidden)
-            .safeAreaInset(edge: .bottom, spacing: 0) { continueButton }
+            .padding(.horizontal, LoveMetrics.screenPadding).padding(.top, 36).padding(.bottom, 24)
+            .frame(maxWidth: 620).frame(maxWidth: .infinity)
         }
-        .environment(\.colorScheme, .dark)
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom, spacing: 0) { continueButton }
+        .background(LoveBackground())
         .interactiveDismissDisabled()
-        .sensoryFeedback(.success, trigger: revealed)
-        .task {
-            revealed = true
-            if !reduceMotion { withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) { breathe = true } }
-            try? await Task.sleep(for: .milliseconds(450))
-            hearts += 1
-            try? await Task.sleep(for: .milliseconds(500))
-            bounce += 1
-        }
         .accessibilityIdentifier("rj-whats-new")
     }
 
     private var hero: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle().fill(LovePalette.pink.opacity(0.45)).frame(width: 170, height: 170).blur(radius: 46)
-                    .scaleEffect(breathe ? 1.12 : 0.92)
-                Image("BrandMark").resizable().scaledToFit().frame(width: 112, height: 112)
-                    .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-                    .padding(10)
-                    .glassEffect(.regular.tint(.white.opacity(0.06)), in: RoundedRectangle(cornerRadius: 38, style: .continuous))
-                    .scaleEffect(breathe ? 1.025 : 1)
-                    .accessibilityHidden(true)
-                LoveHeartBurst(trigger: hearts).offset(y: -40)
-            }
-            .frame(height: 180)
-            .scaleEffect(revealed || reduceMotion ? 1 : 0.8).opacity(revealed || reduceMotion ? 1 : 0)
-            .animation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.7), value: revealed)
+        VStack(spacing: 18) {
+            Image("LaunchMark").shadow(color: .black.opacity(0.18), radius: 16, y: 8).accessibilityHidden(true)
             VStack(spacing: 10) {
                 Text("RJ LOVE \(RJVersion.app)")
-                    .font(.system(size: 13, weight: .bold, design: .rounded)).tracking(3.2)
-                    .foregroundStyle(LinearGradient(colors: [LovePalette.blush, Color(red: 0.80, green: 0.72, blue: 1)], startPoint: .leading, endPoint: .trailing))
-                Text("Neu gestaltet.\nNur für euch zwei.")
-                    .font(.loveDisplay(38)).multilineTextAlignment(.center).foregroundStyle(.white)
+                    .font(.system(size: 13, weight: .bold, design: .rounded)).tracking(3)
+                    .foregroundStyle(LovePalette.pink)
+                Text("Ruhiger. Schneller.\nNur für euch zwei.")
+                    .font(.loveDisplay(34)).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Das größte Update eures kleinen Wir: hochwertiger, ruhiger und spürbar flüssiger.")
-                    .font(.callout).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
+                Text("Eine gründliche Überarbeitung: klareres Design, weniger Bewegung und viele kleine Fehler behoben.")
+                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .loveReveal(revealed, index: 1)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
 
     private func featureRow(_ feature: WhatsNewFeature) -> some View {
-        HStack(alignment: .top, spacing: 15) {
-            Image(systemName: feature.symbol)
-                .font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
-                .frame(width: 50, height: 50)
-                .background(LinearGradient(colors: [feature.tint, feature.tint.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .overlay { RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(.white.opacity(0.25), lineWidth: 0.7) }
-                .symbolEffect(.bounce, value: bounce)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(feature.title).font(.headline).foregroundStyle(.white)
-                Text(feature.detail).font(.subheadline).foregroundStyle(.white.opacity(0.72)).fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 14) {
+            LoveIcon(symbol: feature.symbol, tint: feature.tint, size: 42)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(feature.title).font(.headline)
+                Text(feature.detail).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(16)
-        .loveGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous), tint: .white.opacity(0.03))
+        .loveCard()
         .accessibilityElement(children: .combine)
     }
 
     private var continueButton: some View {
-        VStack(spacing: 9) {
+        VStack(spacing: 8) {
             Button {
                 Haptics.impact(.soft)
                 app.didReadChangelog()
             } label: {
                 Text("Los geht’s").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
             }
-            .buttonStyle(.glassProminent).tint(LovePalette.pink).controlSize(.large)
+            .buttonStyle(.borderedProminent).tint(LovePalette.pink).controlSize(.large)
             .accessibilityIdentifier("whats-new-continue")
-            Text("Gemeinsam mit Server 5.0 · einmalig angezeigt").font(.caption2).foregroundStyle(.white.opacity(0.55))
+            Text("Gemeinsam mit Server 6.0 · einmalig angezeigt").font(.caption2).foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 10)
-        .frame(maxWidth: 620)
-        .opacity(revealed || reduceMotion ? 1 : 0)
-        .animation(reduceMotion ? nil : LoveMotion.spring.delay(0.5), value: revealed)
+        .padding(.horizontal, LoveMetrics.screenPadding).padding(.top, 12).padding(.bottom, 8)
+        .frame(maxWidth: 620).frame(maxWidth: .infinity)
+        .background(.bar)
     }
 }
 
-/// Branded state while a stored session is restored, instead of a bare spinner.
-struct LoveLaunchView: View {
-    let message: String
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathe = false
+/// The splash content. The mark sits exactly where the system launch screen draws `LaunchMark`
+/// on the same `LaunchBackground` color, so the hand-over from iOS to the app is seamless.
+struct LoveSplashContent: View {
+    var message: String?
+    var showsTitle = true
     var body: some View {
-        VStack(spacing: 22) {
-            Image("BrandMark").resizable().scaledToFit().frame(width: 96, height: 96)
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .padding(8)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-                .scaleEffect(breathe ? 1.04 : 0.98)
-                .accessibilityHidden(true)
+        ZStack {
+            Color("LaunchBackground").ignoresSafeArea()
+            Image("LaunchMark").shadow(color: .black.opacity(0.2), radius: 18, y: 10).accessibilityHidden(true)
             VStack(spacing: 8) {
-                Text("RJ Love").font(.loveDisplay(26))
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        .contentTransition(.opacity)
+                Text("RJ Love").font(.loveDisplay(28))
+                Text("Nur für euch zwei").font(.footnote.weight(.medium)).foregroundStyle(.secondary)
+            }
+            .offset(y: 112)
+            .opacity(showsTitle ? 1 : 0)
+            VStack {
+                Spacer()
+                if let message {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(message).font(.footnote).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center)
+                    }.padding(.horizontal, 32).padding(.bottom, 40)
                 }
             }
         }
-        .padding(30)
-        .animation(LoveMotion.gentle, value: message)
-        .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { breathe = true } } }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("RJ Love lädt. " + message)
+        .accessibilityLabel("RJ Love lädt. " + (message ?? ""))
     }
+}
+
+/// Covers the first moments after launch, then fades away once: as soon as the session is restored,
+/// or right away when an emergency recording was requested from a widget or the Control Center.
+struct LoveSplashOverlay: View {
+    @Environment(AppState.self) private var app
+    @State private var visible = true
+    @State private var titleShown = false
+    var body: some View {
+        ZStack {
+            if visible {
+                LoveSplashContent(message: nil, showsTitle: titleShown).transition(.opacity)
+            }
+        }
+        .allowsHitTesting(visible)
+        .task {
+            withAnimation(.easeOut(duration: 0.35)) { titleShown = true }
+            let start = Date.now
+            while !Task.isCancelled {
+                let elapsed = Date.now.timeIntervalSince(start)
+                if app.pendingQuickCapture != nil && elapsed > 0.1 { break }
+                if app.phase != .restoring && elapsed > 0.7 { break }
+                if elapsed > 4 { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            withAnimation(.easeOut(duration: 0.3)) { visible = false }
+        }
+    }
+}
+
+/// Shown while a slow session restore continues after the splash: the same calm picture plus progress.
+struct LoveLaunchView: View {
+    let message: String
+    var body: some View { LoveSplashContent(message: message) }
 }

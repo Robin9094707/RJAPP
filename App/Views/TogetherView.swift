@@ -179,7 +179,7 @@ struct TogetherView: View {
                                 catch { appState.alert = AppAlert(title: "Kalender", message: error.localizedDescription) }
                             }
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.bordered)
                         Spacer()
                         Button("Bearbeiten") { editor = RecordEditorRoute(kind: .calendar, record: event) }
                         Button(role: .destructive) { deleting = event } label: { Image(systemName: "trash") }

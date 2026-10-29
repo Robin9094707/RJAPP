@@ -66,7 +66,7 @@ struct CinemaView: View {
                     HStack {
                         VStack(alignment: .leading) { Text(room.title).font(.headline); Text(room.provider == "youtube" ? "YouTube" : "Plex · ausgewählter Film").font(.caption).foregroundStyle(.secondary) }
                         Spacer()
-                        Button("Beitreten") { tv.mode = .cinema; Task { await cinema.join(room) } }.buttonStyle(.glass).disabled(cinema.busy || (room.provider == "plex" && !room.plexShared))
+                        Button("Beitreten") { tv.mode = .cinema; Task { await cinema.join(room) } }.buttonStyle(.bordered).disabled(cinema.busy || (room.provider == "plex" && !room.plexShared))
                     }
                 }
             }.loveCard()
@@ -112,7 +112,7 @@ struct CinemaNowPlayingView: View {
                 PlexCinemaInformation(details: cinema.room?.details)
                 if cinema.player == nil {
                     Label(cinema.room?.details?.external == true ? "Plex läuft auf dem verbundenen Abspielgerät" : "Du steuerst euren gemeinsamen Film",systemImage: "appletv.fill").font(.subheadline)
-                    Button("Auch auf diesem iPhone abspielen",systemImage: "iphone.and.play.circle") { Task { await cinema.playOnThisDevice() } }.buttonStyle(.glassProminent).disabled(cinema.room?.plexShared != true)
+                    Button("Auch auf diesem iPhone abspielen",systemImage: "iphone.and.play.circle") { Task { await cinema.playOnThisDevice() } }.buttonStyle(.borderedProminent).disabled(cinema.room?.plexShared != true)
                 } else if cinema.room != nil {
                     Button("Nur mitsteuern · diesen Stream beenden",systemImage: "tv") { cinema.stopThisDevice() }.font(.caption)
                 }
@@ -165,15 +165,15 @@ struct CinemaYouTubeBrowser: View {
             if !consent {
                 Text("YouTube wird von Google bereitgestellt. Beim Öffnen gehen unter anderem IP-Adresse, Geräteinformationen und die Videoauswahl an Google. Anmeldungen erfolgen ausschließlich auf der echten Google-/YouTube-Seite. Deine Abos und Anmeldedaten werden nicht mit Schatzi geteilt.").font(.footnote)
                 links
-                Button("YouTube aktivieren") { consent = true }.buttonStyle(.glassProminent).accessibilityIdentifier("cinema-youtube-consent")
+                Button("YouTube aktivieren") { consent = true }.buttonStyle(.borderedProminent).accessibilityIdentifier("cinema-youtube-consent")
             } else {
                 TextField("YouTube suchen oder Video-Link einfügen",text: $query).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                     .onSubmit { openSearch() }.accessibilityIdentifier("cinema-youtube-query")
-                Button("Suchen / Video öffnen",systemImage: "magnifyingglass") { openSearch() }.buttonStyle(.glassProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Suchen / Video öffnen",systemImage: "magnifyingglass") { openSearch() }.buttonStyle(.borderedProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Text("Native Videosuche ohne API-Schlüssel. Tippe auf ein Ergebnis, um es direkt abzuspielen. Deine eigene YouTube-Anmeldung und Abos bleiben auf diesem iPhone.").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     webButton("YouTube",symbol: "play.rectangle",path: "/")
-                    Button("Meine Abos",systemImage: "person.2") { Task { await native.subscriptions() } }.buttonStyle(.glass)
+                    Button("Meine Abos",systemImage: "person.2") { Task { await native.subscriptions() } }.buttonStyle(.bordered)
                     webButton("Anmelden",symbol: "person.crop.circle",path: "/signin")
                 }.font(.subheadline)
                 Text("Anmelden öffnet YouTube direkt in der App. Google kann Anmeldungen in eingebetteten Ansichten einschränken. Kontoinhalte und Premium bleiben an dein Konto gebunden; der gemeinsame Player kann bei geschützten Videos eine eigene Freigabe verlangen.").font(.caption).foregroundStyle(.secondary)
@@ -214,7 +214,7 @@ struct CinemaYouTubeBrowser: View {
         }.font(.caption)
     }
     private func webButton(_ title: String,symbol: String,path: String) -> some View {
-        Button(title,systemImage: symbol) { browser = YouTubeWebDestination(url: URL(string: "https://m.youtube.com"+path)!) }.buttonStyle(.glass)
+        Button(title,systemImage: symbol) { browser = YouTubeWebDestination(url: URL(string: "https://m.youtube.com"+path)!) }.buttonStyle(.bordered)
     }
     private func openSearch() {
         if let id = YouTubeLink.videoID(query) { Task { await choose(id,"YouTube · "+id) }; return }
@@ -239,7 +239,7 @@ struct CinemaPlexBrowser: View {
             Text("Deine Plex-Mediathek").font(.headline)
             Text("Melde dich direkt bei Plex an. Dein Konto bleibt privat. Im Kompatibilitätsmodus wandelt dein Plex-Server Videos für iPhone und AirPlay in H.264/AAC um – auch aus anderen Containern und Codecs. Der Server muss Transcoding erlauben und die Quelle unterstützen. Geschützte Plex-Streamingangebote sind nicht enthalten.").font(.caption).foregroundStyle(.secondary)
             if !plex.authenticated {
-                Button("Mit Plex verbinden",systemImage: "person.badge.key.fill") { Task { await plex.signIn() } }.buttonStyle(.glassProminent).disabled(plex.busy)
+                Button("Mit Plex verbinden",systemImage: "person.badge.key.fill") { Task { await plex.signIn() } }.buttonStyle(.borderedProminent).disabled(plex.busy)
             } else {
                 HStack { Button("Server laden") { Task { await plex.loadServers() } }; Spacer(); Button("Trennen",role: .destructive) { Task { await cinema.disconnectPlexBridge(); UserDefaults.standard.set(false,forKey: "rjlove.plex.bridge."+cinema.namespace); if cinema.provider == "plex" { await cinema.leave() }; plex.disconnect() } } }.font(.subheadline)
                 if !plex.profileName.isEmpty { Text("Profil: " + plex.profileName).font(.subheadline.bold()) }
@@ -297,7 +297,7 @@ struct CinemaTVRemote: View {
                 LovePulseDot(color: tv.connected ? .green : .orange, active: tv.connected)
                 Text(tv.connected ? "Fernseher verbunden" : "Fernseher verbinden").font(.headline)
                 Spacer()
-                Image(systemName: "airplay.video").font(.title3).foregroundStyle(LovePalette.violet).symbolEffect(.pulse, options: .repeating, isActive: tv.connected)
+                Image(systemName: "airplay.video").font(.title3).foregroundStyle(LovePalette.violet)
             }
             TVScaledPreview { LoveTVScreen() }
                 .accessibilityLabel(tv.connected ? "Live-Vorschau deines Fernsehers" : "Vorschau der TV-Bühne")
@@ -326,7 +326,7 @@ struct CinemaTVRemote: View {
                 }
             }.accessibilityIdentifier("tv-mode-picker")
                 .onChange(of: tv.mode) { _, mode in if [.moments,.wall,.dashboard].contains(mode) { Task { await tv.loadMoments() } } }
-            NavigationLink { TVSettingsView() } label: { Label("AirPlay gestalten & Widgets sortieren",systemImage: "slider.horizontal.3").frame(maxWidth: .infinity) }.buttonStyle(.glassProminent).accessibilityIdentifier("tv-customize")
+            NavigationLink { TVSettingsView() } label: { Label("AirPlay gestalten & Widgets sortieren",systemImage: "slider.horizontal.3").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).accessibilityIdentifier("tv-customize")
             if tv.mode == .cinema { Toggle("Uhr & Schatzi-Infos neben dem Video",isOn: $tv.showInfo) }
             if tv.mode == .moments || tv.mode == .wall || tv.mode == .dashboard {
                 HStack(spacing: 10) {
@@ -336,7 +336,7 @@ struct CinemaTVRemote: View {
                             .contentTransition(.symbolEffect(.replace)).frame(maxWidth: .infinity, minHeight: 36)
                     }
                     Button { Haptics.impact(.light); tv.advance(1) } label: { Image(systemName: "forward.end.fill").frame(width: 44, height: 36) }.accessibilityLabel("Weiter")
-                }.font(.subheadline.weight(.semibold)).buttonStyle(.glass)
+                }.font(.subheadline.weight(.semibold)).buttonStyle(.bordered)
                 Text("\(tv.moments.count) Fotos und Live-Photo-Standbilder").font(.caption).foregroundStyle(.secondary).contentTransition(.numericText())
                 if let error = tv.error { Text(error).font(.footnote).foregroundStyle(.orange) }
             }

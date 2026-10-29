@@ -2,11 +2,9 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showingWakeComposer = false
     @State private var showingStatusEditor = false
-    @State private var heartPulse = false
     @State private var heartBursts = 0
     @State private var showingHealth = false
     @State private var showingNearby = false
@@ -75,7 +73,7 @@ struct HomeView: View {
                                 .contentTransition(.numericText()).animation(LoveMotion.snappy, value: appState.myThoughtCount)
                         }
                         Spacer()
-                    }.loveCard().overlay { LoveHeartBurst(trigger: heartBursts, tint: homeTint) }
+                    }.loveCard().overlay { LoveHeartBurst(trigger: heartBursts, tint: homeTint) }.contentShape(Rectangle())
                 }.buttonStyle(.lovePress)
             } else { heartSpace }
         case .partner:
@@ -200,8 +198,7 @@ struct HomeView: View {
             if appState.isUsingHTTPS { Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.tertiary) }
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
-        .glassEffect(.regular, in: Capsule())
-        .animation(LoveMotion.gentle, value: appState.isSyncing)
+        .background(LoveSurface.card, in: Capsule())
         .accessibilityElement(children: .combine)
     }
     private var isFresh: Bool { appState.lastSync.map { Date.now.timeIntervalSince($0) < 40 } ?? false }
@@ -220,23 +217,16 @@ struct HomeView: View {
                 ForEach(0..<3) { ring in
                     Circle().stroke(homeTint.opacity(0.14 - Double(ring) * 0.035), lineWidth: 1)
                         .frame(width: CGFloat(130 + ring * 28), height: CGFloat(130 + ring * 28))
-                        .scaleEffect(heartPulse && !reduceMotion ? 1.08 + Double(ring) * 0.03 : 1)
-                        .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.55).delay(Double(ring) * 0.05), value: heartPulse)
                 }
                 LoveHeartBurst(trigger: heartBursts, tint: homeTint)
                 Button {
                     sendHeart()
-                    heartPulse = true
-                    Task { try? await Task.sleep(for: .milliseconds(380)); heartPulse = false }
                 } label: {
                     Image(systemName: "heart.fill").font(.system(size: 46, weight: .light))
                         .foregroundStyle(.white.gradient).frame(width: 118, height: 118)
                         .background(LovePalette.heart, in: Circle())
                         .overlay(Circle().stroke(.white.opacity(0.45), lineWidth: 1.5))
-                        .overlay(alignment: .top) { Ellipse().fill(.white.opacity(0.22)).frame(width: 70, height: 26).blur(radius: 6).offset(y: 12) }
-                        .shadow(color: homeTint.opacity(0.35), radius: 24, y: 12)
-                        .scaleEffect(heartPulse && !reduceMotion ? 1.12 : 1)
-                        .animation(reduceMotion ? nil : LoveMotion.bouncy, value: heartPulse)
+                        .shadow(color: homeTint.opacity(0.3), radius: 12, y: 6)
                         .symbolEffect(.bounce, value: heartBursts)
                 }.buttonStyle(.lovePress).accessibilityLabel("Herzgedanken an \(partnerName) senden")
             }.frame(maxWidth: .infinity).frame(height: 196).accessibilityIdentifier("rj-heart-space")
@@ -288,7 +278,7 @@ struct HomeView: View {
             }
             Button { appState.showingPartnerProfile = true } label: {
                 Label("Profil & Aktivität ansehen", systemImage: "person.text.rectangle").font(.subheadline.bold()).frame(maxWidth: .infinity)
-            }.buttonStyle(.glass)
+            }.buttonStyle(.bordered)
         }.loveCard()
     }
 
@@ -331,8 +321,8 @@ struct HomeView: View {
             HStack {
                 Button(appState.liveActivity.isStarting ? "Startet …":appState.liveActivity.isRunning ? "Live-Aktivität beenden":"Jetzt starten",systemImage:"livephoto") {
                     Task {if appState.liveActivity.isRunning {await appState.liveActivity.stop()}else{await appState.startLiveActivity()}}
-                }.buttonStyle(.glassProminent).disabled(appState.liveActivity.isStarting)
-                NavigationLink{LiveActivitySettingsView()}label:{Image(systemName:"slider.horizontal.3")}.buttonStyle(.glass).accessibilityLabel("Live-Aktivität einstellen")
+                }.buttonStyle(.borderedProminent).disabled(appState.liveActivity.isStarting)
+                NavigationLink{LiveActivitySettingsView()}label:{Image(systemName:"slider.horizontal.3")}.buttonStyle(.bordered).accessibilityLabel("Live-Aktivität einstellen")
             }
             if appState.liveActivity.isRunning {Label("Live-Aktivität aktiv",systemImage:"checkmark.circle.fill").font(.caption).foregroundStyle(.green).transition(.opacity)}
         }.loveCard().animation(LoveMotion.gentle, value: appState.liveActivity.isRunning)

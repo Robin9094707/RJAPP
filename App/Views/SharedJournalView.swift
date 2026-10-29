@@ -17,9 +17,9 @@ struct SharedJournalView:View {
             if !feed {
                 dayNavigation
                 if loading{ProgressView("Euer Tag wird zusammengestellt …").frame(maxWidth:.infinity).padding(30)}
-                else if let error {ContentUnavailableView("Tag gerade nicht geladen",systemImage:"wifi.exclamationmark",description:Text(error));Button("Erneut versuchen"){Task{await load()}}.buttonStyle(.glass)}
-                else if let page {summary(page);NavigationLink{AIDaySummaryView(day:day)}label:{Label("Unsere Momente mit KI zusammenfassen",systemImage:"sparkles").frame(maxWidth:.infinity)}.buttonStyle(.glass)}
-                if !loading,error==nil {NavigationLink{EveningRitualView(day:day)}label:{Label("Ein kleiner Abendmoment für uns",systemImage:"moon.stars.fill").frame(maxWidth:.infinity)}.buttonStyle(.glassProminent)}
+                else if let error {ContentUnavailableView("Tag gerade nicht geladen",systemImage:"wifi.exclamationmark",description:Text(error));Button("Erneut versuchen"){Task{await load()}}.buttonStyle(.bordered)}
+                else if let page {summary(page);NavigationLink{AIDaySummaryView(day:day)}label:{Label("Unsere Momente mit KI zusammenfassen",systemImage:"sparkles").frame(maxWidth:.infinity)}.buttonStyle(.bordered)}
+                if !loading,error==nil {NavigationLink{EveningRitualView(day:day)}label:{Label("Ein kleiner Abendmoment für uns",systemImage:"moon.stars.fill").frame(maxWidth:.infinity)}.buttonStyle(.borderedProminent)}
             }else{
                 VStack(alignment:.leading,spacing:10){LoveEyebrow(text:"Was bei euch passiert");Text("Unser Leben,\nganz nebenbei.").font(.system(size:32,weight:.medium,design:.serif));Text("Die neuesten synchronisierten Beiträge: Fotos, Worte, Wünsche und kleine Meisterwerke. Tippe einen Moment an, um mehr zu sehen.").font(.subheadline).foregroundStyle(.secondary)}.loveCard()
             }
@@ -91,7 +91,7 @@ struct DailyJournalHomeCard:View {
     var body:some View {
         VStack(alignment:.leading,spacing:16){
             NavigationLink{SharedJournalView()}label:{HStack{Image(systemName:Calendar.current.component(.hour,from:.now)>=19 ? "moon.stars.fill":"sun.max.fill").font(.title2).foregroundStyle(LovePalette.pink);VStack(alignment:.leading,spacing:5){Text(Calendar.current.component(.hour,from:.now)>=19 ? "Euer Abendrückblick ist da":"Heute schreiben wir Geschichte.").font(.headline);Text("Tagesübersicht, kleine Momente und euer Feed").font(.caption).foregroundStyle(.secondary)};Spacer();Image(systemName:"chevron.right").font(.caption)}}.buttonStyle(.lovePress)
-            HStack {NavigationLink{SharedJournalView(showFeed:true)}label:{Label("Neuigkeiten",systemImage:"sparkles.rectangle.stack")};Spacer();NavigationLink{EveningRitualView()}label:{Label("Unser Ritual",systemImage:"moon.stars")}}.font(.caption.bold()).buttonStyle(.glass)
+            HStack {NavigationLink{SharedJournalView(showFeed:true)}label:{Label("Neuigkeiten",systemImage:"sparkles.rectangle.stack")};Spacer();NavigationLink{EveningRitualView()}label:{Label("Unser Ritual",systemImage:"moon.stars")}}.font(.caption.bold()).buttonStyle(.bordered)
         }.loveCard()
     }
 }

@@ -70,13 +70,13 @@ struct SetupJourneyView: View {
                     Text("Ein Häkchen bedeutet: Schritt bearbeitet. Deine iOS-Entscheidung gilt; abgelehnte Zugriffe bleiben gesperrt. „Standort immer“ kann iOS später nochmals bestätigen lassen. Nahbereichssuche fragt erst, wenn beide Geräte die Suche starten; die Fotoauswahl erfolgt über Apples geschützten Bildwähler.")
                         .font(.footnote).foregroundStyle(.secondary)
                     if journey.finished {
-                        Button("Los geht’s", systemImage: "heart.fill") { journey.presented = false }.buttonStyle(.glassProminent).controlSize(.large)
-                        Button("Freigaben überprüfen") { journey.presented = false; app.selectedTab = .settings }.buttonStyle(.glass)
+                        Button("Los geht’s", systemImage: "heart.fill") { journey.presented = false }.buttonStyle(.borderedProminent).controlSize(.large)
+                        Button("Freigaben überprüfen") { journey.presented = false; app.selectedTab = .settings }.buttonStyle(.bordered)
                     } else {
                         Button {
                             Task { await journey.run(app: app) }
                         } label: { Label(journey.running ? journey.steps[min(journey.step, journey.steps.count - 1)] + " …" : "Alles einrichten", systemImage: "sparkles").frame(maxWidth: .infinity) }
-                            .buttonStyle(.glassProminent).controlSize(.large).disabled(journey.running)
+                            .buttonStyle(.borderedProminent).controlSize(.large).disabled(journey.running)
                     }
                 }.padding(26)
             }.background(LoveBackground()).navigationBarTitleDisplayMode(.inline)

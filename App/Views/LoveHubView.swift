@@ -31,7 +31,7 @@ struct LoveHubView: View {
                         }
                         ForEach(entries) { record in entryCard(record) }
                         Button("Hinzufügen", systemImage: "plus") { composing = kind }
-                            .buttonStyle(.glassProminent).controlSize(.large).frame(maxWidth: .infinity)
+                            .buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity)
                     }.padding(22)
                 }
             }

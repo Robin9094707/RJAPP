@@ -47,7 +47,7 @@ struct NotificationDestinationView: View {
         else if let error {
             VStack(spacing: 20) {
                 ContentUnavailableView("Beitrag gerade nicht verfügbar", systemImage: "bubble.left.and.exclamationmark.bubble.right", description: Text(error))
-                Button("Erneut versuchen") { Task { await load() } }.buttonStyle(.glass)
+                Button("Erneut versuchen") { Task { await load() } }.buttonStyle(.bordered)
             }
         } else if let clip = content?.clip {
             ScrollView { FartClipCard(clip: app.farts.first { $0.id == clip.id } ?? clip).padding(20) }
@@ -91,7 +91,7 @@ private struct NotificationRecordDetail: View {
                 JournalRecordDetail(record: record)
                 if let message = record.payload.message, !message.isEmpty, record.kind != .ritual { Text(message).textSelection(.enabled) }
                 if let notes = record.payload.notes, !notes.isEmpty, record.kind != .ritual { Text(notes).textSelection(.enabled) }
-                if editable { Button("Bearbeiten", systemImage: "pencil") { editing = true }.buttonStyle(.glassProminent) }
+                if editable { Button("Bearbeiten", systemImage: "pencil") { editing = true }.buttonStyle(.borderedProminent) }
             }.padding(20)
         }.navigationTitle(record.kind == .poop ? "Drop-Poop" : record.payload.title ?? "Für euch")
             .navigationBarTitleDisplayMode(.inline)

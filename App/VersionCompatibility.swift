@@ -17,9 +17,9 @@ struct UpdateRequirement: Error, LocalizedError, Equatable {
     var errorDescription: String? { message }
 }
 enum RJVersion {
-    static let minimumServer = "5.0.0"
+    static let minimumServer = "6.0.0"
     static let protocolVersion = 5
-    static var app: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "5.0.0" }
+    static var app: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "6.0.0" }
     static func older(_ lhs: String, than rhs: String) -> Bool {
         let a = lhs.split(separator: ".").compactMap { Int($0) }
         let b = rhs.split(separator: ".").compactMap { Int($0) }
@@ -66,11 +66,11 @@ struct UpdateRequiredView: View {
                     Label("Eure Aufnahmen und Anmeldungen bleiben erhalten. Währenddessen werden keine inkompatiblen Änderungen gesendet.", systemImage: "lock.shield.fill").font(.footnote).foregroundStyle(.secondary)
                     if !serverUpdate {
                         Button("IPA abrufen & mit Feather aktualisieren",systemImage:"arrow.down.app.fill"){showingUpdater=true}
-                            .buttonStyle(.glassProminent).controlSize(.large).frame(maxWidth: .infinity)
+                            .buttonStyle(.borderedProminent).controlSize(.large).frame(maxWidth: .infinity)
                     }
                     Link(destination: URL(string: "https://github.com/Robin9094707/RJAPP/actions")!) {
                         Label("Aktuelles Komplettpaket auf GitHub", systemImage: "shippingbox.fill").frame(maxWidth: .infinity)
-                    }.buttonStyle(.glass).controlSize(.large)
+                    }.buttonStyle(.bordered).controlSize(.large)
                     Button {
                         checking = true
                         Task {
@@ -80,7 +80,7 @@ struct UpdateRequiredView: View {
                         }
                     } label: {
                         HStack { if checking { ProgressView().controlSize(.small) }; Text(checking ? "Prüfe …" : "Nach dem Update erneut prüfen") }.frame(maxWidth: .infinity)
-                    }.buttonStyle(.glass).disabled(checking)
+                    }.buttonStyle(.bordered).disabled(checking)
                     if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
                 }.loveCard().padding(20).frame(maxWidth: 640).frame(maxWidth: .infinity)
             }

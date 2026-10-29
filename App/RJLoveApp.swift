@@ -11,6 +11,7 @@ struct RJLoveApp: App {
             RootView()
                 .environment(appState)
                 .tint(LovePalette.pink)
+                .buttonBorderShape(.capsule)
                 .onOpenURL { url in
                     if url.scheme?.lowercased() == "rjlove" {
                         appState.handleDeepLink(url)

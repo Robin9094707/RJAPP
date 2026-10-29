@@ -78,12 +78,12 @@ struct InstantCameraView: View {
                 }
                 if let error = error ?? camera.error {
                     Text(error).font(.footnote).foregroundStyle(.orange)
-                    if camera.photo != nil { Button("Foto erneut senden") { beginUpload() }.buttonStyle(.glassProminent) }
-                    else {Button("Fotowunsch erneut prüfen"){Task{await verifyRequestAndStart()}}.buttonStyle(.glass)}
+                    if camera.photo != nil { Button("Foto erneut senden") { beginUpload() }.buttonStyle(.borderedProminent) }
+                    else {Button("Fotowunsch erneut prüfen"){Task{await verifyRequestAndStart()}}.buttonStyle(.bordered)}
                 } else {
                     Text("Sobald die sichtbare Kamera bereit ist, wird ein Foto aufgenommen und direkt geteilt. Du kannst es später unter Unser Jetzt zurückrufen.").font(.footnote).foregroundStyle(.secondary)
                 }
-                Button(sending ? "Upload abbrechen" : "Jetzt nicht", role: .cancel) { skip() }.buttonStyle(.glass)
+                Button(sending ? "Upload abbrechen" : "Jetzt nicht", role: .cancel) { skip() }.buttonStyle(.bordered)
             }.padding(20).background(LoveBackground()).navigationTitle("Bitte lächeln").navigationBarTitleDisplayMode(.inline)
         }.interactiveDismissDisabled()
             .task {
@@ -185,7 +185,7 @@ struct InstantGalleryView:View {
                 VStack(alignment:.leading,spacing:5) {Text(selectedDay.formatted(.dateTime.weekday(.wide))).font(.caption.bold()).foregroundStyle(LovePalette.pink);Text(selectedDay.formatted(date:.long,time:.omitted)).font(.title2.bold())}
                 Spacer();Text("\(dayPhotos.count) Fotos").font(.caption.bold()).foregroundStyle(.secondary)
             }
-            NavigationLink{SharedJournalView(initialDay:selectedDay)}label:{Label("Diesen Tag gemeinsam ansehen",systemImage:"sparkles.rectangle.stack.fill").frame(maxWidth:.infinity)}.buttonStyle(.glass)
+            NavigationLink{SharedJournalView(initialDay:selectedDay)}label:{Label("Diesen Tag gemeinsam ansehen",systemImage:"sparkles.rectangle.stack.fill").frame(maxWidth:.infinity)}.buttonStyle(.bordered)
             if dayPhotos.isEmpty {ContentUnavailableView("Platz für euer echtes Leben",systemImage:"camera.on.rectangle",description:Text("An diesem Tag gibt es noch kein BeReal. Auch die leisen Tage gehören zu euch."))}
             ForEach(dayPhotos){photo in photoCard(photo)}
             if !requests.isEmpty {DisclosureGroup("Offene Fotowünsche · \(requests.count)") {ForEach(requests){request in
@@ -204,7 +204,7 @@ struct InstantGalleryView:View {
             LoveEyebrow(text:"Echte Augenblicke. Unser kleines Leben.")
             HStack{Text("Ein Tag. Ein Blick.\nGanz viel wir.").font(.system(size:33,weight:.medium,design:.serif));Spacer(minLength:0);Image(systemName:"camera.on.rectangle.fill").font(.system(size:46)).foregroundStyle(LovePalette.pink.gradient)}
             Text("Blättert durch eure Tage und findet das Lächeln dazwischen. Ein Fotowunsch öffnet beim Gegenüber die sichtbare Kamera, wenn die App geöffnet und die Funktion erlaubt ist.").font(.subheadline).foregroundStyle(.secondary)
-            Button(sendingRequest ? "Wird gewünscht …":"Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest || app.sendingPhotoRequest || app.outgoingPhotoRequest != nil || app.recallingPhotoRequest).buttonStyle(.glassProminent).controlSize(.large)
+            Button(sendingRequest ? "Wird gewünscht …":"Ein Foto wünschen",systemImage:"camera.badge.ellipsis"){creating=true}.disabled(sendingRequest || app.sendingPhotoRequest || app.outgoingPhotoRequest != nil || app.recallingPhotoRequest).buttonStyle(.borderedProminent).controlSize(.large)
             if sent,app.outgoingPhotoRequest != nil {Label("Fotowunsch gesendet",systemImage:"checkmark.circle.fill").foregroundStyle(.green).accessibilityIdentifier("photo-request-sent")}
         }.loveCard()
     }
@@ -214,7 +214,7 @@ struct InstantGalleryView:View {
             Text(request.payload.title ?? "Bitte lächeln").font(.system(.title3,design:.serif))
             if let date=request.createdAt.rjDate{Text("Gesendet "+date.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)}
             Text("Ein Wunsch nach dem anderen. Sobald das Foto da ist oder du zurückrufst, kannst du einen neuen senden.").font(.subheadline).foregroundStyle(.secondary)
-            Button(app.recallingPhotoRequest ? "Wird zurückgerufen …":"Fotowunsch zurückrufen",systemImage:"arrow.uturn.backward"){recalling=request}.buttonStyle(.glass).disabled(app.recallingPhotoRequest).accessibilityIdentifier("photo-request-recall")
+            Button(app.recallingPhotoRequest ? "Wird zurückgerufen …":"Fotowunsch zurückrufen",systemImage:"arrow.uturn.backward"){recalling=request}.buttonStyle(.bordered).disabled(app.recallingPhotoRequest).accessibilityIdentifier("photo-request-recall")
         }.loveCard().accessibilityIdentifier("outgoing-photo-request")
     }
     private func photoCard(_ photo:SharedRecord)->some View {

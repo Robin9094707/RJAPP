@@ -39,8 +39,9 @@ struct RootView:View {
             }
         }.frame(maxWidth:.infinity,maxHeight:.infinity).accessibilityIdentifier("rj-root").previewAccessibilityEnvironment()
             .animation(LoveMotion.gentle,value:appState.phase)
-            .overlay{if update.requirement != nil && !appState.showingFartRecorder && appState.pendingQuickCapture == nil {UpdateRequiredView().transition(.opacity.combined(with:.scale(scale:0.98)))}}
-            .animation(LoveMotion.spring,value:update.requirement)
+            .overlay{if update.requirement != nil && !appState.showingFartRecorder && appState.pendingQuickCapture == nil {UpdateRequiredView().transition(.opacity)}}
+            .animation(LoveMotion.fade,value:update.requirement)
+            .overlay{LoveSplashOverlay()}
             .task{await appState.activate()}
             .alert(item:Binding(get:{appState.alert},set:{appState.alert=$0})){Alert(title:Text($0.title),message:Text($0.message),dismissButton:.default(Text("OK")))}
     }
@@ -76,11 +77,9 @@ struct MainTabView:View {
             if appState.pendingQuickCapture != nil { extraDestination=nil; await appState.presentQuickCapture() }
         }
         .onChange(of:journey.presented) { _,shown in if !shown { appState.acceptQuickCaptureRequest() } }
-        .safeAreaInset(edge:.top) {
-            if appState.pendingQuickCapture != nil && !appState.showingFartRecorder && !journey.presented {
-                Button("Notfallaufnahme öffnen",systemImage:"cloud.fill") { appState.acceptQuickCaptureRequest() }
-                    .buttonStyle(.glassProminent).tint(LovePalette.violet).padding(8).transition(.move(edge:.top).combined(with:.opacity))
-            }
+        // An overlay, not a safe-area inset: the tab content never shifts while the recorder opens.
+        .overlay(alignment:.top) {
+            QuickCaptureFallbackButton(waiting:appState.pendingQuickCapture != nil && !appState.showingFartRecorder && !journey.presented) { appState.acceptQuickCaptureRequest() }
         }
         .onChange(of: appState.me?.id) { _, _ in CinemaCoordinator.shared.configure(app: appState) }
         .sheet(item:$state.notificationDestination,onDismiss:{appState.offerForegroundMoments()}) { route in NotificationDestinationView(route:route).id(route.id) }
@@ -107,5 +106,27 @@ struct MainTabView:View {
         .sheet(item:$state.pendingSweet,onDismiss:{appState.offerForegroundMoments()}){SweetPlaybackView(record:$0)}
         .fullScreenCover(item:$state.pendingPhotoRequest,onDismiss:{appState.offerForegroundMoments()}){InstantCameraView(request:$0)}
         .fullScreenCover(isPresented:$journey.presented,onDismiss:{Task{_ = await appState.syncNow(showErrors:false)}}){SetupJourneyView()}
+    }
+}
+
+/// Only appears when the emergency recorder could not open on its own within a moment
+/// (for example while another sheet was still closing). A normal quick start never shows it.
+private struct QuickCaptureFallbackButton:View {
+    let waiting:Bool
+    let open:()->Void
+    @State private var visible=false
+    var body:some View {
+        ZStack {
+            if visible {
+                Button("Notfallaufnahme öffnen",systemImage:"cloud.fill",action:open)
+                    .buttonStyle(.borderedProminent).tint(LovePalette.violet).padding(8).transition(.opacity)
+            }
+        }
+        .animation(LoveMotion.fade,value:visible)
+        .task(id:waiting) {
+            guard waiting else { visible=false; return }
+            try? await Task.sleep(for:.milliseconds(1600))
+            if !Task.isCancelled { visible=true }
+        }
     }
 }

@@ -75,8 +75,24 @@ class Server70Tests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as failure:
             self.call('/v1/walkie/' + message_id, 1, 'DELETE')
         self.assertEqual(failure.exception.code, 403)
+        cursor = self.call('/v1/walkie', 1)['server_time']
         self.call('/v1/walkie/' + message_id, 0, 'DELETE')
         self.assertEqual(self.call('/v1/walkie', 1)['messages'], [])
+        # Clients that already fetched it receive a tombstone and drop it.
+        tombstones = self.call('/v1/walkie?after=' + cursor, 1)['messages']
+        self.assertEqual([(m['id'], m.get('deleted')) for m in tombstones], [(message_id, True)])
+
+    def test_walkie_cursor_never_skips_a_message(self):
+        asset = self.upload_audio(0)
+        cursor = self.call('/v1/walkie', 1)['server_time']
+        seen = set()
+        for _ in range(5):
+            sent = self.request('/v1/walkie', {'id': str(uuid.uuid4()), 'asset_id': asset, 'duration': 1.0}, 0)
+            listing = self.call('/v1/walkie?after=' + cursor, 1)
+            seen.update(m['id'] for m in listing['messages'])
+            self.assertIn(sent['id'], seen)
+            self.assertGreaterEqual(listing['server_time'], sent['created_at'])
+            cursor = listing['server_time']
 
     def test_question_of_the_day_reveals_only_after_answering(self):
         day = self.app.local_day()

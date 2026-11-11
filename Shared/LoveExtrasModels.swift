@@ -9,8 +9,10 @@ struct WalkieMessage: Codable, Identifiable, Hashable, Sendable {
     let duration: Double
     let createdAt: String
     var playedAt: String?
+    /// Tombstone: the sender recalled this message for both.
+    var deleted: Bool? = nil
     enum CodingKeys: String, CodingKey {
-        case id, duration
+        case id, duration, deleted
         case senderID = "sender_id", targetID = "target_id", assetID = "asset_id", createdAt = "created_at", playedAt = "played_at"
     }
 }
@@ -100,7 +102,9 @@ enum DailyQuestions {
         let parts = day.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return all[0] }
         var components = DateComponents(); components.year = parts[0]; components.month = parts[1]; components.day = parts[2]
-        let calendar = Calendar(identifier: .gregorian)
+        // Fixed UTC calendar: both iPhones derive the same index from the same server day, in any time zone.
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         guard let date = calendar.date(from: components) else { return all[0] }
         let days = Int(date.timeIntervalSince1970 / 86400)
         return all[((days % all.count) + all.count) % all.count]

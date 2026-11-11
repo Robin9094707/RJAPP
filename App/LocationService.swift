@@ -245,6 +245,19 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
 
     func upload(_ location: CLLocation, force: Bool = false) async {
         if inFlight { pending = location; return }
+        var next: CLLocation? = location
+        var forced = force
+        // Drain in a loop: a fix that arrives during an upload is sent right after it, never dropped.
+        while let current = next {
+            next = nil
+            await send(current, force: forced)
+            forced = false
+            // The newest fix that arrived meanwhile is the current position: always send it.
+            if let waiting = pending { pending = nil; next = waiting; forced = true }
+        }
+    }
+
+    private func send(_ location: CLLocation, force: Bool) async {
         let moved = lastSent.map { location.distance(from: $0) } ?? .greatestFiniteMagnitude
         guard force || Date.now.timeIntervalSince(lastUpload) >= 60 || moved >= 150 else { return }
         guard let bytes = UserDefaults.standard.data(forKey: AppState.profileKey),
@@ -287,7 +300,6 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         } catch {
             DebugLogger.shared.log("Hintergrundstandort: " + error.localizedDescription, category: "Standort")
         }
-        if let next = pending { pending = nil; await upload(next) }
     }
 }
 

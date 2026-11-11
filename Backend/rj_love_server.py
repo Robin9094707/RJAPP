@@ -1259,6 +1259,7 @@ class RJLoveApplication:
         self.config = config
         self.config_path = config_path
         self.walkie_condition = threading.Condition()
+        self.walkie_lock = threading.Lock()
         self.credentials_lock = threading.RLock()
         self.ai_lock = threading.Lock()
         data_value = config["server"].get("data_directory", "./rjlove_data")
@@ -2464,8 +2465,11 @@ class RJLoveApplication:
                 connection.close()
 
     def walkie_wire(self, row):
-        return {"id": row["id"], "sender_id": row["sender_id"], "target_id": row["target_id"], "asset_id": row["asset_id"],
+        wire = {"id": row["id"], "sender_id": row["sender_id"], "target_id": row["target_id"], "asset_id": row["asset_id"],
                 "duration": float(row["duration"]), "created_at": row["created_at"], "played_at": row["played_at"]}
+        if row["deleted_at"]:
+            wire["deleted"] = True
+        return wire
 
     def walkie_unplayed(self, user_id):
         with self.database.connect() as db:
@@ -2474,7 +2478,8 @@ class RJLoveApplication:
     def walkie_messages(self, user_id, after=None, limit=60):
         with self.database.connect() as db:
             if after:
-                rows = db.execute("SELECT * FROM walkie_messages WHERE deleted_at IS NULL AND (sender_id=? OR target_id=?) AND (julianday(created_at)>julianday(?) OR (played_at IS NOT NULL AND julianday(played_at)>julianday(?))) ORDER BY created_at DESC LIMIT ?", (user_id, user_id, after, after, limit)).fetchall()
+                # Incremental: new, newly played and recalled (tombstone) messages since the cursor.
+                rows = db.execute("SELECT * FROM walkie_messages WHERE (sender_id=? OR target_id=?) AND ((deleted_at IS NULL AND (julianday(created_at)>julianday(?) OR (played_at IS NOT NULL AND julianday(played_at)>julianday(?)))) OR (deleted_at IS NOT NULL AND julianday(deleted_at)>julianday(?))) ORDER BY created_at DESC LIMIT ?", (user_id, user_id, after, after, after, limit)).fetchall()
             else:
                 rows = db.execute("SELECT * FROM walkie_messages WHERE deleted_at IS NULL AND (sender_id=? OR target_id=?) ORDER BY created_at DESC LIMIT ?", (user_id, user_id, limit)).fetchall()
         return [self.walkie_wire(r) for r in reversed(rows)]
@@ -3846,12 +3851,13 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     shutil.rmtree(self.app.media_path(asset["path"]).parent,ignore_errors=True)
                 self.send_empty()
             elif len(parts) == 3 and parts[:2] == ["v1", "walkie"]:
-                now=iso_now()
-                with self.app.database.connect() as db:
+                with self.app.walkie_lock,self.app.database.connect() as db:
+                    now=iso_now()
                     row=db.execute("SELECT * FROM walkie_messages WHERE id=? AND deleted_at IS NULL",(parts[2],)).fetchone()
                     if not row:raise APIError(404,"walkie_missing","Diese Funknachricht gibt es nicht mehr.")
                     if row["sender_id"]!=user_id:raise APIError(403,"not_owner","Nur eigene Funknachrichten können zurückgerufen werden.")
                     db.execute("UPDATE walkie_messages SET deleted_at=? WHERE id=?",(now,parts[2]))
+                with self.app.walkie_condition:self.app.walkie_condition.notify_all()
                 self.send_empty()
             elif len(parts) == 3 and parts[:2] == ["v1", "farts"]:
                 self._delete_fart(user_id, parts[2])
@@ -4260,8 +4266,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if asset["owner_id"]!=user_id or not asset["mime_type"].startswith("audio/"):raise APIError(403,"invalid_audio","Eine eigene Sprachaufnahme wird benötigt.")
         partners=self.app.partner_ids(user_id)
         if not partners:raise APIError(400,"no_partner","Kein Gegenüber verbunden.")
-        target=partners[0];now=iso_now()
-        with self.app.database.connect() as db:
+        target=partners[0]
+        with self.app.walkie_lock,self.app.database.connect() as db:
+            now=iso_now()
             db.execute("BEGIN IMMEDIATE")
             old=db.execute("SELECT * FROM walkie_messages WHERE id=?",(message_id,)).fetchone()
             if old:
@@ -4277,8 +4284,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.send_json(200,self.app.walkie_wire(row))
 
     def _walkie_played(self,user_id,message_id):
-        now=iso_now()
-        with self.app.database.connect() as db:
+        with self.app.walkie_lock,self.app.database.connect() as db:
+            now=iso_now()
             row=db.execute("SELECT * FROM walkie_messages WHERE id=? AND deleted_at IS NULL",(message_id,)).fetchone()
             if not row:raise APIError(404,"walkie_missing","Diese Funknachricht gibt es nicht mehr.")
             if row["target_id"]!=user_id:raise APIError(403,"not_recipient","Diese Funknachricht ist nicht für dich.")
@@ -4294,11 +4301,16 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         try:wait=min(WALKIE_WAIT_SECONDS,max(0,int(query.get("wait",["0"])[0])))
         except (TypeError,ValueError):wait=0
         deadline=time.monotonic()+wait
-        messages=self.app.walkie_messages(user_id,after)
+        def snapshot():
+            # Writers stamp and commit under the same lock, so every change older than the
+            # watermark is already visible to this query: the cursor can never skip a message.
+            with self.app.walkie_lock:
+                return iso_now(),self.app.walkie_messages(user_id,after)
+        cursor,messages=snapshot()
         while not messages and after and time.monotonic()<deadline:
             with self.app.walkie_condition:self.app.walkie_condition.wait(timeout=min(2.0,max(0.05,deadline-time.monotonic())))
-            messages=self.app.walkie_messages(user_id,after)
-        self.send_json(200,{"messages":messages,"server_time":iso_now()})
+            cursor,messages=snapshot()
+        self.send_json(200,{"messages":messages,"server_time":cursor})
 
     def _daily_answer(self,user_id):
         body=self.read_json()

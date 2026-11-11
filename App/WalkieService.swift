@@ -131,8 +131,17 @@ extension APIClient {
     }
 
     private func merge(_ incoming: [WalkieMessage], full: Bool) {
-        if full { messages = incoming.sorted { $0.createdAt < $1.createdAt }; return }
+        if full { messages = incoming.filter { $0.deleted != true }.sorted { $0.createdAt < $1.createdAt }; return }
         for message in incoming {
+            if message.deleted == true {
+                // Recalled by the sender: remove it everywhere, including queue, playback and cache.
+                messages.removeAll { $0.id == message.id }
+                queue.removeAll { $0.id == message.id }
+                if playingID == message.id { stopPlayback(clearQueue: false); playNextInQueue() }
+                let cached = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("walkie/" + message.assetID + ".m4a")
+                try? FileManager.default.removeItem(at: cached)
+                continue
+            }
             if let index = messages.firstIndex(where: { $0.id == message.id }) { messages[index] = message }
             else { messages.append(message) }
         }

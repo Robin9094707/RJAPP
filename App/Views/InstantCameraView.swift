@@ -131,7 +131,7 @@ struct InstantCameraView: View {
     }
     private func skip() {
         cancelled = true
-        UserDefaults.standard.set(true, forKey: "rjlove.photo-skip." + request.id)
+        UserDefaults.standard.set(Date.now, forKey: "rjlove.photo-skip." + request.id)
         uploadTask?.cancel(); camera.stop(); dismiss()
     }
     private func beginUpload() {
@@ -169,6 +169,7 @@ struct InstantGalleryView:View {
     @State private var editing:SharedRecord?
     @State private var selectedDay=Date.now
     @State private var recalling:SharedRecord?
+    @State private var nudged=false
     private var photos:[SharedRecord]{app.records.filter{$0.kind == .instant}.sorted{(JournalDates.date($0) ?? .distantPast)>(JournalDates.date($1) ?? .distantPast)}}
     private var dayPhotos:[SharedRecord]{photos.filter{Calendar.current.isDate(JournalDates.date($0) ?? .distantPast,inSameDayAs:selectedDay)}}
     private var requests:[SharedRecord]{app.records.filter{$0.kind == .photo_request && $0.payload.targetID==app.me?.id && $0.payload.completed != true}}
@@ -193,7 +194,7 @@ struct InstantGalleryView:View {
             }}.loveCard()}
         }.padding(20)}.background(LoveBackground()).navigationTitle("Unser BeReal").navigationBarTitleDisplayMode(.inline)
         .sheet(item:$editing){MomentMetadataEditor(record:$0)}
-        .alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true;requestID=UUID().uuidString};sendingRequest=false}};Button("Abbrechen",role:.cancel){}}
+        .alert("Ein Foto für dich",isPresented:$creating){TextField("Fotowunsch",text:$title);Button("Wünschen"){sendingRequest=true;Task{if await app.requestPhoto(title:title,id:requestID){sent=true};requestID=UUID().uuidString;sendingRequest=false}};Button("Abbrechen",role:.cancel){}}
         .confirmationDialog("Fotowunsch zurückrufen?",isPresented:Binding(get:{recalling != nil},set:{if !$0{recalling=nil}}),titleVisibility:.visible){Button("Fotowunsch zurückrufen",role:.destructive){if let request=recalling{Task{_ = await app.recallPhotoRequest(request)}};recalling=nil};Button("Behalten",role:.cancel){recalling=nil}}message:{Text("Dein Gegenüber kann diesen Wunsch danach nicht mehr beantworten. Ein bereits fertig gesendetes Foto wird nicht gelöscht.")}
         .alert("Foto für beide zurückrufen?",isPresented:Binding(get:{deleting != nil},set:{if !$0{deleting=nil}})){Button("Zurückrufen",role:.destructive){if let photo=deleting{Task{_ = await app.deleteRecord(photo)}};deleting=nil};Button("Abbrechen",role:.cancel){deleting=nil}}
         .task{await app.loadRecordArchive(kind:.instant);_ = try? await app.refreshPhotoRequests()}
@@ -213,8 +214,13 @@ struct InstantGalleryView:View {
             HStack(spacing:12){LoveIcon(symbol:"paperplane.fill",tint:LovePalette.violet);VStack(alignment:.leading,spacing:4){Text("Dein Fotowunsch wartet").font(.headline);Text("Bei "+(app.partner?.displayName ?? "deinem Lieblingsmenschen")).font(.caption).foregroundStyle(.secondary)};Spacer();Image(systemName:"clock").foregroundStyle(LovePalette.violet)}
             Text(request.payload.title ?? "Bitte lächeln").font(.system(.title3,design:.serif))
             if let date=request.createdAt.rjDate{Text("Gesendet "+date.formatted(date:.abbreviated,time:.shortened)).font(.caption).foregroundStyle(.secondary)}
-            Text("Ein Wunsch nach dem anderen. Sobald das Foto da ist oder du zurückrufst, kannst du einen neuen senden.").font(.subheadline).foregroundStyle(.secondary)
-            Button(app.recallingPhotoRequest ? "Wird zurückgerufen …":"Fotowunsch zurückrufen",systemImage:"arrow.uturn.backward"){recalling=request}.buttonStyle(.bordered).disabled(app.recallingPhotoRequest).accessibilityIdentifier("photo-request-recall")
+            Text("Ein Wunsch nach dem anderen. Sobald das Foto da ist, du zurückrufst oder der Wunsch nach 12 Stunden abläuft, kannst du einen neuen senden.").font(.subheadline).foregroundStyle(.secondary)
+            if let expiry=request.createdAt.rjDate?.addingTimeInterval(12*3600) {Label("Läuft "+expiry.formatted(.relative(presentation:.named))+" ab",systemImage:"hourglass").font(.caption).foregroundStyle(.secondary)}
+            HStack(spacing:10){
+                Button(app.nudgingPhotoRequest ? "Erinnert …":"Sanft erinnern",systemImage:"bell.badge"){Task{if await app.nudgePhotoRequest(request){nudged=true}}}.buttonStyle(.borderedProminent).tint(LovePalette.violet).disabled(app.nudgingPhotoRequest || nudged)
+                Button(app.recallingPhotoRequest ? "Wird zurückgerufen …":"Zurückrufen",systemImage:"arrow.uturn.backward"){recalling=request}.buttonStyle(.bordered).disabled(app.recallingPhotoRequest).accessibilityIdentifier("photo-request-recall")
+            }
+            if nudged {Label("Erinnerung gesendet. Dein Lieblingsmensch bekommt eine Mitteilung.",systemImage:"checkmark.circle.fill").font(.caption).foregroundStyle(.green)}
         }.loveCard().accessibilityIdentifier("outgoing-photo-request")
     }
     private func photoCard(_ photo:SharedRecord)->some View {

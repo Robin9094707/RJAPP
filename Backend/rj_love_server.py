@@ -53,9 +53,13 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "6.0.0"
+APP_VERSION = "7.0.0"
 # Apps older than this receive HTTP 426 and show their built-in "Zeit für die neue App" view.
-MINIMUM_APP_VERSION = "6.0.0"
+MINIMUM_APP_VERSION = "7.0.0"
+PHOTO_REQUEST_TTL_HOURS = 12
+PHOTO_REQUEST_NUDGE_MINUTES = 30
+WALKIE_MAX_SECONDS = 120
+WALKIE_WAIT_SECONDS = 25
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
@@ -117,7 +121,7 @@ def compatibility_info() -> dict[str, Any]:
             "update_url": "https://github.com/Robin9094707/RJAPP/actions"}
 
 
-QUICK_ACTIONS={"wake","home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap"}
+QUICK_ACTIONS={"wake","home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap","walkie","question"}
 
 def default_shortcuts():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/shortcut/"+action)),"action":action,"title":title} for action,title in [("moments","Momente"),("captureMoment","Aufnehmen"),("playlist","Unser Abend"),("instant","BeReal"),("status","Mein Status"),("journal","Unser Tag")]]
@@ -129,7 +133,7 @@ def default_actions():
 def default_tabs():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/tab/"+action)),"action":action,"title":title} for action,title in [("home","Wir"),("together","Für uns"),("experience","Erleben"),("map","Karte")]]
 
-BACKUP_KEYS = {"tv.layout","cinema.autoJoin","rjlove.homekit.enabled","rjlove.homekit.home","rjlove.homekit.camera","rjlove.evening-auto","rjlove.instant-enabled","rjlove.sweet-autoplay","rjlove.keyboard-dismiss-after-send","rjlove.fart-locations","rjlove.live-enabled","rjlove.live-auto-resume","rjlove.live-battery","rjlove.live-thoughts","rjlove.live-status","rjlove.live-action","rjlove.nearby-auto","rjlove.nearby-background","rjlove.sleep-goal-hours","rjlove.location-sharing","rjlove.background-location","rjlove.photo-location","rjlove.health-sharing","rjlove.share-activity","rjlove.share-sleep","rjlove.share-vitals","rjlove.share-wifi-name","rjlove.status-message"}
+BACKUP_KEYS = {"tv.layout","cinema.autoJoin","rjlove.homekit.enabled","rjlove.homekit.home","rjlove.homekit.camera","rjlove.evening-auto","rjlove.instant-enabled","rjlove.sweet-autoplay","rjlove.keyboard-dismiss-after-send","rjlove.fart-locations","rjlove.live-enabled","rjlove.live-auto-resume","rjlove.live-battery","rjlove.live-thoughts","rjlove.live-status","rjlove.live-action","rjlove.nearby-auto","rjlove.nearby-background","rjlove.sleep-goal-hours","rjlove.location-sharing","rjlove.background-location","rjlove.photo-location","rjlove.health-sharing","rjlove.share-activity","rjlove.share-sleep","rjlove.share-vitals","rjlove.share-wifi-name","rjlove.status-message","rjlove.walkie-autoplay","rjlove.walkie-loud","rjlove.walkie-roger"}
 
 
 def record_payload_wire(kind,payload):
@@ -475,6 +479,30 @@ class Database:
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
+
+                CREATE TABLE IF NOT EXISTS walkie_messages (
+                    id TEXT PRIMARY KEY,
+                    sender_id TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    asset_id TEXT NOT NULL,
+                    duration REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    played_at TEXT,
+                    deleted_at TEXT
+                );
+                CREATE INDEX IF NOT EXISTS walkie_target ON walkie_messages(target_id, created_at);
+                CREATE INDEX IF NOT EXISTS walkie_sender ON walkie_messages(sender_id, created_at);
+
+                CREATE TABLE IF NOT EXISTS daily_answers (
+                    user_id TEXT NOT NULL,
+                    day TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(user_id, day)
+                );
+                CREATE TABLE IF NOT EXISTS photo_request_nudges (request_id TEXT PRIMARY KEY, nudged_at TEXT NOT NULL);
                 """
             )
 
@@ -1015,6 +1043,12 @@ class NotificationHub:
             target, identifier = "fart", payload.get("clip_id")
         elif kind == "record_chat":
             target, identifier = "chat", payload.get("record_id")
+        elif kind == "walkie_message":
+            target = "walkie"
+        elif kind == "daily_answer":
+            target = "question"
+        elif kind == "photo_request_nudge":
+            target = "instant"
         elif payload.get("record_id") and kind not in {"record_deleted", "record_photo_request"}:
             target, identifier = "record", payload["record_id"]
         elif kind == "thought":
@@ -1077,7 +1111,7 @@ class NotificationHub:
             return "sent" if self.send_ntfy(user_id, event, settings) else "failed"
         if not self.bark.enabled:
             return "failed"
-        category = "alarm" if alarm else ("chat" if "chat" in event["kind"] or "comment" in event["kind"] else "poop" if "poop" in event["kind"] else "fart" if "fart" in event["kind"] else "photo" if "moment" in event["kind"] or "photo" in event["kind"] or "instant" in event["kind"] else "heart")
+        category = "alarm" if alarm else ("chat" if "chat" in event["kind"] or "walkie" in event["kind"] or "daily" in event["kind"] or "comment" in event["kind"] else "poop" if "poop" in event["kind"] else "fart" if "fart" in event["kind"] else "photo" if "moment" in event["kind"] or "photo" in event["kind"] or "instant" in event["kind"] else "heart")
         params = {"title": event["title"], "group": "RJ Love · " + category, "icon": self.public_url() + "/push-icons/" + category + ".png", "isArchive": "1",
                   "level": "passive" if quiet["active"] else ("critical" if alarm and settings["allow_critical"] else "timeSensitive" if event.get("payload", {}).get("notification_priority") == "urgent" else "active"),
                   "sound": settings["sound"] if alarm else "bell" if event.get("payload", {}).get("notification_priority")=="urgent" else "minuet", "volume": str(settings["volume"])}
@@ -1224,6 +1258,7 @@ class RJLoveApplication:
     def __init__(self, config: dict[str, Any], config_path: Path):
         self.config = config
         self.config_path = config_path
+        self.walkie_condition = threading.Condition()
         self.credentials_lock = threading.RLock()
         self.ai_lock = threading.Lock()
         data_value = config["server"].get("data_directory", "./rjlove_data")
@@ -2300,14 +2335,19 @@ class RJLoveApplication:
                 existing = {c["kind"] for c in dashboard["cards"]}
                 dashboard["cards"] = [{"kind": k, "size": "large"} for k in ("shortcuts","cinema","homeKit","eveningPlayer","dailyJournal") if k not in existing] + dashboard["cards"]
                 dashboard["layoutVersion"] = 2
+            if dashboard.get("layoutVersion", 0) < 3:
+                existing = {c["kind"] for c in dashboard["cards"]}
+                dashboard["cards"] = [{"kind": k, "size": "large"} for k in ("question","walkie") if k not in existing] + dashboard["cards"]
+                dashboard["layoutVersion"] = 3
             dashboard.setdefault("tabs", default_tabs())
             dashboard.setdefault("actions", default_actions())
             return {"dashboard":dashboard,"revision":row["revision"]}
-        cards = ["shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
-        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts(),"tabs":default_tabs(),"layoutVersion":2,"actions":default_actions()}, "revision": 0}
+        cards = ["question", "walkie", "shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
+        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts(),"tabs":default_tabs(),"layoutVersion":3,"actions":default_actions()}, "revision": 0}
 
     def bootstrap(self, user_id: str, compact_media=False) -> dict[str, Any]:
         day = self.local_day()
+        self.expire_photo_requests()
         with self.database.connect() as db:
             presences = {row["user_id"]: json.loads(row["payload"]) | {"updated_at": row["updated_at"]}
                          for row in db.execute("SELECT * FROM presence")}
@@ -2383,6 +2423,8 @@ class RJLoveApplication:
             "activity":self.activity_history(),
             "opened_records": self.opened_records(),
             "farts": self.list_farts(),
+            "walkie_unplayed": self.walkie_unplayed(user_id),
+            "daily_question": self.daily_question(user_id, day),
             "features": {
                 "audio_studio_enabled": True,
                 "radio_enabled": False,
@@ -2400,12 +2442,64 @@ class RJLoveApplication:
             db.execute("BEGIN IMMEDIATE")
             for row in db.execute("SELECT * FROM assets WHERE created_at<?",(cutoff,)).fetchall():
                 referenced=db.execute("SELECT 1 FROM records,json_each(json_extract(payload,'$.asset_ids')) AS a WHERE deleted_at IS NULL AND a.value=? LIMIT 1",(row["id"],)).fetchone()
-                if not referenced and not db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(row["id"],)).fetchone() and not db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(row["id"],)).fetchone():
+                if not referenced and not db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(row["id"],)).fetchone() and not db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(row["id"],)).fetchone() and not db.execute("SELECT 1 FROM walkie_messages WHERE asset_id=? AND deleted_at IS NULL",(row["id"],)).fetchone():
                     shutil.rmtree(self.media_path(row["path"]).parent,ignore_errors=True)
                     db.execute("DELETE FROM assets WHERE id=?",(row["id"],))
 
+    def expire_photo_requests(self, db=None):
+        """Open photo requests expire after PHOTO_REQUEST_TTL_HOURS so a sender is never stuck.
+        Only the unanswered wish is closed; photos and completed requests stay untouched."""
+        cutoff = (utc_now() - dt.timedelta(hours=PHOTO_REQUEST_TTL_HOURS)).isoformat().replace("+00:00", "Z")
+        owns = db is None
+        connection = db or self.database.connect()
+        try:
+            now = iso_now()
+            rows = connection.execute("SELECT id FROM records WHERE kind='photo_request' AND deleted_at IS NULL AND COALESCE(json_extract(payload,'$.completed'),0)=0 AND julianday(created_at)<julianday(?)", (cutoff,)).fetchall()
+            for row in rows:
+                connection.execute("UPDATE records SET deleted_at=?,updated_at=? WHERE id=?", (now, now, row["id"]))
+                connection.execute("UPDATE events SET read_at=? WHERE kind='record_photo_request' AND json_extract(payload,'$.record_id')=? AND read_at IS NULL", (now, row["id"]))
+            return len(rows)
+        finally:
+            if owns:
+                connection.close()
+
+    def walkie_wire(self, row):
+        return {"id": row["id"], "sender_id": row["sender_id"], "target_id": row["target_id"], "asset_id": row["asset_id"],
+                "duration": float(row["duration"]), "created_at": row["created_at"], "played_at": row["played_at"]}
+
+    def walkie_unplayed(self, user_id):
+        with self.database.connect() as db:
+            return int(db.execute("SELECT COUNT(*) FROM walkie_messages WHERE target_id=? AND played_at IS NULL AND deleted_at IS NULL", (user_id,)).fetchone()[0])
+
+    def walkie_messages(self, user_id, after=None, limit=60):
+        with self.database.connect() as db:
+            if after:
+                rows = db.execute("SELECT * FROM walkie_messages WHERE deleted_at IS NULL AND (sender_id=? OR target_id=?) AND (julianday(created_at)>julianday(?) OR (played_at IS NOT NULL AND julianday(played_at)>julianday(?))) ORDER BY created_at DESC LIMIT ?", (user_id, user_id, after, after, limit)).fetchall()
+            else:
+                rows = db.execute("SELECT * FROM walkie_messages WHERE deleted_at IS NULL AND (sender_id=? OR target_id=?) ORDER BY created_at DESC LIMIT ?", (user_id, user_id, limit)).fetchall()
+        return [self.walkie_wire(r) for r in reversed(rows)]
+
+    def daily_question(self, user_id, day):
+        with self.database.connect() as db:
+            rows = {r["user_id"]: r for r in db.execute("SELECT * FROM daily_answers WHERE day=?", (day,))}
+        mine = rows.get(user_id)
+        others = [r for uid, r in rows.items() if uid != user_id]
+        partner = others[0] if others else None
+        def wire(row):
+            return {"user_id": row["user_id"], "question": row["question"], "answer": row["answer"], "updated_at": row["updated_at"]}
+        return {"day": day, "mine": wire(mine) if mine else None,
+                "partner": wire(partner) if (partner and mine) else None,
+                "partner_answered": partner is not None}
+
+    def daily_history(self, user_id, limit=60):
+        with self.database.connect() as db:
+            days = [r["day"] for r in db.execute("SELECT day FROM daily_answers WHERE user_id=? ORDER BY day DESC LIMIT ?", (user_id, limit))]
+        return [self.daily_question(user_id, d) for d in days]
+
     def cleanup(self) -> None:
         self.cleanup_assets()
+        with contextlib.suppress(Exception):
+            self.expire_photo_requests()
         now = utc_now()
         old_events = now - dt.timedelta(days=30)
         old_commands = now - dt.timedelta(days=14)
@@ -3258,7 +3352,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
     @staticmethod
     def navigation_data(query):
-        allowed = {"home", "feed", "partner", "planner", "alarms", "chat", "moments", "farts", "poop", "countdowns", "documents", "record", "fart", "fart-comments"}
+        allowed = {"home", "feed", "partner", "planner", "alarms", "chat", "moments", "farts", "poop", "countdowns", "documents", "record", "fart", "fart-comments", "walkie", "question", "instant"}
         if set(query) - {"target", "id", "comment", "account"} or any(len(v) != 1 for v in query.values()):
             raise APIError(400, "invalid_navigation", "Dieser Link ist ungültig.")
         data = {k: values[0] for k, values in query.items() if values}
@@ -3477,6 +3571,17 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/health":
                 self.send_json(HTTPStatus.OK, {"status": "ok", "time": iso_now(), **compatibility_info()})
                 return
+            if path == "/v1/walkie":
+                self._walkie_list(self.current_user(), query);return
+            if path == "/v1/daily-question":
+                user_id=self.current_user()
+                day=query.get("day",[self.app.local_day()])[0]
+                try:
+                    if dt.date.fromisoformat(day).isoformat()!=day:raise ValueError()
+                except (ValueError,TypeError):raise APIError(400,"invalid_day","Tag ungültig.")
+                self.send_json(200,self.app.daily_question(user_id,day));return
+            if path == "/v1/daily-question/history":
+                self.send_json(200,{"days":self.app.daily_history(self.current_user())});return
             if path == "/v1/ai/status":
                 self.send_json(200,self.app.ai_status(self.current_user()));return
             if path == "/v1/preferences":
@@ -3596,6 +3701,16 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/v1/status":
                 self._save_status(user_id)
                 return
+            if path == "/v1/presence/location":
+                self._presence_location(user_id);return
+            if path == "/v1/walkie":
+                self._walkie_send(user_id);return
+            if len(parts)==4 and parts[:2]==["v1","walkie"] and parts[3]=="played":
+                self.read_json();self._walkie_played(user_id,parts[2]);return
+            if path == "/v1/daily-question":
+                self._daily_answer(user_id);return
+            if len(parts)==4 and parts[:2]==["v1","photo-requests"] and parts[3]=="nudge":
+                self.read_json();self._nudge_photo_request(user_id,parts[2]);return
             if path == "/v1/photo-requests":
                 self._request_photo(user_id)
                 return
@@ -3725,10 +3840,18 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     asset=db.execute("SELECT * FROM assets WHERE id=? AND owner_id=?",(parts[2],user_id)).fetchone()
                     if not asset:raise APIError(404,"asset_missing","Upload nicht gefunden.")
                     referenced=db.execute("SELECT 1 FROM records,json_each(json_extract(payload,'$.asset_ids')) AS a WHERE deleted_at IS NULL AND a.value=? LIMIT 1",(parts[2],)).fetchone()
-                    if referenced or db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(parts[2],)).fetchone() or db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(parts[2],)).fetchone():raise APIError(409,"asset_in_use","Geteilte Medien über den zugehörigen Eintrag entfernen.")
+                    if referenced or db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(parts[2],)).fetchone() or db.execute("SELECT 1 FROM app_releases WHERE asset_id=?",(parts[2],)).fetchone() or db.execute("SELECT 1 FROM walkie_messages WHERE asset_id=? AND deleted_at IS NULL",(parts[2],)).fetchone():raise APIError(409,"asset_in_use","Geteilte Medien über den zugehörigen Eintrag entfernen.")
                     db.execute("DELETE FROM assets WHERE id=?",(parts[2],))
                     import shutil
                     shutil.rmtree(self.app.media_path(asset["path"]).parent,ignore_errors=True)
+                self.send_empty()
+            elif len(parts) == 3 and parts[:2] == ["v1", "walkie"]:
+                now=iso_now()
+                with self.app.database.connect() as db:
+                    row=db.execute("SELECT * FROM walkie_messages WHERE id=? AND deleted_at IS NULL",(parts[2],)).fetchone()
+                    if not row:raise APIError(404,"walkie_missing","Diese Funknachricht gibt es nicht mehr.")
+                    if row["sender_id"]!=user_id:raise APIError(403,"not_owner","Nur eigene Funknachrichten können zurückgerufen werden.")
+                    db.execute("UPDATE walkie_messages SET deleted_at=? WHERE id=?",(now,parts[2]))
                 self.send_empty()
             elif len(parts) == 3 and parts[:2] == ["v1", "farts"]:
                 self._delete_fart(user_id, parts[2])
@@ -3756,6 +3879,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
 
         if path=="/v1/photo-requests":
             user_id=self.current_user()
+            self.app.expire_photo_requests()
             with self.app.database.connect() as db:
                 rows=db.execute("SELECT * FROM records WHERE kind='photo_request' AND deleted_at IS NULL AND COALESCE(json_extract(payload,'$.completed'),0)=0 ORDER BY created_at DESC,id DESC").fetchall()
             outgoing=next((self._record_dict(r) for r in rows if r["owner_id"]==user_id),None)
@@ -3887,6 +4011,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             with self.app.database.connect() as db:
                 shared=db.execute("SELECT 1 FROM records,json_each(json_extract(records.payload,'$.asset_ids')) AS a WHERE records.deleted_at IS NULL AND a.value=? LIMIT 1",(asset_id,)).fetchone()
                 shared = shared or db.execute("SELECT 1 FROM shared_documents WHERE asset_id=?",(asset_id,)).fetchone()
+                shared = shared or db.execute("SELECT 1 FROM walkie_messages WHERE asset_id=? AND deleted_at IS NULL AND (sender_id=? OR target_id=?)",(asset_id,user_id,user_id)).fetchone()
             if not shared:raise APIError(404,"asset_missing","Medium zurückgerufen oder noch nicht geteilt.")
         return row
 
@@ -4065,12 +4190,139 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     raise APIError(409, "request_conflict", "Dieser Fotowunsch kann nicht erneut gesendet werden.")
                 self.send_json(200, self._record_dict(old))
                 return
+            self.app.expire_photo_requests(db)
             pending=db.execute("SELECT id FROM records WHERE owner_id=? AND kind='photo_request' AND deleted_at IS NULL AND COALESCE(json_extract(payload,'$.completed'),0)=0",(user_id,)).fetchone()
             if pending:raise APIError(409,"photo_request_pending","Dein Fotowunsch wartet noch. Erst beantworten lassen oder zurückrufen.")
             self.app.enforce_quota(user_id, len(raw.encode()), db=db)
             db.execute("INSERT INTO records VALUES(?,?,?,?,?,?,?,NULL)", (request_id, "photo_request", user_id, raw, len(raw.encode()), now, now))
         self.app.create_event(target_id, "record_photo_request", "Bitte lächeln 📷", "Ein Fotowunsch wartet in RJ Love.", {"record_id": request_id})
         self.send_json(200, {"id": request_id, "kind": "photo_request", "owner_id": user_id, "payload": payload, "created_at": now, "updated_at": now})
+
+    def _nudge_photo_request(self,user_id,request_id):
+        """Explicit, rate-limited reminder from the sender. Requests themselves stay silent (surprise)."""
+        now=iso_now()
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row=db.execute("SELECT * FROM records WHERE id=? AND kind='photo_request' AND deleted_at IS NULL",(request_id,)).fetchone()
+            if not row:raise APIError(404,"request_missing","Dieser Fotowunsch existiert nicht mehr.")
+            if row["owner_id"]!=user_id:raise APIError(403,"not_owner","Nur der eigene Fotowunsch kann erinnert werden.")
+            payload=json.loads(row["payload"])
+            if payload.get("completed"):raise APIError(409,"request_completed","Dieser Fotowunsch wurde bereits beantwortet.")
+            last=db.execute("SELECT nudged_at FROM photo_request_nudges WHERE request_id=?",(request_id,)).fetchone()
+            if last and parse_iso(last["nudged_at"]) and utc_now()-parse_iso(last["nudged_at"])<dt.timedelta(minutes=PHOTO_REQUEST_NUDGE_MINUTES):
+                raise APIError(429,"nudge_too_soon",f"Du hast gerade erst erinnert. Nach {PHOTO_REQUEST_NUDGE_MINUTES} Minuten geht es wieder.")
+            db.execute("INSERT INTO photo_request_nudges VALUES(?,?) ON CONFLICT(request_id) DO UPDATE SET nudged_at=excluded.nudged_at",(request_id,now))
+            db.execute("COMMIT")
+        sender=(self.app.user_by_id(user_id) or {"display_name":"Schatzi"})["display_name"]
+        self.app.create_event(payload.get("target_id"),"photo_request_nudge",f"{sender} wartet auf dein Lächeln 📷","Öffne RJ Love, ein Fotowunsch wartet auf dich.",{"request_id":request_id})
+        self.send_json(200,{"nudged_at":now})
+
+    def _presence_location(self, user_id):
+        """Background location: merges position, battery and app state into the last full presence,
+        so a short background wake never erases Health or status values."""
+        body=self.read_json()
+        allowed={"latitude","longitude","horizontal_accuracy","altitude","speed","course","location_timestamp","battery_level","battery_state","low_power_mode","app_state","motion"}
+        update={k:v for k,v in body.items() if k in allowed}
+        try:
+            latitude=float(update["latitude"]);longitude=float(update["longitude"])
+        except (KeyError,TypeError,ValueError):raise APIError(400,"invalid_location","Standortkoordinaten sind ungültig.")
+        if not (-90<=latitude<=90 and -180<=longitude<=180):raise APIError(400,"invalid_location","Standortkoordinaten liegen außerhalb des gültigen Bereichs.")
+        update["latitude"]=latitude;update["longitude"]=longitude
+        for key in ("horizontal_accuracy","altitude","speed","course"):
+            if key in update and (isinstance(update[key],bool) or not isinstance(update[key],(int,float)) or not math.isfinite(update[key])):update.pop(key)
+        if "location_timestamp" in update and parse_iso(update["location_timestamp"]) is None:update.pop("location_timestamp")
+        if "battery_level" in update and (isinstance(update["battery_level"],bool) or not isinstance(update["battery_level"],int) or not 0<=update["battery_level"]<=100):update.pop("battery_level")
+        if update.get("app_state") not in {"foreground","background"}:update["app_state"]="background"
+        if "motion" in update:update["motion"]=safe_text(str(update["motion"]),40)
+        now=iso_now()
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row=db.execute("SELECT payload FROM presence WHERE user_id=?",(user_id,)).fetchone()
+            merged=json.loads(row["payload"]) if row else {}
+            if merged.get("location_sharing") is False and row:
+                db.execute("COMMIT");self.send_json(200,{"updated_at":now,"ignored":True});return
+            merged.update(update);merged["location_sharing"]=True;merged["reported_at"]=now
+            self.app.record_activity(user_id,"background","Standort im Hintergrund",db=db)
+            db.execute("INSERT INTO presence(user_id,payload,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at",(user_id,json.dumps(merged,ensure_ascii=False),now))
+            db.execute("COMMIT")
+        self.app.push_live_updates()
+        self.send_json(200,{"updated_at":now})
+
+    def _walkie_send(self,user_id):
+        body=self.read_json()
+        message_id=safe_text(body.get("id",""),64,allow_empty=False)
+        try:uuid.UUID(message_id)
+        except ValueError:raise APIError(400,"invalid_id","Ungültige Funk-ID.")
+        duration=body.get("duration")
+        if isinstance(duration,bool) or not isinstance(duration,(int,float)) or not math.isfinite(duration) or not 0.3<=duration<=WALKIE_MAX_SECONDS+1:
+            raise APIError(400,"invalid_duration",f"Eine Funknachricht ist höchstens {WALKIE_MAX_SECONDS} Sekunden lang.")
+        asset=self._asset_row(safe_text(body.get("asset_id",""),64,allow_empty=False))
+        if asset["owner_id"]!=user_id or not asset["mime_type"].startswith("audio/"):raise APIError(403,"invalid_audio","Eine eigene Sprachaufnahme wird benötigt.")
+        partners=self.app.partner_ids(user_id)
+        if not partners:raise APIError(400,"no_partner","Kein Gegenüber verbunden.")
+        target=partners[0];now=iso_now()
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            old=db.execute("SELECT * FROM walkie_messages WHERE id=?",(message_id,)).fetchone()
+            if old:
+                if old["sender_id"]!=user_id:raise APIError(409,"walkie_conflict","Diese Funknachricht existiert bereits.")
+                db.execute("COMMIT");self.send_json(200,self.app.walkie_wire(old));return
+            db.execute("INSERT INTO walkie_messages(id,sender_id,target_id,asset_id,duration,created_at) VALUES(?,?,?,?,?,?)",(message_id,user_id,target,asset["id"],float(duration),now))
+            db.execute("COMMIT")
+        sender=(self.app.user_by_id(user_id) or {"display_name":"Schatzi"})["display_name"]
+        seconds=max(1,round(float(duration)))
+        self.app.create_event(target,"walkie_message",f"🎙️ Funk von {sender}",f"{seconds} Sekunden nur für dich. Öffne RJ Love, dann wird sie abgespielt.",{"walkie_id":message_id})
+        with self.app.walkie_condition:self.app.walkie_condition.notify_all()
+        with self.app.database.connect() as db:row=db.execute("SELECT * FROM walkie_messages WHERE id=?",(message_id,)).fetchone()
+        self.send_json(200,self.app.walkie_wire(row))
+
+    def _walkie_played(self,user_id,message_id):
+        now=iso_now()
+        with self.app.database.connect() as db:
+            row=db.execute("SELECT * FROM walkie_messages WHERE id=? AND deleted_at IS NULL",(message_id,)).fetchone()
+            if not row:raise APIError(404,"walkie_missing","Diese Funknachricht gibt es nicht mehr.")
+            if row["target_id"]!=user_id:raise APIError(403,"not_recipient","Diese Funknachricht ist nicht für dich.")
+            if not row["played_at"]:
+                db.execute("UPDATE walkie_messages SET played_at=? WHERE id=?",(now,message_id))
+                db.execute("UPDATE events SET read_at=? WHERE target_id=? AND kind='walkie_message' AND json_extract(payload,'$.walkie_id')=? AND read_at IS NULL",(now,user_id,message_id))
+        with self.app.walkie_condition:self.app.walkie_condition.notify_all()
+        self.send_empty()
+
+    def _walkie_list(self,user_id,query):
+        after=query.get("after",[None])[0]
+        if after is not None and parse_iso(after) is None:raise APIError(400,"invalid_after","Zeitpunkt ungültig.")
+        try:wait=min(WALKIE_WAIT_SECONDS,max(0,int(query.get("wait",["0"])[0])))
+        except (TypeError,ValueError):wait=0
+        deadline=time.monotonic()+wait
+        messages=self.app.walkie_messages(user_id,after)
+        while not messages and after and time.monotonic()<deadline:
+            with self.app.walkie_condition:self.app.walkie_condition.wait(timeout=min(2.0,max(0.05,deadline-time.monotonic())))
+            messages=self.app.walkie_messages(user_id,after)
+        self.send_json(200,{"messages":messages,"server_time":iso_now()})
+
+    def _daily_answer(self,user_id):
+        body=self.read_json()
+        day=safe_text(body.get("day",""),10,allow_empty=False)
+        try:
+            parsed=dt.date.fromisoformat(day)
+            if parsed.isoformat()!=day:raise ValueError()
+        except (ValueError,TypeError):raise APIError(400,"invalid_day","Tag ungültig.")
+        today=dt.date.fromisoformat(self.app.local_day())
+        if abs((parsed-today).days)>1:raise APIError(400,"invalid_day","Nur die Frage von heute kann beantwortet werden.")
+        question=safe_text(body.get("question",""),300,allow_empty=False)
+        answer=safe_text(body.get("answer",""),2000,allow_empty=False)
+        now=iso_now()
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            old=db.execute("SELECT 1 FROM daily_answers WHERE user_id=? AND day=?",(user_id,day)).fetchone()
+            db.execute("INSERT INTO daily_answers VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,day) DO UPDATE SET answer=excluded.answer,question=excluded.question,updated_at=excluded.updated_at",(user_id,day,question,answer,now,now))
+            db.execute("COMMIT")
+        if not old:
+            sender=(self.app.user_by_id(user_id) or {"display_name":"Schatzi"})["display_name"]
+            state=self.app.daily_question(user_id,day)
+            body_text="Ihr habt beide geantwortet. Schau, was dein Lieblingsmensch geschrieben hat." if state["partner_answered"] else "Antworte auch, dann seht ihr beide Antworten."
+            self.app.broadcast_event(user_id,"daily_answer",f"{sender} hat die Frage des Tages beantwortet 💬",body_text,{"day":day})
+        self.send_json(200,self.app.daily_question(user_id,day))
 
     def _recall_photo_request(self,user_id,request_id):
         now=iso_now()
@@ -4093,7 +4345,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(dashboard, dict) or not {"cards","theme","title"}.issubset(dashboard) or set(dashboard)-{"cards","theme","title","shortcuts","tabs","layoutVersion","actions"}:
             raise APIError(400, "invalid_dashboard", "Die Startseite ist ungültig.")
         cards = dashboard["cards"]
-        allowed = {"shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop"}
+        allowed = {"shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop", "walkie", "question"}
         if not isinstance(cards, list) or len(cards) > len(allowed):
             raise APIError(400, "invalid_cards", "Die Kartenliste ist ungültig.")
         seen = set()
@@ -4134,7 +4386,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             except (ValueError,TypeError,AttributeError): raise APIError(400,"invalid_tabs","Ungültige Schaltfläche.")
             if tab["action"] in seen_tabs or tab["id"] in seen_tab_ids: raise APIError(400,"invalid_tabs","Jedes Ziel nur einmal auswählen.")
             seen_tabs.add(tab["action"]);seen_tab_ids.add(tab["id"]);tab["title"]=safe_text(tab["title"],24,allow_empty=False)
-        dashboard["tabs"]=tabs;dashboard["layoutVersion"]=2
+        dashboard["tabs"]=tabs;dashboard["layoutVersion"]=3
         dashboard["title"] = safe_text(dashboard["title"], 80, allow_empty=False)
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")

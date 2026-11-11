@@ -66,5 +66,7 @@ struct QuickActionDestination:View {
     case .partner:PartnerProfileView()
     case .profile:SettingsView()
     case .recordFart:FartRecorderView(autoStart:true)
+    case .walkie:WalkieView()
+    case .question:DailyQuestionView()
     }}
 }

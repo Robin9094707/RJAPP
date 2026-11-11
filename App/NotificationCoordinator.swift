@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let open = UNNotificationAction(identifier: "RJ_OPEN_WAKE", title: "App öffnen & prüfen", options: [.foreground])
         UNUserNotificationCenter.current().setNotificationCategories([UNNotificationCategory(identifier: "RJ_WAKE", actions: [action, open], intentIdentifiers: [], options: [])])
         application.registerForRemoteNotifications()
+        LocationService.shared.resumeAfterLaunch()
         return true
     }
 

@@ -65,6 +65,9 @@ struct NotificationDestinationView: View {
             case "farts": FartStudioView()
             case "poop": DropPoopView()
             case "countdowns": CountdownHubView()
+            case "walkie": WalkieView()
+            case "question": DailyQuestionView()
+            case "instant": InstantGalleryView()
             default: SharedJournalView(showFeed: true)
             }
         }

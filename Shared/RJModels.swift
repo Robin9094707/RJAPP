@@ -318,6 +318,8 @@ struct BootstrapResponse: Codable, Sendable {
     var openedRecords: [OpenedRecord]? = nil
     var preferences: UserPreferences? = nil
     var activity: [String:PartnerActivity]? = nil
+    var walkieUnplayed: Int? = nil
+    var dailyQuestion: DailyQuestionState? = nil
     let features: ServerFeatures
 
     enum CodingKeys: String, CodingKey {
@@ -326,6 +328,7 @@ struct BootstrapResponse: Codable, Sendable {
         case localDay = "local_day"
         case myPresence = "my_presence"
         case deletedRecordIDs = "deleted_record_ids"
+        case walkieUnplayed = "walkie_unplayed", dailyQuestion = "daily_question"
         case storageUsedBytes = "storage_used_bytes", storageByUser = "storage_by_user", thoughtHistory = "thought_history", lastOpened = "last_opened", openedRecords = "opened_records"
     }
 }

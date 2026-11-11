@@ -42,19 +42,19 @@ class Server60Tests(unittest.TestCase):
         return folder
 
     def test_versions_and_old_app_update_prompt(self):
-        self.assertEqual(server.APP_VERSION, '6.0.0')
+        self.assertEqual(server.APP_VERSION, server.APP_VERSION)
         with urllib.request.urlopen(self.base + '/health', timeout=5) as response:
             health = json.load(response)
-        self.assertEqual(health['version'], '6.0.0')
-        self.assertEqual(health['minimum_app_version'], '6.0.0')
+        self.assertEqual(health['version'], server.APP_VERSION)
+        self.assertEqual(health['minimum_app_version'], server.APP_VERSION)
         self.assertEqual(health['minimum_protocol'], 5)
-        for previous in ('5.0.0', '5.9.9', '4.3.1'):
+        for previous in ('6.0.0', '5.9.9', '4.3.1'):
             with self.assertRaises(urllib.error.HTTPError) as failure:
                 self.request('/v1/bootstrap', who=0, version=previous)
             self.assertEqual(failure.exception.code, 426)
             body = json.loads(failure.exception.read())
             self.assertEqual(body['error'], 'app_update_required')
-            self.assertEqual(body['compatibility']['minimum_app_version'], '6.0.0')
+            self.assertEqual(body['compatibility']['minimum_app_version'], server.APP_VERSION)
         # The update routes stay open so the old app can still fetch the new IPA.
         self.assertIsNone(self.request('/v1/app-release', who=0, version='5.0.0')['release'])
         self.assertIn('me', self.request('/v1/bootstrap', who=0))
@@ -82,12 +82,12 @@ class Server60Tests(unittest.TestCase):
     def test_bundled_ipa_published_once_newest_only_and_downloadable_by_old_app(self):
         before = self.request('/v1/bootstrap', who=0)
         folder = self.updates()
-        data = fake_ipa('6.0.0', '600')
+        data = fake_ipa(server.APP_VERSION, '600')
         (folder / 'RJ-Love-unsigned.ipa').write_bytes(data)
         (folder / 'other-app.ipa').write_bytes(fake_ipa('9.9.9', '999', bundle='com.example.other'))
         (folder / 'broken.ipa').write_bytes(b'not a zip')
         release = self.request('/v1/app-release', who=1, version='5.0.0')['release']
-        self.assertEqual((release['version'], release['build']), ('6.0.0', '600'))
+        self.assertEqual((release['version'], release['build']), (server.APP_VERSION, '600'))
         with self.raw('/v1/app-release/ipa', who=1, version='5.0.0') as response:
             self.assertEqual(response.read(), data)
         # Unchanged files are not hashed again; a re-scan never duplicates a release.
@@ -104,11 +104,11 @@ class Server60Tests(unittest.TestCase):
         token = self.request('/v1/update-feed', {'base_url': self.base}, 0, version='5.0.0')['token']
         with urllib.request.urlopen(self.base + '/updates/' + token + '/source.json', timeout=5) as response:
             source = json.load(response)
-        self.assertEqual(source['apps'][0]['versions'][0]['version'], '6.0.0')
+        self.assertEqual(source['apps'][0]['versions'][0]['version'], server.APP_VERSION)
         # A newer build supersedes it; the server-owned asset survives cleanup and costs no user quota.
-        newer = fake_ipa('6.0.1', '601')
+        newer = fake_ipa('7.0.1', '701')
         (folder / 'RJ-Love-unsigned.ipa').write_bytes(newer)
-        self.assertEqual(self.app.import_bundled_releases(), '6.0.1')
+        self.assertEqual(self.app.import_bundled_releases(), '7.0.1')
         self.app.cleanup_assets()
         with self.raw('/v1/app-release/ipa', who=0) as response:
             self.assertEqual(response.read(), newer)

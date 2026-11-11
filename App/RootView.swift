@@ -72,6 +72,7 @@ struct MainTabView:View {
         .tabViewBottomAccessory(isEnabled: cinema.active && cinema.provider == "plex" && !cinema.screenVisible && cinema.foreground && !cinema.miniPlayerHidden) { CinemaMiniPlayer() }
         .onChange(of:cinema.mediaID) { _,_ in cinema.miniPlayerHidden = false }
         .overlay(alignment:.top) { TVConnectionBanner() }
+        .overlay(alignment:.top) { WalkieNowPlayingPill() }
         .task { CinemaCoordinator.shared.configure(app: appState); appState.acceptQuickCaptureRequest() }
         .task(id:appState.quickCaptureAttempt) {
             if appState.pendingQuickCapture != nil { extraDestination=nil; await appState.presentQuickCapture() }
@@ -128,5 +129,35 @@ private struct QuickCaptureFallbackButton:View {
             try? await Task.sleep(for:.milliseconds(1600))
             if !Task.isCancelled { visible=true }
         }
+    }
+}
+
+/// While a walkie message plays out loud (for example right after opening the app), a small glass pill
+/// shows who is speaking and lets you stop it.
+private struct WalkieNowPlayingPill: View {
+    @Environment(AppState.self) private var app
+    @State private var walkie = WalkieService.shared
+    var body: some View {
+        ZStack {
+            if let id = walkie.playingID, let message = walkie.messages.first(where: { $0.id == id }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "antenna.radiowaves.left.and.right").font(.subheadline.weight(.bold)).foregroundStyle(LovePalette.pink)
+                        .symbolEffect(.variableColor.iterative, options: .repeating)
+                    Text(message.senderID == app.me?.id ? "Deine Nachricht" : "Funk von " + (app.partner?.displayName ?? "deinem Schatz"))
+                        .font(.subheadline.weight(.semibold)).lineLimit(1)
+                    ProgressView(value: walkie.playProgress).frame(width: 54).tint(LovePalette.pink)
+                    Button { walkie.stopPlayback(clearQueue: true) } label: {
+                        Image(systemName: "stop.fill").font(.caption.weight(.bold)).frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Funk stoppen")
+                }
+                .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
+                .glassEffect(.regular.tint(LovePalette.pink.opacity(0.12)).interactive(), in: Capsule())
+                .padding(.top, 6)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(LoveMotion.spring, value: walkie.playingID)
     }
 }

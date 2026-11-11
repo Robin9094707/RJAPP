@@ -20,6 +20,7 @@ struct HomeView: View {
             LazyVStack(alignment: .leading, spacing: LoveMetrics.stackSpacing) {
                 header.loveReveal(revealed, index: 0)
                 connection.loveReveal(revealed, index: 1)
+                HomeAttentionBanners()
                 ForEach(Array(appState.homeLayout.cards.enumerated()), id: \.element.id) { index, card in
                     homeCard(card).accessibilityIdentifier("home-card-" + card.id)
                         .loveReveal(revealed, index: index + 2)
@@ -117,6 +118,10 @@ struct HomeView: View {
             if card.size == .compact { homeLink(card, detail: "Deine Live-Aktivitäten") { DeliveryCenterView() } }
             else { liveCard }
         case .relationship: RelationshipHomeCard()
+        case .walkie: WalkieHomeCard(compact: card.size == .compact)
+        case .question:
+            if card.size == .compact { homeLink(card, detail: "Eine Frage, zwei Antworten") { DailyQuestionView() } }
+            else { DailyQuestionCard() }
         case .poop: homeLink(card,detail:"Euer privates Thronarchiv & eure Kack-Karte") {DropPoopView()}
         case .delivery: homeLink(card, detail: "Push, Wecker & Hintergrund prüfen") { DeliveryCenterView() }
         }
@@ -176,13 +181,13 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 6) {
                 LoveEyebrow(text: Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)), tint: homeTint)
                 Text(greeting).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
-                Text(appState.homeLayout.title).font(.loveDisplay(34)).tracking(-0.6).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-home-title")
+                Text(appState.homeLayout.title).font(.loveDisplay(34, weight: .semibold)).tracking(-0.6).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("rj-home-title")
             }
             Spacer(minLength: 4)
             Button { editingHome = true } label: {
                 Image(systemName: "slider.horizontal.3").font(.headline).foregroundStyle(homeTint).frame(width: 46, height: 46)
-                    .loveInteractiveGlass(in: Circle(), tint: homeTint.opacity(0.06))
-            }.buttonStyle(.lovePress).accessibilityLabel("Startseite anpassen").accessibilityIdentifier("home-customize")
+                    .loveInteractiveGlass(in: Circle(), tint: homeTint.opacity(0.10))
+            }.buttonStyle(.plain).accessibilityLabel("Startseite anpassen").accessibilityIdentifier("home-customize")
             Button { appState.showingProfile = true } label: {
                 PartnerAvatar(name: appState.me?.displayName ?? "R", size: 48)
             }.buttonStyle(.lovePress).matchedTransitionSource(id:"profile",in:profileTransition).accessibilityLabel("Dein Profil und Einstellungen").accessibilityIdentifier("home-profile")
@@ -393,3 +398,52 @@ struct WakeComposerView: View {
 }
 
 
+
+/// Things that are waiting for you right now. Always visible, independent of auto-presentation
+/// settings, so nothing gets stuck unseen (photo wishes, unheard walkie messages).
+struct HomeAttentionBanners: View {
+    @Environment(AppState.self) private var app
+    @State private var walkie = WalkieService.shared
+    private var partnerName: String { app.partner?.displayName ?? "Dein Lieblingsmensch" }
+    var body: some View {
+        VStack(spacing: 10) {
+            if let request = app.incomingPhotoRequests.first {
+                banner(symbol: "camera.fill", tint: LovePalette.blue,
+                       title: "\(partnerName) wünscht sich ein Foto",
+                       detail: request.payload.title?.isEmpty == false ? request.payload.title! : "Bitte lächeln 🥰",
+                       action: "Lächeln") {
+                    UserDefaults.standard.removeObject(forKey: "rjlove.photo-skip." + request.id)
+                    app.pendingPhotoRequest = request
+                }
+                .accessibilityIdentifier("home-photo-request")
+            }
+            if !walkie.unheard.isEmpty {
+                NavigationLink { WalkieView() } label: {
+                    bannerLabel(symbol: "antenna.radiowaves.left.and.right", tint: LovePalette.coral,
+                                title: walkie.unheard.count == 1 ? "Neuer Funk von \(partnerName)" : "\(walkie.unheard.count) neue Funknachrichten",
+                                detail: app.myStatus?.isQuiet == true ? "Ruhemodus · zum Anhören tippen" : "Zum Anhören tippen", action: "Hören")
+                }
+                .buttonStyle(.lovePress)
+            }
+        }
+    }
+    private func banner(symbol: String, tint: Color, title: String, detail: String, action: String, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) { bannerLabel(symbol: symbol, tint: tint, title: title, detail: detail, action: action) }
+            .buttonStyle(.lovePress)
+    }
+    private func bannerLabel(symbol: String, tint: Color, title: String, detail: String, action: String) -> some View {
+        HStack(spacing: 12) {
+            LoveIcon(symbol: symbol, tint: tint, size: 40)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(2)
+                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Text(action).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(tint.gradient, in: Capsule())
+        }
+        .padding(14)
+        .loveGlass(in: RoundedRectangle(cornerRadius: LoveMetrics.tileRadius, style: .continuous), tint: tint.opacity(0.06))
+    }
+}

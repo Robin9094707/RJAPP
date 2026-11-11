@@ -64,6 +64,17 @@ final class AppState {
     private(set) var sendingPhotoRequest=false
     private(set) var recallingPhotoRequest=false
     var outgoingPhotoRequest:SharedRecord? {records.first{$0.kind == .photo_request && $0.ownerID==me?.id && $0.payload.completed != true}}
+    /// Incoming wishes that are still open, independent of the auto-camera setting.
+    var incomingPhotoRequests:[SharedRecord] {records.filter{$0.kind == .photo_request && $0.payload.targetID==me?.id && $0.payload.completed != true}}
+    private(set) var nudgingPhotoRequest=false
+    var dailyQuestion: DailyQuestionState?
+    var serverDay: String { serverLocalDay }
+    static let photoSkipInterval: TimeInterval = 3 * 3600
+    /// "Jetzt nicht" only pauses the automatic camera for a few hours; the wish stays visible on Home.
+    static func photoRequestSkipped(_ id: String) -> Bool {
+        guard let date = UserDefaults.standard.object(forKey: "rjlove.photo-skip." + id) as? Date else { return false }
+        return Date.now.timeIntervalSince(date) < photoSkipInterval
+    }
     var storageByUser: [String:Int] = [:]
     var thoughtHistory: [ThoughtEvent] = []
     var lastOpened: [String:String] = [:]
@@ -149,7 +160,7 @@ final class AppState {
         acceptQuickCaptureRequest()
         nearby.resumeForeground()
         Task{await refreshNearbySearch()}
-        if phase == .authenticated { try? await api.recordAppOpen() }
+        if phase == .authenticated { try? await api.recordAppOpen(); WalkieService.shared.attach(self); WalkieService.shared.start() }
         if health.sharingEnabled { await health.refresh(force:true); lastHealthRefresh = .now }
 
         if profile != nil {
@@ -192,6 +203,7 @@ final class AppState {
         HomeCameraSessions.shared.stopAll()
         if phase == .authenticated {Task {try? await api.reportActivity(mode:"inactive")}}
         location.enterBackground()
+        WalkieService.shared.stop()
         studio.finishRecording()
         if !EveningPlaylistService.shared.active {studio.stopPlayback()}
         nearby.enterBackground(api: api)
@@ -252,6 +264,8 @@ final class AppState {
         await CinemaCoordinator.shared.leave()
         CinemaCoordinator.shared.reset()
         EveningPlaylistService.shared.stop()
+        WalkieService.shared.reset()
+        dailyQuestion = nil
         nearby.stop(api: api)
         await liveActivity.stop(preservingPreference:true)
         await api.logout()
@@ -323,6 +337,9 @@ final class AppState {
             lastOpened = snapshot.lastOpened ?? [:]
             openedRecords = snapshot.openedRecords ?? []
             features = snapshot.features
+            if let question = snapshot.dailyQuestion { dailyQuestion = question }
+            WalkieService.shared.attach(self)
+            if UIApplication.shared.applicationState == .active { WalkieService.shared.refresh() }
             lastSync = .now
             connectionMessage = "Gerade synchronisiert"
             synchronizeGeofences()
@@ -580,7 +597,7 @@ final class AppState {
             pendingSweet = records.filter { $0.kind == .chat && $0.ownerID != me?.id && $0.payload.autoplay == true }.sorted { $0.createdAt < $1.createdAt }.first { record in !openedRecords.contains { $0.recordID == record.id && $0.userID == me?.id } && !defaults.bool(forKey:"rjlove.opened."+record.id) }
         }
         if pendingSweet == nil, defaults.object(forKey:"rjlove.instant-enabled") == nil || defaults.bool(forKey:"rjlove.instant-enabled") {
-            pendingPhotoRequest = records.first { $0.kind == .photo_request && $0.payload.targetID == me?.id && $0.payload.completed != true && !defaults.bool(forKey:"rjlove.photo-skip."+$0.id) }
+            pendingPhotoRequest = records.first { $0.kind == .photo_request && $0.payload.targetID == me?.id && $0.payload.completed != true && !Self.photoRequestSkipped($0.id) }
         }
         if pendingSweet==nil,pendingPhotoRequest==nil,selectedTab == .home,
            UserDefaults.standard.object(forKey:"rjlove.evening-auto") == nil || UserDefaults.standard.bool(forKey:"rjlove.evening-auto"),
@@ -622,6 +639,23 @@ final class AppState {
             return false
         }
     }
+    func nudgePhotoRequest(_ request:SharedRecord) async -> Bool {
+        guard !nudgingPhotoRequest,request.ownerID==me?.id else{return false}
+        nudgingPhotoRequest=true;defer{nudgingPhotoRequest=false}
+        do {
+            struct Nudge:Decodable{let nudgedAt:String;enum CodingKeys:String,CodingKey{case nudgedAt="nudged_at"}}
+            _ = try await api.execute(try api.request(path:"/v1/photo-requests/\(request.id)/nudge",method:"POST",body:Data("{}".utf8)),as:Nudge.self)
+            UserDefaults.standard.set(Date.now,forKey:"rjlove.photo-nudged."+request.id)
+            Haptics.success();return true
+        } catch {
+            _ = try? await refreshPhotoRequests()
+            alert=AppAlert(title:"Erinnern",message:error.localizedDescription);return false
+        }
+    }
+    func refreshDailyQuestion() async {
+        guard phase == .authenticated else { return }
+        if let state = try? await api.dailyQuestion(day: serverLocalDay) { dailyQuestion = state }
+    }
     func recallPhotoRequest(_ request:SharedRecord) async -> Bool {
         guard !recallingPhotoRequest,request.ownerID==me?.id else{return false}
         recallingPhotoRequest=true;defer{recallingPhotoRequest=false}
@@ -660,7 +694,11 @@ final class AppState {
         }
         location.onSharingChanged = { [weak self] in Task { @MainActor in self?.updateWidgetSnapshot();self?.queuePresenceUpload(force:true) } }
         location.onLocation = { [weak self] _ in
-            Task { @MainActor in self?.queuePresenceUpload();self?.updateWidgetSnapshot() }
+            Task { @MainActor in
+                // In the background the dedicated uploader sends a small, merged update immediately.
+                if UIApplication.shared.applicationState == .active { self?.queuePresenceUpload() }
+                self?.updateWidgetSnapshot()
+            }
         }
         location.onGeofenceEvent = { [weak self] id, name, event in
             Task { @MainActor in

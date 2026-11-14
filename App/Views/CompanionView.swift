@@ -17,6 +17,17 @@ struct CompanionView: View {
                 hero
                 if ai.signedIn { askField } else { AISignInPrompt() }
                 diaryToday
+                NavigationLink { GroupChatView() } label: {
+                    HStack(spacing: 14) {
+                        LoveIcon(symbol: "person.3.fill", tint: LovePalette.pink, size: 46)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Unser Gruppenchat").font(.headline).foregroundStyle(.primary)
+                            Text("Ihr zwei und ChatGPT · Sprachnachrichten werden mitgeschrieben").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                    }.loveCard()
+                }.buttonStyle(.lovePress)
                 LoveSectionTitle("Ideen auf Knopfdruck", subtitle: ai.signedIn ? "Ein Tipp öffnet den Chat mit eurem App-Wissen." : "Nach der ChatGPT-Anmeldung verfügbar.")
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                     idea("Liebesbrief", "heart.text.square.fill", LovePalette.pink, "Schreib mir einen kurzen, persönlichen Liebesbrief an \(partnerName), mit Bezug auf etwas, das wir zuletzt erlebt haben.")
@@ -155,7 +166,7 @@ struct CompanionHomeCard: View {
             HStack(spacing: 10) {
                 Button { writing = DiaryEditorRoute(day: today, visibility: .shared) } label: { Label("Schreiben", systemImage: "pencil").frame(maxWidth: .infinity) }
                 NavigationLink { DiaryView() } label: { Label("Tagebuch", systemImage: "book.pages").frame(maxWidth: .infinity) }
-                NavigationLink { AIChatEntryView() } label: { Label("Chat", systemImage: "bubble.left.and.text.bubble.right").frame(maxWidth: .infinity) }
+                NavigationLink { GroupChatView() } label: { Label("Gruppe", systemImage: "person.3").frame(maxWidth: .infinity) }
             }.font(.caption.bold()).buttonStyle(.bordered).tint(LovePalette.violet)
         }
         .loveCard()

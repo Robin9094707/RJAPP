@@ -65,6 +65,7 @@ struct QuickActionDestination:View {
     case .diary:DiaryView()
     case .aiChat:AIChatEntryView()
     case .companion:CompanionView()
+    case .groupChat:GroupChatView()
     case .status:StatusEditorView()
     case .partner:PartnerProfileView()
     case .profile:SettingsView()

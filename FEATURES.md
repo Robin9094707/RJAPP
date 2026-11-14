@@ -32,6 +32,8 @@ Recorder mit fester Aufnahme-/Sendeaktion, Schnitt vor und nach dem Teilen und 4
 ### Neu in 3.7
 - Abendplayer für das vollständige Serverarchiv: Duftaufnahmen und Moment-Videos, eigene/Partner-/gemischte Auswahl, Shuffle, Warteschlange, Einschlaftimer, Hintergrund-Audio und Sperrbildschirm-Steuerung.
 - Bis zu zwölf kleine persönliche Schnellzugriffe mit eigenen Namen und Reihenfolge direkt oben auf der Startseite.
+- Tagebuch 2.0 (9.0): Rückfragen als Buttons beim Schreiben, automatische Stimmung/Themen/Titel, Kontext (Ort, Zeit, Schritte, Momente), Sprach-Tagebuch mit Live-Transkription, Vorlagen, Einblicke mit Stimmungsverlauf, „Frag dein Tagebuch“, Face-ID-Schutz für private Seiten.
+- Gruppenchat mit ChatGPT (9.0): ihr zwei plus KI, live mitgeschriebene Sprachnachrichten, @KI, Herz-Knöpfe; Internetsuche mit Quellen im KI-Chat.
 - Unser Tagebuch (8.0): gemeinsame Tagesseite für beide, eigene Seiten, private Seiten nur auf dem iPhone, Stimmung, Abendfrage, Suche, Serie und Rückblicke.
 - Mit ChatGPT anmelden (8.0, optional): KI-Chat mit App-Wissen und Modellwahl, Tagebuch-Schreibhilfe und Ideen über das eigene ChatGPT-Abo, gegenseitige Freigabe. Einrichtung: RELEASE-8.0.0.md.
 - Optionaler KI-Tagesrückblick aus Momenttexten: OpenAI-Schlüssel nur am Server, beiderseitige Freigabe, formatierte Karten, Quellen-Verweise, Cache und gemeinsames Tageslimit. Einrichtung: RELEASE-3.7.md.

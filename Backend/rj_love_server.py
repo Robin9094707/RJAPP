@@ -53,16 +53,16 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "8.0.0"
+APP_VERSION = "9.0.0"
 # Apps older than this receive HTTP 426 and show their built-in "Zeit für die neue App" view.
-MINIMUM_APP_VERSION = "8.0.0"
+MINIMUM_APP_VERSION = "9.0.0"
 PHOTO_REQUEST_TTL_HOURS = 12
 PHOTO_REQUEST_NUDGE_MINUTES = 30
 WALKIE_MAX_SECONDS = 120
 WALKIE_WAIT_SECONDS = 25
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
-ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop", "diary"}
+ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop", "diary", "group"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
 
 
@@ -121,7 +121,7 @@ def compatibility_info() -> dict[str, Any]:
             "update_url": "https://github.com/Robin9094707/RJAPP/actions"}
 
 
-QUICK_ACTIONS={"wake","home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap","walkie","question","diary","aiChat","companion"}
+QUICK_ACTIONS={"wake","home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap","walkie","question","diary","aiChat","companion","groupChat"}
 
 def default_shortcuts():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/shortcut/"+action)),"action":action,"title":title} for action,title in [("moments","Momente"),("captureMoment","Aufnehmen"),("playlist","Unser Abend"),("instant","BeReal"),("status","Mein Status"),("journal","Unser Tag")]]
@@ -1112,7 +1112,7 @@ class NotificationHub:
             return "sent" if self.send_ntfy(user_id, event, settings) else "failed"
         if not self.bark.enabled:
             return "failed"
-        category = "alarm" if alarm else ("chat" if "chat" in event["kind"] or "walkie" in event["kind"] or "daily" in event["kind"] or "comment" in event["kind"] else "poop" if "poop" in event["kind"] else "fart" if "fart" in event["kind"] else "photo" if "moment" in event["kind"] or "photo" in event["kind"] or "instant" in event["kind"] else "heart")
+        category = "alarm" if alarm else ("chat" if "chat" in event["kind"] or "group" in event["kind"] or "walkie" in event["kind"] or "daily" in event["kind"] or "comment" in event["kind"] else "poop" if "poop" in event["kind"] else "fart" if "fart" in event["kind"] else "photo" if "moment" in event["kind"] or "photo" in event["kind"] or "instant" in event["kind"] else "heart")
         params = {"title": event["title"], "group": "RJ Love · " + category, "icon": self.public_url() + "/push-icons/" + category + ".png", "isArchive": "1",
                   "level": "passive" if quiet["active"] else ("critical" if alarm and settings["allow_critical"] else "timeSensitive" if event.get("payload", {}).get("notification_priority") == "urgent" else "active"),
                   "sound": settings["sound"] if alarm else "bell" if event.get("payload", {}).get("notification_priority")=="urgent" else "minuet", "volume": str(settings["volume"])}
@@ -1260,6 +1260,7 @@ class RJLoveApplication:
         self.config = config
         self.config_path = config_path
         self.walkie_condition = threading.Condition()
+        self.group_condition = threading.Condition()
         self.walkie_lock = threading.Lock()
         self.credentials_lock = threading.RLock()
         self.ai_lock = threading.Lock()
@@ -1629,7 +1630,8 @@ class RJLoveApplication:
             "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id", "notification_priority"}, "wish": {"title", "text", "completed"},
             "ritual": {"title","text","message","notes","day","start_at"},
             "poop": {"title","text","location","latitude","longitude","captured_at","duration","rating","emoji"},
-            "diary": {"title","text","message","notes","day","emoji","entry_type","ai_assisted"},
+            "diary": {"title","text","message","notes","day","emoji","entry_type","ai_assisted","location","latitude","longitude","tags","template","context"},
+            "group": {"text","asset_ids","media_kind","audio_seconds","ai","model","reference_id","requested_by","sources"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
             "milestone": {"countdown_type", "title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
             "album": {"title", "text"}, "instant": {"latitude", "longitude", "caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
@@ -1684,6 +1686,18 @@ class RJLoveApplication:
                 if day.isoformat()!=clean["day"]:raise ValueError()
             except (ValueError,TypeError):raise APIError(400,"invalid_diary_day","Tag des Tagebucheintrags ungültig.")
             if not clean.get("text") and not clean.get("notes"):raise APIError(400,"empty_diary","Ein Tagebucheintrag braucht ein paar Worte.")
+            text_field("location",160);text_field("tags",300);text_field("template",40);text_field("context",1_500)
+
+        if kind == "group":
+            text_field("text",8_000);text_field("model",80);text_field("requested_by",64);text_field("sources",4_000)
+            boolean_field("ai")
+            if not clean.get("text") and not clean.get("asset_ids"):raise APIError(400,"empty_group","Eine Nachricht braucht Text oder eine Sprachaufnahme.")
+            if "media_kind" in clean and clean["media_kind"]!="audio":raise APIError(400,"invalid_media","Im Gruppenchat sind Sprachnachrichten erlaubt.")
+            if "audio_seconds" in clean:
+                value=clean["audio_seconds"]
+                if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<=value<=600:raise APIError(400,"invalid_duration","Sprachnachricht zu lang (höchstens 10 Minuten).")
+                clean["audio_seconds"]=float(value)
+            if clean.get("requested_by") and self.user_by_id(clean["requested_by"]) is None:raise APIError(400,"invalid_requester","Unbekannte Person.")
 
         if kind == "ritual":
             text_field("title",120,required=True)
@@ -1819,7 +1833,7 @@ class RJLoveApplication:
             if start is None or end is None or end < start:
                 raise APIError(HTTPStatus.BAD_REQUEST, "invalid_calendar_range", "Der Terminzeitraum ist ungültig.")
 
-        if kind in {"moment","instant","poop"} and ("latitude" in clean or "longitude" in clean):
+        if kind in {"moment","instant","poop","diary"} and ("latitude" in clean or "longitude" in clean):
             for key,limit in (("latitude",90),("longitude",180)):
                 value=clean.get(key)
                 if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not -limit<=value<=limit:
@@ -2157,7 +2171,7 @@ class RJLoveApplication:
             db.execute("INSERT INTO ai_sharing VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at",(user_id,int(body["enabled"]),iso_now()))
         return self.ai_status(user_id)
 
-    AI_CONTEXT_KINDS=("moment","instant","diary","note","wish","gratitude","checkin","chat","ritual","milestone","calendar","reminder","coupon","poop")
+    AI_CONTEXT_KINDS=("moment","instant","diary","note","wish","gratitude","checkin","chat","group","ritual","milestone","calendar","reminder","coupon","poop")
 
     def ai_context(self,user_id,query):
         """Compact, text-only digest for the user's own ChatGPT companion on the phone.
@@ -2191,7 +2205,8 @@ class RJLoveApplication:
                 limit=900 if kind=="diary" else 500
                 text=" · ".join(x for x in (clip(p.get("text"),limit),clip(p.get("message"),200),clip(p.get("caption"),400),clip(p.get("notes"),600 if kind=="diary" else 200)) if x)
                 entry={"id":row["id"],"kind":kind,"author":names.get(row["owner_id"],"?"),"at":row["at"],"title":clip(p.get("title"),120),"text":text}
-                if kind=="diary":entry.update({"day":p.get("day"),"mood":clip(p.get("emoji"),8),"together":p.get("entry_type")=="together"})
+                if kind=="diary":entry.update({"day":p.get("day"),"mood":clip(p.get("emoji"),8),"together":p.get("entry_type")=="together","place":clip(p.get("location"),80),"tags":clip(p.get("tags"),120)})
+                if kind=="group" and p.get("ai"):entry["author"]="ChatGPT (für "+names.get(row["owner_id"],"?")+")"
                 if kind=="poop":entry.update({"text":"","rating":p.get("rating")})
                 if kind in {"moment","instant"}:entry["media"]=p.get("media_kind") or "photo"
                 if kind in {"wish","coupon"}:entry["done"]=bool(p.get("completed"))
@@ -2454,7 +2469,7 @@ class RJLoveApplication:
             record_rows = db.execute(
                 "SELECT id,kind,owner_id,payload,created_at,updated_at FROM records "
                 "WHERE id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind='chat' ORDER BY created_at DESC LIMIT 200) "
-                "OR id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind<>'chat' ORDER BY updated_at DESC LIMIT 500) OR (deleted_at IS NULL AND kind IN ('calendar','milestone','reminder')) OR (deleted_at IS NULL AND kind='photo_request' AND COALESCE(json_extract(payload,'$.completed'),0)=0) "
+                "OR id IN (SELECT id FROM records WHERE deleted_at IS NULL AND kind NOT IN ('chat','group') ORDER BY updated_at DESC LIMIT 500) OR (deleted_at IS NULL AND kind IN ('calendar','milestone','reminder')) OR (deleted_at IS NULL AND kind='photo_request' AND COALESCE(json_extract(payload,'$.completed'),0)=0) "
                 "ORDER BY updated_at DESC"
             ).fetchall()
             command_rows = db.execute(
@@ -3669,6 +3684,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/walkie":
                 self._walkie_list(self.current_user(), query);return
+            if path == "/v1/group":
+                self._group_list(self.current_user(), query);return
             if path == "/v1/daily-question":
                 user_id=self.current_user()
                 day=query.get("day",[self.app.local_day()])[0]
@@ -4016,7 +4033,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 raise APIError(400,"invalid_day","Bitte einen gültigen Kalendertag auswählen.")
             offset=self._page_number(query,"offset",0,10000000)
             stamp="CASE WHEN kind IN ('moment','instant','poop') THEN COALESCE(json_extract(payload,'$.captured_at'),created_at) WHEN kind='ritual' THEN json_extract(payload,'$.start_at') ELSE created_at END"
-            where=f"deleted_at IS NULL AND kind NOT IN ('geofence','album','photo_request') AND julianday({stamp})>=julianday(?) AND julianday({stamp})<julianday(?)"
+            where=f"deleted_at IS NULL AND kind NOT IN ('geofence','album','photo_request','group') AND julianday({stamp})>=julianday(?) AND julianday({stamp})<julianday(?)"
             bounds=(start.isoformat(),end.isoformat())
             with self.app.database.connect() as db:
                 rows=db.execute(f"SELECT * FROM records WHERE {where} ORDER BY {stamp},id LIMIT 201 OFFSET ?",(*bounds,offset)).fetchall()
@@ -4390,6 +4407,33 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         with self.app.walkie_condition:self.app.walkie_condition.notify_all()
         self.send_empty()
 
+    def _group_list(self,user_id,query):
+        """Group chat (both partners + ChatGPT answers). Long poll like the walkie-talkie."""
+        after=query.get("after",[None])[0]
+        if after is not None and parse_iso(after) is None:raise APIError(400,"invalid_after","Zeitpunkt ungültig.")
+        try:wait=min(WALKIE_WAIT_SECONDS,max(0,int(query.get("wait",["0"])[0])))
+        except (TypeError,ValueError):wait=0
+        before=query.get("before",[None])[0]
+        try:limit=min(200,max(1,int(query.get("limit",["80"])[0])))
+        except (TypeError,ValueError):limit=80
+        deadline=time.monotonic()+wait
+        def snapshot():
+            stamp=iso_now()
+            with self.app.database.connect() as db:
+                if after:
+                    rows=db.execute("SELECT * FROM records WHERE kind='group' AND julianday(updated_at)>julianday(?) ORDER BY created_at LIMIT 400",(after,)).fetchall()
+                elif before and parse_iso(before):
+                    rows=list(reversed(db.execute("SELECT * FROM records WHERE kind='group' AND deleted_at IS NULL AND julianday(created_at)<julianday(?) ORDER BY created_at DESC LIMIT ?",(before,limit)).fetchall()))
+                else:
+                    rows=list(reversed(db.execute("SELECT * FROM records WHERE kind='group' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?",(limit,)).fetchall()))
+            return rows,stamp
+        rows,stamp=snapshot()
+        while after and not rows and time.monotonic()<deadline:
+            with self.app.group_condition:self.app.group_condition.wait(timeout=max(0.1,min(5,deadline-time.monotonic())))
+            rows,stamp=snapshot()
+        messages=[{"id":row["id"],"deleted":True} if row["deleted_at"] else self._record_dict(row) for row in rows]
+        self.send_json(200,{"messages":messages,"server_time":stamp})
+
     def _walkie_list(self,user_id,query):
         after=query.get("after",[None])[0]
         if after is not None and parse_iso(after) is None:raise APIError(400,"invalid_after","Zeitpunkt ungültig.")
@@ -4743,7 +4787,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                     raise APIError(403,"not_owner","Nur der Fotowunsch darf beantwortet werden.")
             if old and kind=="diary" and owner_id!=user_id and (prior_payload.get("entry_type")!="together" or payload.get("entry_type")!="together"):
                 raise APIError(403,"diary_owner","Persönliche Tagebuchseiten kann nur ihr Autor ändern.")
-            if old and kind in {"chat", "checkin", "gratitude", "instant", "poop"} and owner_id != user_id:
+            if old and kind in {"chat", "checkin", "gratitude", "instant", "poop", "group"} and owner_id != user_id:
                 raise APIError(403, "not_owner", "Du kannst fremde Nachrichten oder Gefühle nicht ändern.")
             if kind == "coupon":
                 if old and owner_id != user_id:
@@ -4783,11 +4827,16 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "ritual": ("Ein Abendmoment für uns ✨", "hat euer Abendritual ergänzt."),
             "poop": ("Drop-Poop · Nur für euch 💩", "hat ein stilles Örtchen verewigt."),
             "diary": ("Unser Tagebuch 📖", "hat eine Tagebuchseite geschrieben."),
+            "group": ("Unser Gruppenchat 💬", "hat im Gruppenchat geschrieben."),
             "gratitude": ("Das mag ich an dir 💗", "hat dir liebe Worte dagelassen."),
             "photo_request": ("Ein Foto nur für dich 📷", "wünscht sich ein Foto von dir."),
         }
         title, phrase = labels.get(kind,("Ein Moment für uns","hat etwas Neues für dich geteilt."))
         content = "\n".join(str(payload[k]) for k in (("title",) if kind=="diary" else ("title", "text", "message", "caption", "notes", "location")) if isinstance(payload.get(k), str) and payload[k])
+        if kind == "group":
+            title = "ChatGPT im Gruppenchat ✨" if payload.get("ai") else f"{sender['display_name']} im Gruppenchat 💬"
+            content = (payload.get("text") or ("🎙️ Sprachnachricht" if payload.get("asset_ids") else ""))[:300]
+            with self.app.group_condition:self.app.group_condition.notify_all()
         if kind == "chat":
             title = (f"Dringende Nachricht von {sender['display_name']} ❗" if payload.get("notification_priority") == "urgent" else f"{sender['display_name']} hat dir geschrieben 💌")
         preview = f"{sender['display_name']} {phrase}" + ("\n" + content if content else "")
@@ -4806,10 +4855,16 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             row = db.execute("SELECT kind,owner_id FROM records WHERE id=? AND deleted_at IS NULL", (record_id,)).fetchone()
             if row is None:
                 raise APIError(HTTPStatus.NOT_FOUND, "record_not_found", "Der Eintrag wurde nicht gefunden.")
-            if row["kind"] in {"chat","instant","ritual","poop"} and row["owner_id"]!=user_id:
+            if row["kind"] in {"chat","instant","ritual","poop","group"} and row["owner_id"]!=user_id:
                 raise APIError(403,"not_owner","Nur eigene Nachrichten und Sofortfotos können zurückgerufen werden.")
+            if row["kind"]=="diary" and row["owner_id"]!=user_id:
+                prior=db.execute("SELECT json_extract(payload,'$.entry_type') t FROM records WHERE id=?",(record_id,)).fetchone()
+                if not prior or prior["t"]!="together":raise APIError(403,"diary_owner","Persönliche Tagebuchseiten kann nur ihr Autor löschen.")
             db.execute("UPDATE records SET deleted_at=?,updated_at=? WHERE id=?", (now, now, record_id))
             if row["kind"] in {"moment","instant"}:db.execute("DELETE FROM ai_summaries")
+        if row["kind"]=="group":
+            with self.app.group_condition:self.app.group_condition.notify_all()
+            self.send_empty();return
         sender = self.app.user_by_id(user_id) or {"display_name": "Schatzi"}
         self.app.broadcast_event(
             user_id, "record_deleted", "Gemeinsamer Eintrag gelöscht",

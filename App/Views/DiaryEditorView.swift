@@ -8,9 +8,12 @@ struct DiaryEditorRoute: Identifiable {
     var prompt: String?
     var seed: String?
     var autoCompose = false
+    var template: DiaryTemplate?
+    var startVoice = false
 
-    init(day: String, visibility: DiaryVisibility, prompt: String? = nil, seed: String? = nil, autoCompose: Bool = false) {
+    init(day: String, visibility: DiaryVisibility, prompt: String? = nil, seed: String? = nil, autoCompose: Bool = false, template: DiaryTemplate? = nil, startVoice: Bool = false) {
         self.day = day; self.visibility = visibility; self.prompt = prompt; self.seed = seed; self.autoCompose = autoCompose
+        self.template = template; self.startVoice = startVoice
     }
     init(page: DiaryPage) {
         day = page.day; visibility = page.visibility; self.page = page
@@ -58,6 +61,23 @@ struct DiaryEditorView: View {
     @State private var error: String?
     @State private var autoCompose: Bool
     @State private var confirmDiscard = false
+    // Tagebuch 2.0
+    @State private var tags: [String]
+    @State private var newTag = ""
+    @State private var place: String
+    @State private var latitude: Double?
+    @State private var longitude: Double?
+    @State private var contextSummary: String
+    @State private var template: DiaryTemplate
+    @State private var followUps: [String] = []
+    @State private var askingQuestions = false
+    @State private var questionedLength = 0
+    @State private var suggestion = DiaryAI.Analysis()
+    @State private var analyzedLength = 0
+    @State private var transcriber = LiveTranscriber()
+    @State private var dictationBase = ""
+    @State private var startVoice: Bool
+    @AppStorage("rjlove.diary.capture-location") private var captureLocation = true
     @FocusState private var writing: Bool
     private let original: DiaryPage?
 
@@ -72,13 +92,22 @@ struct DiaryEditorView: View {
         _prompt = State(initialValue: route.page?.prompt ?? route.prompt ?? "")
         _aiAssisted = State(initialValue: route.page?.aiAssisted ?? (route.seed != nil))
         _autoCompose = State(initialValue: route.autoCompose)
+        _tags = State(initialValue: route.page?.tags ?? [])
+        _place = State(initialValue: route.page?.location ?? "")
+        _latitude = State(initialValue: route.page?.latitude)
+        _longitude = State(initialValue: route.page?.longitude)
+        _contextSummary = State(initialValue: route.page?.context ?? "")
+        let template = route.template ?? DiaryTemplate(rawValue: route.page?.template ?? "") ?? .free
+        _template = State(initialValue: template)
+        _startVoice = State(initialValue: route.startVoice)
+        if route.page == nil, route.prompt == nil, !template.opening.isEmpty { _prompt = State(initialValue: template.opening) }
     }
     init(day: String, seed: String) { self.init(route: DiaryEditorRoute(day: day, visibility: .shared, seed: seed)) }
 
     private var dayKey: String { DiaryDay.key(date) }
     private var changed: Bool {
         guard let original else { return !text.isEmpty || !title.isEmpty }
-        return original.text != text || original.title != title || original.mood != mood || original.notes != notes || original.day != dayKey
+        return original.text != text || original.title != title || original.mood != mood || original.notes != notes || original.day != dayKey || original.tags != tags || original.location != place
     }
     private var tooLong: Bool { text.count > 20_000 || title.count > 120 || notes.count > 6_000 }
 
@@ -87,6 +116,8 @@ struct DiaryEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
+                    contextCard
+                    if mood.isEmpty, let suggested = suggestion.mood { moodSuggestion(suggested) }
                     moodPicker
                     VStack(alignment: .leading, spacing: 12) {
                         TextField("Überschrift (optional)", text: $title).font(.system(.title2, design: .serif).weight(.medium))
@@ -104,12 +135,24 @@ struct DiaryEditorView: View {
                             TextEditor(text: $text).font(.system(.body, design: .serif)).lineSpacing(5).frame(minHeight: 240).scrollContentBackground(.hidden).focused($writing)
                                 .disabled(working != nil)
                         }
-                        HStack {
-                            Text("\(text.split { $0.isWhitespace || $0.isNewline }.count) Wörter").font(.caption2).foregroundStyle(.secondary)
+                        if transcriber.isRunning { dictationBar }
+                        HStack(spacing: 10) {
+                            Button { Task { await toggleDictation() } } label: {
+                                Label(transcriber.isRunning ? "Fertig" : "Sprechen", systemImage: transcriber.isRunning ? "stop.circle.fill" : "mic.fill").font(.caption.weight(.semibold))
+                            }.buttonStyle(.bordered).tint(transcriber.isRunning ? .red : LovePalette.pink).disabled(working != nil)
+                            if ai.signedIn {
+                                Button { Task { await loadQuestions(force: true) } } label: {
+                                    HStack(spacing: 4) { if askingQuestions { ProgressView().controlSize(.mini) }; Label("Frag mich", systemImage: "questionmark.bubble") }.font(.caption.weight(.semibold))
+                                }.buttonStyle(.bordered).tint(LovePalette.violet).disabled(askingQuestions || working != nil)
+                            }
                             Spacer()
+                            Text("\(text.split { $0.isWhitespace || $0.isNewline }.count) Wörter").font(.caption2).foregroundStyle(.secondary)
                             if let undoText, working == nil { Button("KI rückgängig", systemImage: "arrow.uturn.backward") { text = undoText; self.undoText = nil }.font(.caption) }
                         }
+                        if let error = transcriber.error { Text(error).font(.caption).foregroundStyle(.orange) }
                     }.loveCard()
+                    if !followUps.isEmpty { questionCards }
+                    tagEditor
                     aiTools
                     if !notes.isEmpty || working == .reflect {
                         VStack(alignment: .leading, spacing: 8) {
@@ -138,9 +181,18 @@ struct DiaryEditorView: View {
                 Button("Weiter schreiben", role: .cancel) {}
             }
             .task {
-                if autoCompose { autoCompose = false; await run(.compose) }
+                if original == nil { await captureContext() }
+                if followUps.isEmpty, original == nil { followUps = template.followUps }
+                if startVoice { startVoice = false; await toggleDictation() }
+                else if autoCompose { autoCompose = false; await run(.compose) }
                 else if original == nil && text.isEmpty { writing = true }
             }
+            .task(id: text.count / 40) { await liveAssist() }
+            .onChange(of: transcriber.transcript) { _, value in if transcriber.isRunning { text = Self.joined(dictationBase, value) } }
+            .onChange(of: template) { _, value in
+                if original == nil, text.isEmpty { prompt = value.opening; followUps = value.followUps }
+            }
+            .onDisappear { if transcriber.isRunning { transcriber.cancel() } }
         }
         .interactiveDismissDisabled(changed || saving || working != nil)
     }
@@ -156,7 +208,181 @@ struct DiaryEditorView: View {
                 Label(visibility.title, systemImage: visibility.symbol).font(.subheadline.weight(.semibold))
             }
             Text(visibility.explanation).font(.caption).foregroundStyle(.secondary)
+            if original == nil {
+                Menu {
+                    Picker("Vorlage", selection: $template) {
+                        ForEach(DiaryTemplate.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
+                    }
+                } label: {
+                    Label("Vorlage: " + template.title, systemImage: template.symbol).font(.subheadline.weight(.semibold))
+                }.tint(LovePalette.violet)
+            }
         }.loveCard()
+    }
+
+    // MARK: Tagebuch 2.0 pieces
+
+    private var contextCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Kontext dieses Eintrags", systemImage: "info.circle.fill").font(.caption.bold()).foregroundStyle(LovePalette.cyan)
+                Spacer()
+                Button { Task { await captureContext(force: true) } } label: { Image(systemName: "arrow.clockwise") }.font(.caption).accessibilityLabel("Kontext aktualisieren")
+            }
+            if !place.isEmpty {
+                HStack {
+                    Label(place, systemImage: "mappin.and.ellipse").font(.subheadline)
+                    Spacer()
+                    Button { place = ""; latitude = nil; longitude = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }.accessibilityLabel("Ort entfernen")
+                }
+            }
+            if !contextSummary.isEmpty { Text(contextSummary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+            if place.isEmpty && contextSummary.isEmpty { Text("Für diesen Tag ist noch nichts bekannt.").font(.caption).foregroundStyle(.secondary) }
+            Toggle("Ort automatisch hinzufügen", isOn: $captureLocation).font(.caption).tint(LovePalette.cyan)
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(LovePalette.cyan.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func moodSuggestion(_ emoji: String) -> some View {
+        HStack(spacing: 12) {
+            Text(emoji).font(.title)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Klingt nach: " + DiaryMood.title(emoji)).font(.subheadline.weight(.semibold))
+                Text(suggestion.tags.isEmpty ? "Vorschlag aus deinem Text" : "Themen: " + suggestion.tags.map { "#" + $0 }.joined(separator: " ")).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Übernehmen") { applySuggestion() }.buttonStyle(.borderedProminent).tint(LovePalette.violet).font(.caption.bold())
+        }.padding(12).background(LovePalette.violet.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var questionCards: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Schreib weiter …", systemImage: "bubble.left.and.text.bubble.right.fill").font(.caption.bold()).foregroundStyle(LovePalette.violet)
+                Spacer()
+                Button { followUps = [] } label: { Image(systemName: "xmark") }.font(.caption).foregroundStyle(.secondary).accessibilityLabel("Fragen ausblenden")
+            }
+            ForEach(followUps, id: \.self) { question in
+                Button { answer(question) } label: {
+                    HStack {
+                        Text(question).font(.system(.subheadline, design: .serif)).multilineTextAlignment(.leading)
+                        Spacer(minLength: 4)
+                        Image(systemName: "arrow.turn.down.left").font(.caption).foregroundStyle(LovePalette.violet)
+                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(LoveSurface.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(LovePalette.violet.opacity(0.18), lineWidth: 0.7) }
+                }.buttonStyle(.lovePress).foregroundStyle(.primary)
+            }
+        }
+    }
+
+    private var tagEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Themen", systemImage: "number").font(.caption.bold()).foregroundStyle(.secondary)
+            FlowLayout(spacing: 6) {
+                ForEach(tags, id: \.self) { tag in
+                    Button { tags.removeAll { $0 == tag } } label: {
+                        HStack(spacing: 4) { Text("#" + tag); Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                            .font(.caption.weight(.semibold)).padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(LovePalette.violet.opacity(0.14), in: Capsule())
+                    }.buttonStyle(.plain).foregroundStyle(LovePalette.violet)
+                }
+                ForEach(suggestion.tags.filter { !tags.contains($0) }, id: \.self) { tag in
+                    Button { tags.append(tag) } label: {
+                        Text("+ #" + tag).font(.caption).padding(.horizontal, 10).padding(.vertical, 6)
+                            .overlay { Capsule().strokeBorder(LovePalette.violet.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3])) }
+                    }.buttonStyle(.plain).foregroundStyle(LovePalette.violet)
+                }
+            }
+            HStack {
+                TextField("Thema hinzufügen", text: $newTag).font(.subheadline).textInputAutocapitalization(.never).onSubmit(addTag)
+                Button("Hinzufügen", action: addTag).font(.caption).disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty || tags.count >= 10)
+            }
+        }.loveCard()
+    }
+
+    private var dictationBar: some View {
+        HStack(spacing: 10) {
+            Circle().fill(.red).frame(width: 9, height: 9).scaleEffect(1 + transcriber.level).animation(.linear(duration: 0.1), value: transcriber.level)
+            Text(String(format: "%d:%02d", Int(transcriber.elapsed) / 60, Int(transcriber.elapsed) % 60)).font(.caption.monospacedDigit())
+            Text("Ich schreibe mit, was du sagst …").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button("Verwerfen", role: .destructive) { transcriber.cancel(); text = dictationBase }.font(.caption)
+        }.padding(10).background(Color.red.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func addTag() {
+        let value = newTag.trimmingCharacters(in: CharacterSet(charactersIn: "# ")).lowercased()
+        guard !value.isEmpty, !tags.contains(value), tags.count < 10 else { return }
+        tags.append(String(value.prefix(30))); newTag = ""
+    }
+
+    private func answer(_ question: String) {
+        followUps.removeAll { $0 == question }
+        let spacer = text.isEmpty || text.hasSuffix("\n") ? "" : "\n\n"
+        text += spacer + question + "\n"
+        writing = true
+        Haptics.selection()
+    }
+
+    private func applySuggestion() {
+        if let value = suggestion.mood { mood = value }
+        for tag in suggestion.tags where !tags.contains(tag) && tags.count < 10 { tags.append(tag) }
+        if title.isEmpty, let value = suggestion.title { title = value }
+        Haptics.success()
+    }
+
+    private func captureContext(force: Bool = false) async {
+        guard force || (contextSummary.isEmpty && place.isEmpty) else { return }
+        let snapshot = await DiaryContextCapture.capture(app: app, day: dayKey, includeLocation: captureLocation)
+        contextSummary = snapshot.summary
+        if !snapshot.place.isEmpty || force { place = snapshot.place; latitude = snapshot.latitude; longitude = snapshot.longitude }
+    }
+
+    private func toggleDictation() async {
+        if transcriber.isRunning {
+            let result = await transcriber.stop()
+            text = Self.joined(dictationBase, result.text)
+            return
+        }
+        dictationBase = text
+        writing = false
+        await transcriber.start(record: false)
+    }
+
+    private static func joined(_ base: String, _ addition: String) -> String {
+        guard !addition.isEmpty else { return base }
+        if base.isEmpty { return addition }
+        return base + (base.hasSuffix("\n") || base.hasSuffix(" ") ? "" : " ") + addition
+    }
+
+    /// Live help while writing: local mood guess at once, ChatGPT questions and suggestions after a pause.
+    private func liveAssist() async {
+        if mood.isEmpty, suggestion.mood == nil, let guess = DiaryMood.guess(text) { suggestion.mood = guess }
+        guard ai.signedIn, working == nil, !transcriber.isRunning else { return }
+        try? await Task.sleep(for: .seconds(3))
+        guard !Task.isCancelled else { return }
+        if ai.diaryAutoMood, text.count >= 80, text.count - analyzedLength >= 250 || (analyzedLength == 0 && text.count >= 80) {
+            analyzedLength = text.count
+            if let result = try? await DiaryAI.analyze(text: text, app: app) {
+                if result.mood != nil { suggestion.mood = result.mood }
+                suggestion.tags = result.tags
+                suggestion.title = result.title
+            }
+        }
+        if ai.diaryLiveQuestions { await loadQuestions(force: false) }
+    }
+
+    private func loadQuestions(force: Bool) async {
+        guard ai.signedIn, !askingQuestions else { return }
+        guard force || (text.count >= 140 && text.count - questionedLength >= 280) else { return }
+        askingQuestions = true
+        defer { askingQuestions = false }
+        questionedLength = text.count
+        if let questions = try? await DiaryAI.followUps(text: text.isEmpty ? prompt : text, template: template, visibility: visibility, app: app), !questions.isEmpty {
+            followUps = questions
+            Haptics.selection()
+        }
     }
 
     private var moodPicker: some View {
@@ -269,13 +495,21 @@ struct DiaryEditorView: View {
     private func save() async {
         saving = true
         defer { saving = false }
+        if transcriber.isRunning { await toggleDictation() }
+        // Mood is filled in automatically when you did not pick one yourself.
+        if mood.isEmpty, let suggested = suggestion.mood ?? DiaryMood.guess(text) { mood = suggested }
+        if tags.isEmpty { tags = suggestion.tags }
+        if title.isEmpty, let suggested = suggestion.title { title = suggested }
         var page = original ?? DiaryPage(entry: PrivateDiaryEntry(day: dayKey, title: title, text: text))
         page = DiaryPage(copying: page, day: dayKey, title: title, text: text, mood: mood, notes: notes, prompt: prompt, aiAssisted: aiAssisted)
+        page.tags = tags; page.location = place; page.latitude = latitude; page.longitude = longitude
+        page.context = contextSummary; page.template = template == .free ? "" : template.rawValue
         var existingID = original?.record?.id
         if original == nil, visibility == .together, let current = app.togetherPage(on: dayKey) {
             // Someone else started the shared page meanwhile: continue it instead of creating a second one.
             let other = DiaryPage(record: current)
             page = DiaryPage(copying: page, day: dayKey, title: title.isEmpty ? other.title : title, text: other.text + "\n\n" + text, mood: mood, notes: notes, prompt: prompt, aiAssisted: aiAssisted || other.aiAssisted)
+            page.tags = Array(Set(tags + other.tags)).sorted()
             existingID = current.id
         }
         if await app.saveDiary(page, visibility: visibility, existingID: existingID) { dismiss() }

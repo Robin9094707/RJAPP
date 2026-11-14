@@ -106,9 +106,9 @@ class Server60Tests(unittest.TestCase):
             source = json.load(response)
         self.assertEqual(source['apps'][0]['versions'][0]['version'], server.APP_VERSION)
         # A newer build supersedes it; the server-owned asset survives cleanup and costs no user quota.
-        newer = fake_ipa('8.0.1', '801')
+        newer = fake_ipa('9.0.1', '901')
         (folder / 'RJ-Love-unsigned.ipa').write_bytes(newer)
-        self.assertEqual(self.app.import_bundled_releases(), '8.0.1')
+        self.assertEqual(self.app.import_bundled_releases(), '9.0.1')
         self.app.cleanup_assets()
         with self.raw('/v1/app-release/ipa', who=0) as response:
             self.assertEqual(response.read(), newer)

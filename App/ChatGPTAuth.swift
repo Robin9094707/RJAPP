@@ -48,6 +48,12 @@ enum AIRequestError: LocalizedError, Equatable {
         if code.contains("model") || param == "model" { return true }
         return (status == 400 || status == 404) && message.lowercased().contains("model")
     }
+    /// The plan (or model) rejected the web search tool.
+    var isToolError: Bool {
+        guard case .http(let status, let message, let code, let param) = self, status == 400 || status == 403 else { return false }
+        let text = message.lowercased()
+        return param.hasPrefix("tools") || code.contains("unsupported_capability") || code.contains("tool") || text.contains("web_search") || text.contains("tool")
+    }
     var isReasoningError: Bool {
         guard case .http(let status, let message, _, let param) = self else { return false }
         return status == 400 && (param.hasPrefix("reasoning") || message.lowercased().contains("reasoning"))

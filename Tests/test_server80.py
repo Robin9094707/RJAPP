@@ -21,13 +21,13 @@ class Server80Tests(unittest.TestCase):
             call()
         return caught.exception.code, json.loads(caught.exception.read())
 
-    def test_version_gate_for_7_0_apps(self):
-        self.assertEqual(server.APP_VERSION, '8.0.0')
-        self.assertEqual(server.MINIMUM_APP_VERSION, '8.0.0')
-        code, body = self.failure(lambda: self.request('/v1/bootstrap', who=0, version='7.0.0'))
+    def test_version_gate_for_older_apps(self):
+        self.assertEqual(server.APP_VERSION, '9.0.0')
+        self.assertEqual(server.MINIMUM_APP_VERSION, '9.0.0')
+        code, body = self.failure(lambda: self.request('/v1/bootstrap', who=0, version='8.0.0'))
         self.assertEqual(code, 426)
         self.assertEqual(body['error'], 'app_update_required')
-        self.assertIsNone(self.request('/v1/app-release', who=0, version='7.0.0')['release'])
+        self.assertIsNone(self.request('/v1/app-release', who=0, version='8.0.0')['release'])
 
     def test_diary_records_validation_and_ownership(self):
         personal = self.save('diary', {'title': 'Mein Tag', 'text': 'Spaziergang am See.', 'day': '2026-11-14', 'emoji': '🥰', 'ai_assisted': True})

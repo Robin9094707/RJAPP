@@ -13,6 +13,16 @@ struct WhatsNewView: View {
     @Environment(AppState.self) private var app
 
     static let features: [WhatsNewFeature] = [
+        WhatsNewFeature(id: "diary2", symbol: "book.pages.fill", tint: LovePalette.pink, title: "Tagebuch 2.0",
+                        detail: "ChatGPT stellt dir beim Schreiben Rückfragen als Buttons, schlägt Stimmung, Themen und Titel vor und kennt deine früheren Einträge. Ort, Uhrzeit, Schritte und Momente des Tages kommen automatisch dazu."),
+        WhatsNewFeature(id: "voice-diary", symbol: "mic.fill", tint: LovePalette.coral, title: "Sprach-Tagebuch",
+                        detail: "Einfach erzählen: Dein iPhone schreibt live Stück für Stück mit, privat und ohne Kontingent."),
+        WhatsNewFeature(id: "insights", symbol: "waveform.path.ecg", tint: LovePalette.violet, title: "Einblicke & geführtes Schreiben",
+                        detail: "Stimmungsverlauf, deine Themen und Orte, „Frag dein Tagebuch“ und Vorlagen wie Dankbarkeit, Abendreflexion oder Beziehungs-Check. Private Seiten auf Wunsch mit Face ID."),
+        WhatsNewFeature(id: "group", symbol: "person.3.fill", tint: LovePalette.cyan, title: "Gruppenchat mit ChatGPT",
+                        detail: "Ihr zwei und eure KI in einem Chat: Sprachnachrichten werden live mitgeschrieben, @KI holt ChatGPT dazu, Herz-Knöpfe für Komplimente, Gedichte und Date-Ideen."),
+        WhatsNewFeature(id: "web", symbol: "globe", tint: LovePalette.blue, title: "Internetsuche mit Quellen",
+                        detail: "Wenn dein ChatGPT-Abo es erlaubt, sucht die KI im Internet und zeigt ihre Quellen. Sonst antwortet sie automatisch ohne Suche."),
         WhatsNewFeature(id: "chatgpt", symbol: "wand.and.sparkles", tint: LovePalette.violet, title: "Mit ChatGPT anmelden",
                         detail: "Jede Person verbindet auf dem eigenen iPhone ihr ChatGPT-Abo, gern auch dasselbe Konto. Kein API-Schlüssel, Passwort nur auf der Seite von OpenAI. Ganz optional."),
         WhatsNewFeature(id: "diary", symbol: "book.pages.fill", tint: LovePalette.pink, title: "Unser Tagebuch",
@@ -35,7 +45,7 @@ struct WhatsNewView: View {
                         detail: "Kein automatisches Pausieren mehr, Neustart nach Ortswechseln und Besuchen und ein sofortiger, sparsamer Upload im Hintergrund."),
         WhatsNewFeature(id: "launch", symbol: "heart.fill", tint: LovePalette.plum, title: "Neue Öffnungsanimation",
                         detail: "Euer Bild schlägt einmal wie ein Herz und öffnet euch den Raum. Mit „Bewegung reduzieren“ ganz ruhig."),
-        WhatsNewFeature(id: "update", symbol: "arrow.down.app.fill", tint: LovePalette.plum, title: "Gemeinsam mit Server 8.0",
+        WhatsNewFeature(id: "update", symbol: "arrow.down.app.fill", tint: LovePalette.plum, title: "Gemeinsam mit Server 9.0",
                         detail: "Eure Daten, Anmeldungen, Aufnahmen und Einstellungen bleiben unverändert. Ältere Apps erinnern freundlich an das Update.")
     ]
 
@@ -66,10 +76,10 @@ struct WhatsNewView: View {
                 Text("RJ LOVE \(RJVersion.app)")
                     .font(.system(size: 13, weight: .bold, design: .rounded)).tracking(3)
                     .foregroundStyle(LovePalette.pink)
-                Text("Eure Geschichte.\nJetzt mit KI.")
+                Text("Euer Tagebuch.\nEuer Gruppenchat.")
                     .font(.loveDisplay(34)).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("KI-Begleiter über euer ChatGPT-Abo, ein gemeinsames Tagebuch, Funk, Frage des Tages und ein komplettes Redesign im Stil einer Apple-App.")
+                Text("Tagebuch 2.0 mit Rückfragen und Stimmung, Gruppenchat mit ChatGPT und Sprachnachrichten, Internetsuche, dazu alles aus 7.0 und 8.0.")
                     .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }

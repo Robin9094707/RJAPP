@@ -1,6 +1,7 @@
+import Charts
 import SwiftUI
 
-private enum DiaryMode: String, CaseIterable, Identifiable { case day = "Tag", pages = "Alle Seiten", review = "Rückblick"; var id: String { rawValue } }
+private enum DiaryMode: String, CaseIterable, Identifiable { case day = "Tag", pages = "Seiten", insights = "Einblicke", review = "Rückblick"; var id: String { rawValue } }
 
 /// Unser Tagebuch: one shared page per day, a personal page each, private pages that stay on the iPhone,
 /// and optional ChatGPT help for writing and looking back.
@@ -13,12 +14,15 @@ struct DiaryView: View {
     @State private var editing: DiaryEditorRoute?
     @State private var reading: DiaryPage?
     @State private var loadedArchive = false
+    @State private var privateUnlocked = false
+    @State private var askDiary = false
     private var cal: Calendar { .current }
+    private var privateHidden: Bool { DiaryLock.enabled && !privateUnlocked }
     private var dayKey: String { DiaryDay.key(day) }
     private var partnerName: String { app.partner?.displayName ?? "Dein Lieblingsmensch" }
 
     var body: some View {
-        let pages = app.diaryPages()
+        let pages = app.diaryPages().filter { !privateHidden || $0.visibility != .privateOnly }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: LoveMetrics.stackSpacing) {
                 hero(pages)
@@ -26,7 +30,13 @@ struct DiaryView: View {
                 switch mode {
                 case .day: dayView(pages.filter { $0.day == dayKey })
                 case .pages: allPages(pages)
+                case .insights: DiaryInsightsPanel(pages: pages) { askDiary = true }
                 case .review: DiaryReviewPanel(pages: pages)
+                }
+                if privateHidden {
+                    Button { Task { privateUnlocked = await DiaryLock.unlock() } } label: {
+                        Label("Private Seiten mit Face ID zeigen", systemImage: "lock.fill").frame(maxWidth: .infinity)
+                    }.buttonStyle(.bordered).tint(LovePalette.violet)
                 }
                 Text("Gemeinsame Seiten und „Für uns“ liegen auf eurem eigenen Server. Private Seiten bleiben nur auf diesem iPhone.")
                     .font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -42,6 +52,11 @@ struct DiaryView: View {
                     ForEach(DiaryVisibility.allCases) { visibility in
                         Button(visibility.title, systemImage: visibility.symbol) { write(visibility) }
                     }
+                    Button("Sprach-Tagebuch", systemImage: "mic.fill") { editing = DiaryEditorRoute(day: dayKey, visibility: .shared, startVoice: true) }
+                    Divider()
+                    Toggle("Private Seiten mit Face ID schützen", systemImage: "faceid", isOn: Binding(get: { DiaryLock.enabled }, set: { value in
+                        Task { if await DiaryLock.unlock() { DiaryLock.enabled = value; privateUnlocked = !value } }
+                    }))
                 } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("Neue Tagebuchseite")
             }
         }
@@ -53,6 +68,7 @@ struct DiaryView: View {
             if ai.signedIn && ai.serverStatus == nil { await ai.loadStatus(api: app.api) }
         }
         .sheet(item: $editing) { route in DiaryEditorView(route: route) }
+        .navigationDestination(isPresented: $askDiary) { AIChatEntryView(starter: "Lies mein Tagebuch der letzten Wochen: Welche Muster, Stimmungen und wiederkehrenden Themen fallen dir auf? Was hat mir gutgetan, was hat mich belastet? Antworte liebevoll und konkret mit Bezug auf einzelne Einträge.") }
         .sheet(item: $reading) { page in DiaryReaderView(page: page) { editing = DiaryEditorRoute(page: page) } }
     }
 
@@ -164,9 +180,27 @@ struct DiaryView: View {
             ForEach(partner) { page in pageCard(page) }
         }
         DiaryPromptCard(day: dayKey) { prompt in editing = DiaryEditorRoute(day: dayKey, visibility: .shared, prompt: prompt) }
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Geführt schreiben", systemImage: "list.bullet.rectangle.portrait.fill").font(.caption.bold()).foregroundStyle(LovePalette.violet)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button { editing = DiaryEditorRoute(day: dayKey, visibility: .shared, startVoice: true) } label: { templateChip("Sprechen", "mic.fill", LovePalette.pink) }.buttonStyle(.lovePress)
+                    ForEach(DiaryTemplate.allCases.filter { $0 != .free }) { template in
+                        Button { editing = DiaryEditorRoute(day: dayKey, visibility: template == .worries || template == .dreams ? .privateOnly : .shared, template: template) } label: { templateChip(template.title, template.symbol, LovePalette.violet) }.buttonStyle(.lovePress)
+                    }
+                }
+            }
+        }.loveCard()
         NavigationLink { SharedJournalView(initialDay: day) } label: {
             Label("Momente & Aktivität dieses Tages", systemImage: "sparkles.rectangle.stack").frame(maxWidth: .infinity)
         }.buttonStyle(.bordered)
+    }
+
+    private func templateChip(_ title: String, _ symbol: String, _ tint: Color) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(tint)
+            Text(title).font(.caption2.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+        }.frame(width: 92, height: 72).background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func section<Content: View>(_ title: String, symbol: String, tint: Color, @ViewBuilder content: () -> Content) -> some View {
@@ -239,6 +273,12 @@ struct DiaryPageRow: View {
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
             }
             if !page.prompt.isEmpty { Text("„\(page.prompt)“").font(.caption.italic()).foregroundStyle(LovePalette.violet).lineLimit(2) }
+            if !page.location.isEmpty || !page.tags.isEmpty {
+                HStack(spacing: 8) {
+                    if !page.location.isEmpty { Label(page.location, systemImage: "mappin").lineLimit(1) }
+                    if !page.tags.isEmpty { Text(page.tags.prefix(3).map { "#" + $0 }.joined(separator: " ")).lineLimit(1) }
+                }.font(.caption2).foregroundStyle(LovePalette.cyan)
+            }
             if !page.text.isEmpty { Text(page.text).font(.subheadline).foregroundStyle(.primary.opacity(0.85)).lineLimit(compact ? 3 : 6).multilineTextAlignment(.leading) }
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
@@ -252,6 +292,8 @@ struct DiaryReaderView: View {
     @Environment(AppState.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var deleting = false
+    @State private var reflection: String?
+    @State private var reflecting = false
     private var editable: Bool { page.visibility != .shared || page.ownerID == app.me?.id }
     var body: some View {
         NavigationStack {
@@ -270,6 +312,25 @@ struct DiaryReaderView: View {
                         Text("„\(page.prompt)“").font(.system(.title3, design: .serif).italic()).foregroundStyle(LovePalette.violet)
                     }
                     Text(page.text).font(.system(.body, design: .serif)).lineSpacing(6).textSelection(.enabled)
+                    if !page.location.isEmpty || !page.context.isEmpty || !page.tags.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if !page.location.isEmpty { Label(page.location, systemImage: "mappin.and.ellipse").font(.subheadline) }
+                            if !page.context.isEmpty { Label(page.context, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary) }
+                            if !page.tags.isEmpty { Text(page.tags.map { "#" + $0 }.joined(separator: "  ")).font(.caption.weight(.semibold)).foregroundStyle(LovePalette.violet) }
+                        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).background(LovePalette.cyan.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    if page.notes.isEmpty, AICompanion.shared.signedIn, !page.text.isEmpty {
+                        if let reflection {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Gespiegelt von ChatGPT", systemImage: "sparkles").font(.caption.bold()).foregroundStyle(LovePalette.violet)
+                                Text(reflection).font(.subheadline).lineSpacing(4).textSelection(.enabled)
+                            }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(LovePalette.violet.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        } else {
+                            Button { Task { reflecting = true; reflection = try? await DiaryAI.reflection(text: page.text, app: app); reflecting = false } } label: {
+                                HStack { if reflecting { ProgressView().controlSize(.small) }; Label("Spiegeln lassen", systemImage: "sparkles") }.frame(maxWidth: .infinity)
+                            }.buttonStyle(.bordered).tint(LovePalette.violet).disabled(reflecting)
+                        }
+                    }
                     if !page.notes.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Ein Gedanke dazu", systemImage: "sparkles").font(.caption.bold()).foregroundStyle(LovePalette.violet)
@@ -425,6 +486,96 @@ struct DiaryReviewPanel: View {
             saved = await app.saveDiary(merged, visibility: .together, existingID: existing.id)
         } else {
             saved = await app.saveDiary(page, visibility: .together, existingID: nil)
+        }
+    }
+}
+
+
+// MARK: - Insights (Tagebuch 2.0)
+
+struct DiaryInsightsPanel: View {
+    let pages: [DiaryPage]
+    let ask: () -> Void
+    @Environment(AppState.self) private var app
+    @State private var span = 30
+
+    private var recent: [DiaryPage] {
+        let since = DiaryDay.key(Calendar.current.date(byAdding: .day, value: -span, to: .now) ?? .now)
+        return pages.filter { $0.day >= since }
+    }
+    private struct MoodPoint: Identifiable { let id: String; let date: Date; let score: Double }
+    private var points: [MoodPoint] {
+        let mine = recent.filter { $0.moodScore != nil && ($0.visibility != .shared || $0.ownerID == app.me?.id) }
+        let grouped = Dictionary(grouping: mine, by: { $0.day })
+        var result: [MoodPoint] = []
+        for (day, list) in grouped {
+            let scores = list.compactMap { $0.moodScore }
+            guard !scores.isEmpty, let date = DiaryDay.date(day) else { continue }
+            result.append(MoodPoint(id: day, date: date, score: Double(scores.reduce(0, +)) / Double(scores.count)))
+        }
+        return result.sorted { $0.date < $1.date }
+    }
+    private struct Count: Identifiable { let id: String; let count: Int }
+    private static func counted(_ values: [String]) -> [Count] {
+        Dictionary(grouping: values, by: { $0 }).map { Count(id: $0.key, count: $0.value.count) }.sorted { $0.count == $1.count ? $0.id < $1.id : $0.count > $1.count }
+    }
+    private var moods: [Count] { Self.counted(recent.map(\.mood).filter { !$0.isEmpty }) }
+    private var topTags: [Count] { Self.counted(recent.flatMap(\.tags)) }
+    private var places: [Count] { Self.counted(recent.map(\.location).filter { !$0.isEmpty }) }
+
+    private static func axisEmoji(_ value: Double) -> String { value >= 4.5 ? "🥰" : value <= 1.5 ? "😢" : "😌" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LoveMetrics.stackSpacing) {
+            Picker("Zeitraum", selection: $span) { Text("7 Tage").tag(7); Text("30 Tage").tag(30); Text("1 Jahr").tag(365) }.pickerStyle(.segmented)
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Deine Stimmung", systemImage: "waveform.path.ecg").font(.headline).foregroundStyle(LovePalette.pink)
+                if points.count >= 2 {
+                    Chart(points) { point in
+                        AreaMark(x: .value("Tag", point.date), y: .value("Stimmung", point.score)).foregroundStyle(LinearGradient(colors: [LovePalette.pink.opacity(0.35), LovePalette.pink.opacity(0.02)], startPoint: .top, endPoint: .bottom)).interpolationMethod(.catmullRom)
+                        LineMark(x: .value("Tag", point.date), y: .value("Stimmung", point.score)).foregroundStyle(LovePalette.pink).interpolationMethod(.catmullRom)
+                        PointMark(x: .value("Tag", point.date), y: .value("Stimmung", point.score)).foregroundStyle(LovePalette.pink).symbolSize(24)
+                    }
+                    .chartYScale(domain: 1...5)
+                    .chartYAxis { AxisMarks(values: [1, 3, 5]) { value in AxisGridLine(); AxisValueLabel { Text(Self.axisEmoji(value.as(Double.self) ?? 3)) } } }
+                    .frame(height: 180)
+                } else {
+                    Text("Sobald du an ein paar Tagen eine Stimmung hast, siehst du hier deinen Verlauf.").font(.subheadline).foregroundStyle(.secondary)
+                }
+                if !moods.isEmpty {
+                    HStack(spacing: 10) {
+                        ForEach(moods.prefix(5)) { item in
+                            VStack(spacing: 2) { Text(item.id).font(.title2); Text("\(item.count)×").font(.caption2).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
+            }.loveCard()
+            HStack(spacing: 10) {
+                LoveMetric(title: "Seiten", value: recent.count.formatted(), symbol: "doc.text.fill", tint: LovePalette.violet)
+                LoveMetric(title: "Wörter", value: recent.reduce(0) { $0 + $1.words }.formatted(), symbol: "text.word.spacing", tint: LovePalette.cyan)
+            }
+            if !topTags.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Deine Themen", systemImage: "number").font(.headline).foregroundStyle(LovePalette.violet)
+                    FlowLayout(spacing: 6) {
+                        ForEach(topTags.prefix(16)) { item in
+                            Text("#\(item.id) · \(item.count)").font(.caption.weight(.semibold)).padding(.horizontal, 10).padding(.vertical, 6).background(LovePalette.violet.opacity(0.12), in: Capsule())
+                        }
+                    }
+                }.loveCard()
+            }
+            if !places.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Orte deines Tagebuchs", systemImage: "mappin.and.ellipse").font(.headline).foregroundStyle(LovePalette.cyan)
+                    ForEach(places.prefix(6)) { item in
+                        HStack { Text(item.id).font(.subheadline); Spacer(); Text("\(item.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                    }
+                }.loveCard()
+            }
+            Button(action: ask) {
+                Label("Frag dein Tagebuch", systemImage: "bubble.left.and.text.bubble.right.fill").frame(maxWidth: .infinity)
+            }.buttonStyle(.borderedProminent).tint(LovePalette.violet).controlSize(.large).disabled(!AICompanion.shared.signedIn)
+            Text("Die KI sieht deine Seiten nur, wenn du fragst. Private Seiten kennt nur deine eigene KI.").font(.caption2).foregroundStyle(.secondary)
         }
     }
 }

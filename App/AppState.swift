@@ -935,6 +935,7 @@ final class AppState {
         case "bereal": selectedTab = .moments; experienceSection = .moments
         case "diary": selectedTab = .shortcut(.diary)
         case "ai", "chat": selectedTab = .shortcut(.aiChat)
+        case "group", "groupchat": selectedTab = .shortcut(.groupChat)
         default: selectedTab = .home
         }
     }

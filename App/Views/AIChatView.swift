@@ -85,6 +85,7 @@ struct AIChatView: View {
     @State private var ai = AICompanion.shared
     @State private var draft = ""
     @State private var partial = ""
+    @State private var status: String?
     @State private var sending = false
     @State private var task: Task<Void, Never>?
     @State private var diaryText: DiaryDraftSeed?
@@ -105,6 +106,7 @@ struct AIChatView: View {
                             .id(message.id)
                     }
                     if sending {
+                        if let status { Label(status, systemImage: status.contains("Internet") ? "globe" : "sparkles").font(.caption).foregroundStyle(LovePalette.violet) }
                         AIChatBubble(message: AIChatMessage(role: .assistant, text: partial.isEmpty ? "" : partial), partnerName: partnerName, streaming: true)
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -188,6 +190,7 @@ struct AIChatView: View {
                 ForEach(AIEffort.allCases) { Text($0.title).tag($0) }
             }
             Toggle("App-Wissen verwenden", isOn: Binding(get: { conversation?.usesContext ?? true }, set: { ai.setUsesContext($0, for: conversationID) }))
+            Toggle("Im Internet suchen", systemImage: "globe", isOn: Binding(get: { conversation?.usesWeb == true }, set: { ai.setUsesWeb($0, for: conversationID) }))
             Divider()
             if let last = conversation?.messages.last(where: { $0.role == .assistant && $0.failed != true }) {
                 Button("Letzte Antwort ins Tagebuch", systemImage: "book.pages") { diaryText = DiaryDraftSeed(text: last.text) }
@@ -208,13 +211,14 @@ struct AIChatView: View {
         Haptics.impact(.light)
         task = Task { @MainActor in
             do {
-                try await ai.send(text, in: conversationID, app: app) { value in partial = value }
+                try await ai.send(text, in: conversationID, app: app, onStatus: { value in status = value }) { value in partial = value }
                 Haptics.success()
             } catch {
                 if !(error is CancellationError) { Haptics.warning() }
             }
             sending = false
             partial = ""
+            status = nil
         }
     }
 
@@ -277,6 +281,7 @@ struct AIChatBubble: View {
                     }
                 }
                 if let onRetry { Button("Erneut versuchen", systemImage: "arrow.clockwise", action: onRetry).font(.caption).buttonStyle(.bordered) }
+                if let sources = message.sources, !sources.isEmpty, !streaming { AISourceList(sources: sources).padding(.horizontal, 6) }
                 if !streaming, !mine, message.failed != true, let model = message.model {
                     Text(model + " · " + message.date.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(.tertiary)
                 }

@@ -142,3 +142,11 @@ Die ChatGPT-Anmeldung ist freiwillig und gilt nur für das jeweilige iPhone. Zug
 Text wird nur übertragen, wenn du etwas fragst oder ein KI-Werkzeug antippst. Mit eingeschaltetem App-Wissen gehen begrenzte Texte der gewählten Tage mit: Momentbeschreibungen, Tagebuchseiten, Notizen, Wünsche, Gefühle, Nachrichten, Abendrituale, Termine, Herzgedanken-Zähler, Drop-Poop-Titel und -Stufen sowie Titel, Kategorie, Länge und Jury-Wertung von Duftstudio-Aufnahmen. Nachrichten, Duftstudio und Schritte/Schlaf lassen sich einzeln abschalten. Inhalte deines Lieblingsmenschen werden nur einbezogen, solange er oder sie das unter „Eure gegenseitige Freigabe“ erlaubt. Fotos, Videos, Audiodateien, GPS-Koordinaten, Passwörter und Server-Tokens werden nie übertragen.
 
 Private Tagebuchseiten liegen nur auf dem iPhone (Dateischutz „vollständig“) und werden nie zum Server übertragen; die KI liest sie nur für deine eigenen Anfragen. KI-Gespräche werden nur auf dem iPhone gespeichert und lassen sich jederzeit löschen. Die KI kann sich irren und bewertet keine Beziehung.
+
+## Tagebuch 2.0, Gruppenchat und Sprache (9.0)
+
+Spracheingaben (Sprach-Tagebuch, Sprachnachrichten im Gruppenchat) werden mit Apples Spracherkennung auf dem iPhone in Text umgewandelt, wenn das Gerät es unterstützt; sonst nutzt iOS Apples Spracherkennungsdienst. Audio wird nie an OpenAI gesendet. Sprachnachrichten im Gruppenchat werden wie Funk-Aufnahmen auf eurem eigenen Server gespeichert.
+
+Tagebuchseiten können Kontext speichern: einen ungefähren Ortsnamen und auf etwa 100 m gerundete Koordinaten (abschaltbar), Tageszeit, Schritte, Herzgedanken und Momente des Tages. Bei privaten Seiten bleibt das auf dem iPhone. Rückfragen, Stimmungs- und Themenvorschläge senden den aktuellen Entwurf an dein ChatGPT, wenn du angemeldet bist und die Funktionen eingeschaltet sind (KI & ChatGPT → Fähigkeiten).
+
+Im Gruppenchat entsteht eine ChatGPT-Antwort auf dem iPhone der Person, die fragt, mit deren Abo. Dafür gehen die letzten 40 Textnachrichten und das App-Wissen dieser Person an OpenAI; die Freigabe-Regeln für Inhalte des Gegenübers gelten unverändert. Mit eingeschalteter Internetsuche kann ChatGPT Webseiten aufrufen; die Quellen werden angezeigt.

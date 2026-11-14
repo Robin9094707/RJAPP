@@ -28,7 +28,9 @@ struct SettingsView:View {
                 NavigationLink{InstantGalleryView()}label:{LoveSettingsRow(title:"Fotowünsche & BeReal",subtitle:"Ein Lächeln nur für euch",symbol:"camera.fill",tint:LovePalette.blue)}
             }
             LoveGroup("Dein Alltag") {
-                NavigationLink{DiaryView()}label:{LoveSettingsRow(title:"Unser Tagebuch",subtitle:"Gemeinsame, eigene und private Seiten",symbol:"book.pages.fill",tint:LovePalette.violet)}
+                NavigationLink{DiaryView()}label:{LoveSettingsRow(title:"Unser Tagebuch",subtitle:"Gemeinsam, für uns und privat · mit Einblicken",symbol:"book.pages.fill",tint:LovePalette.violet)}
+                LoveRowDivider()
+                NavigationLink{GroupChatView()}label:{LoveSettingsRow(title:"Gruppenchat mit ChatGPT",subtitle:"Ihr zwei und eure KI",symbol:"person.3.fill",tint:LovePalette.pink)}
                 LoveRowDivider()
                 NavigationLink{CinemaView()}label:{LoveSettingsRow(title:"Unser Kino & AirPlay",subtitle:"YouTube, Plex und euer Fernsehabend",symbol:"play.tv.fill",tint:LovePalette.violet)}
                 LoveRowDivider()

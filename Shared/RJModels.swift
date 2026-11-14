@@ -6,7 +6,7 @@ enum RecordKind: String, Codable, CaseIterable, Sendable {
     case moment
     case geofence
     case calendar
-    case chat, wish, milestone, checkin, coupon, gratitude, album, instant, photo_request, ritual, poop, diary
+    case chat, wish, milestone, checkin, coupon, gratitude, album, instant, photo_request, ritual, poop, diary, group
 }
 
 struct UserProfile: Codable, Identifiable, Hashable, Sendable {
@@ -166,6 +166,15 @@ struct RecordPayload: Codable, Hashable, Sendable {
     /// 8.0 diary: "personal" (one author) or "together" (a shared page both partners may continue).
     var entryType:String? = nil
     var aiAssisted:Bool? = nil
+    /// 9.0 diary context and group chat.
+    var tags:String? = nil
+    var template:String? = nil
+    var context:String? = nil
+    var ai:Bool? = nil
+    var model:String? = nil
+    var requestedBy:String? = nil
+    var sources:String? = nil
+    var audioSeconds:Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case notificationPriority="notification_priority"
@@ -182,6 +191,8 @@ struct RecordPayload: Codable, Hashable, Sendable {
         case countdownType = "countdown_type", day, duration, rating, emoji
         case legacyImage="legacy_image"
         case entryType="entry_type", aiAssisted="ai_assisted"
+        case tags, template, context, ai, model, sources
+        case requestedBy="requested_by", audioSeconds="audio_seconds"
         case startAt = "start_at"
         case endAt = "end_at"
     }

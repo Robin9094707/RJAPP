@@ -82,6 +82,7 @@ struct ChatGPTAccountView: View {
     }
 
     private var behaviourGroup: some View {
+        VStack(alignment: .leading, spacing: 22) {
         LoveGroup("Persönlichkeit") {
             Picker("Ton", selection: Binding(get: { ai.personality }, set: { ai.personality = $0 })) {
                 Text("Warm & liebevoll").tag("warm")
@@ -89,6 +90,15 @@ struct ChatGPTAccountView: View {
                 Text("Ruhig & achtsam").tag("calm")
                 Text("Direkt & praktisch").tag("direct")
             }
+        }
+        LoveGroup("Fähigkeiten", footer: "Die Internetsuche läuft über ChatGPT und nur, wenn dein Abo sie zulässt; sonst antwortet die KI automatisch ohne Suche. Spracheingabe und Transkription laufen immer auf dem iPhone, das ChatGPT-Abo unterstützt kein Audio.") {
+            Toggle("Internetsuche erlauben", isOn: Binding(get: { ai.allowWeb }, set: { ai.allowWeb = $0; if $0 { ChatGPTClient.resetWebSearchCheck() } }))
+            if ChatGPTClient.webSearchBlocked { Text("Dein Abo hat die Suche zuletzt abgelehnt. Morgen wird es erneut versucht.").font(.caption).foregroundStyle(.orange) }
+            LoveRowDivider()
+            Toggle("Tagebuch: Rückfragen beim Schreiben", isOn: Binding(get: { ai.diaryLiveQuestions }, set: { ai.diaryLiveQuestions = $0 }))
+            LoveRowDivider()
+            Toggle("Tagebuch: Stimmung & Themen vorschlagen", isOn: Binding(get: { ai.diaryAutoMood }, set: { ai.diaryAutoMood = $0 }))
+        }
         }
     }
 

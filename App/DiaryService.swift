@@ -47,6 +47,13 @@ struct PrivateDiaryEntry: Codable, Hashable, Identifiable, Sendable {
     var aiAssisted = false
     var createdAt = Date()
     var updatedAt = Date()
+    // 9.0 · optional so diaries saved by older versions still load.
+    var location: String? = nil
+    var latitude: Double? = nil
+    var longitude: Double? = nil
+    var tags: String? = nil
+    var template: String? = nil
+    var context: String? = nil
     var date: Date? { DiaryDay.date(day) }
 }
 
@@ -63,6 +70,12 @@ struct DiaryPage: Identifiable, Hashable {
     var prompt: String
     var aiAssisted: Bool
     var updatedAt: Date
+    var location: String = ""
+    var latitude: Double?
+    var longitude: Double?
+    var tags: [String] = []
+    var template: String = ""
+    var context: String = ""
     var record: SharedRecord?
     var privateEntry: PrivateDiaryEntry?
 
@@ -78,6 +91,12 @@ struct DiaryPage: Identifiable, Hashable {
         prompt = record.payload.message ?? ""
         aiAssisted = record.payload.aiAssisted == true
         updatedAt = record.updatedAt.rjDate ?? .distantPast
+        location = record.payload.location ?? ""
+        latitude = record.payload.latitude
+        longitude = record.payload.longitude
+        tags = DiaryTags.parse(record.payload.tags)
+        template = record.payload.template ?? ""
+        context = record.payload.context ?? ""
         self.record = record
     }
 
@@ -93,11 +112,30 @@ struct DiaryPage: Identifiable, Hashable {
         prompt = entry.prompt
         aiAssisted = entry.aiAssisted
         updatedAt = entry.updatedAt
+        location = entry.location ?? ""
+        latitude = entry.latitude
+        longitude = entry.longitude
+        tags = DiaryTags.parse(entry.tags)
+        template = entry.template ?? ""
+        context = entry.context ?? ""
         privateEntry = entry
     }
 
     var date: Date { DiaryDay.date(day) ?? updatedAt }
     var words: Int { text.split { $0.isWhitespace || $0.isNewline }.count }
+    var moodScore: Int? { DiaryMood.score(mood) }
+}
+
+enum DiaryTags {
+    static func parse(_ raw: String?) -> [String] {
+        (raw ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.filter { !$0.isEmpty }
+    }
+    static func join(_ tags: [String]) -> String? {
+        var seen: [String] = []
+        for tag in tags.map({ $0.trimmingCharacters(in: CharacterSet(charactersIn: "# ")).lowercased() }) where !tag.isEmpty && !seen.contains(tag) { seen.append(String(tag.prefix(30))) }
+        let value = seen.prefix(10).joined(separator: ",")
+        return value.isEmpty ? nil : String(value.prefix(300))
+    }
 }
 
 enum DiaryDay {
@@ -125,6 +163,88 @@ enum DiaryMood {
         DiaryMoodOption("🤔", "Nachdenklich"), DiaryMoodOption("😢", "Traurig"), DiaryMoodOption("😤", "Gestresst"), DiaryMoodOption("🤒", "Krank"), DiaryMoodOption("🥳", "Gefeiert"),
     ]
     static func title(_ emoji: String) -> String { all.first { $0.emoji == emoji }?.title ?? "" }
+    /// 1 (schwer) … 5 (wunderbar), for the mood chart.
+    static func score(_ emoji: String) -> Int? {
+        switch emoji {
+        case "🥰", "🥳", "🤩": 5
+        case "😊", "😌": 4
+        case "🤔", "😴": 3
+        case "😤", "🤒": 2
+        case "😢": 1
+        default: nil
+        }
+    }
+    /// Local fallback without AI: a few clear German words decide a suggestion.
+    static func guess(_ text: String) -> String? {
+        let lower = text.lowercased()
+        let rules: [(String, [String])] = [
+            ("🥰", ["verliebt", "kuscheln", "küss", "ich liebe", "hab dich lieb", "romantisch"]),
+            ("🥳", ["gefeiert", "party", "geburtstag", "jahrestag", "geschafft"]),
+            ("🤩", ["aufgeregt", "kann es kaum erwarten", "vorfreude", "endlich"]),
+            ("😢", ["traurig", "geweint", "vermisse", "einsam", "enttäuscht"]),
+            ("😤", ["stress", "genervt", "wütend", "ärger", "streit", "anstrengend"]),
+            ("🤒", ["krank", "fieber", "kopfschmerz", "erkältet"]),
+            ("😴", ["müde", "erschöpft", "geschlafen", "schlapp"]),
+            ("😌", ["entspannt", "ruhig", "gemütlich", "spaziergang", "sofa"]),
+            ("😊", ["schön", "glücklich", "gelacht", "toll", "dankbar", "gut"]),
+            ("🤔", ["nachgedacht", "frage mich", "unsicher", "überlege"]),
+        ]
+        return rules.first { rule in rule.1.contains { lower.contains($0) } }?.0
+    }
+}
+
+/// Guided journals (like Rosebud's): a starting question and a few follow-ups.
+enum DiaryTemplate: String, CaseIterable, Identifiable {
+    case free, gratitude, evening, relationship, worries, dreams, morning, letter
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .free: "Frei schreiben"
+        case .gratitude: "Dankbarkeit"
+        case .evening: "Abendreflexion"
+        case .relationship: "Beziehungs-Check"
+        case .worries: "Sorgen loslassen"
+        case .dreams: "Träume & Ziele"
+        case .morning: "Morgenseite"
+        case .letter: "Brief an dich"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .free: "pencil.line"
+        case .gratitude: "hands.and.sparkles.fill"
+        case .evening: "moon.stars.fill"
+        case .relationship: "heart.circle.fill"
+        case .worries: "cloud.rain.fill"
+        case .dreams: "star.fill"
+        case .morning: "sunrise.fill"
+        case .letter: "envelope.open.fill"
+        }
+    }
+    var opening: String {
+        switch self {
+        case .free: ""
+        case .gratitude: "Welche drei Dinge haben dich heute dankbar gemacht?"
+        case .evening: "Was war heute der schönste Moment, und was nimmst du mit?"
+        case .relationship: "Wann hast du dich heute oder diese Woche besonders verbunden gefühlt?"
+        case .worries: "Was beschäftigt dich gerade, und was davon liegt wirklich in deiner Hand?"
+        case .dreams: "Wovon träumst du gerade, für dich oder für euch beide?"
+        case .morning: "Wie fühlst du dich heute Morgen, und was soll der Tag dir bringen?"
+        case .letter: "Was möchtest du deinem Lieblingsmenschen sagen, ohne dass es perfekt sein muss?"
+        }
+    }
+    var followUps: [String] {
+        switch self {
+        case .free: []
+        case .gratitude: ["Wer hat dazu beigetragen?", "Wie hat es sich angefühlt?", "Wie kannst du dich morgen daran erinnern?"]
+        case .evening: ["Was war schwierig?", "Was hat dir Energie gegeben?", "Worauf freust du dich morgen?"]
+        case .relationship: ["Was hat dein Lieblingsmensch getan, das dir gutgetan hat?", "Was wünschst du dir gerade von euch?", "Welche kleine Geste könntest du morgen machen?"]
+        case .worries: ["Was wäre der kleinste nächste Schritt?", "Was würdest du einer Freundin raten?", "Was darfst du loslassen?"]
+        case .dreams: ["Warum ist dir das wichtig?", "Was wäre ein erster Schritt?", "Wer kann dir dabei helfen?"]
+        case .morning: ["Worauf möchtest du heute achten?", "Wofür bist du jetzt schon dankbar?"]
+        case .letter: ["Wofür bist du ihm/ihr dankbar?", "Was bewunderst du?", "Was wünschst du euch?"]
+        }
+    }
 }
 
 /// Private diary pages, stored as a protected file on this iPhone only.
@@ -190,6 +310,8 @@ extension AppState {
             var entry = page.privateEntry ?? PrivateDiaryEntry(day: page.day, title: cleanTitle, text: page.text)
             entry.day = page.day; entry.title = cleanTitle; entry.text = page.text; entry.mood = page.mood
             entry.notes = page.notes; entry.prompt = page.prompt; entry.aiAssisted = page.aiAssisted
+            entry.location = page.location.isEmpty ? nil : page.location; entry.latitude = page.latitude; entry.longitude = page.longitude
+            entry.tags = DiaryTags.join(page.tags); entry.template = page.template.isEmpty ? nil : page.template; entry.context = page.context.isEmpty ? nil : page.context
             do { try PrivateDiaryStore.shared.save(entry); Haptics.success(); AICompanion.shared.invalidateContext(); return true }
             catch { alert = AppAlert(title: "Tagebuch", message: error.localizedDescription); return false }
         case .shared, .together:
@@ -198,6 +320,11 @@ extension AppState {
             payload.emoji = page.mood.isEmpty ? nil : String(page.mood.prefix(8))
             payload.entryType = visibility == .together ? "together" : "personal"
             payload.aiAssisted = page.aiAssisted ? true : nil
+            payload.location = page.location.isEmpty ? nil : String(page.location.prefix(160))
+            if let latitude = page.latitude, let longitude = page.longitude { payload.latitude = latitude; payload.longitude = longitude }
+            payload.tags = DiaryTags.join(page.tags)
+            payload.template = page.template.isEmpty ? nil : String(page.template.prefix(40))
+            payload.context = page.context.isEmpty ? nil : String(page.context.prefix(1_500))
             let saved = await saveRecord(id: existingID, kind: .diary, payload: payload) != nil
             if saved { AICompanion.shared.invalidateContext() }
             return saved

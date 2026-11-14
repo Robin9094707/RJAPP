@@ -7,17 +7,40 @@ struct AIPromptMessage: Hashable, Sendable {
     var content: String
 }
 
+/// A web page ChatGPT cited while searching the internet.
+struct AISource: Codable, Hashable, Identifiable, Sendable {
+    var title: String
+    var url: String
+    var id: String { url }
+    var host: String { URL(string: url)?.host()?.replacingOccurrences(of: "www.", with: "") ?? url }
+}
+
+struct AIAnswer: Sendable {
+    var text: String
+    var sources: [AISource] = []
+    var searched = false
+}
+
 /// Requests over the user's ChatGPT plan: always `store: false` and streaming, as OpenAI requires.
 enum ChatGPTClient {
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 90
-        configuration.timeoutIntervalForResource = 300
+        configuration.timeoutIntervalForRequest = 120
+        configuration.timeoutIntervalForResource = 400
         configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
     }()
 
-    /// Streams an answer. `onPartial` receives the whole text so far (throttled) on the main actor.
+    private static let webBlockedKey = "rjlove.ai.web-blocked-until"
+
+    /// Internet search is only offered while the plan has not rejected it (checked again after a day).
+    static var webSearchBlocked: Bool {
+        (UserDefaults.standard.object(forKey: webBlockedKey) as? Date ?? .distantPast) > .now
+    }
+    static func resetWebSearchCheck() { UserDefaults.standard.removeObject(forKey: webBlockedKey) }
+
+    /// Streams an answer. `onPartial` receives the whole text so far (throttled) on the main actor,
+    /// `onStatus` short progress notes such as "Sucht im Internet …".
     /// Tries the chosen model first and falls back to other unlocked models if it is unavailable.
     static func respond(
         instructions: String,
@@ -25,23 +48,35 @@ enum ChatGPTClient {
         model preferred: String,
         alternatives: [String],
         effort: String?,
+        webSearch: Bool = false,
+        onStatus: (@MainActor @Sendable (String) -> Void)? = nil,
         onPartial: (@MainActor @Sendable (String) -> Void)? = nil
-    ) async throws -> String {
+    ) async throws -> AIAnswer {
         var candidates: [String] = []
         for model in [preferred] + alternatives + [ChatGPTAuth.defaultModel] where !model.isEmpty && !candidates.contains(model) {
             candidates.append(model)
         }
+        var useWeb = webSearch && !webSearchBlocked
+        var useEffort = effort
         var lastError: Error = AIRequestError.empty
-        for model in candidates.prefix(4) {
+        var index = 0
+        let models = Array(candidates.prefix(4))
+        while index < models.count {
+            let model = models[index]
             do {
-                let text = try await request(instructions: instructions, messages: messages, model: model, effort: effort, onPartial: onPartial)
-                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIRequestError.empty }
-                return text
-            } catch let error as AIRequestError where error.isReasoningError && effort != nil {
-                return try await request(instructions: instructions, messages: messages, model: model, effort: nil, onPartial: onPartial)
+                let answer = try await request(instructions: instructions, messages: messages, model: model, effort: useEffort, web: useWeb, onStatus: onStatus, onPartial: onPartial)
+                guard !answer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIRequestError.empty }
+                return answer
+            } catch let error as AIRequestError where useWeb && error.isToolError {
+                // The plan does not allow web search (or not for this model): remember it and answer without.
+                UserDefaults.standard.set(Date.now.addingTimeInterval(24 * 3600), forKey: webBlockedKey)
+                useWeb = false
+                if let onStatus { await onStatus("Internetsuche ist mit deinem Abo gerade nicht verfügbar. Antwort ohne Suche …") }
+            } catch let error as AIRequestError where error.isReasoningError && useEffort != nil {
+                useEffort = nil
             } catch let error as AIRequestError where error.isModelError {
                 lastError = error
-                continue
+                index += 1
             }
         }
         throw lastError
@@ -52,9 +87,11 @@ enum ChatGPTClient {
         messages: [AIPromptMessage],
         model: String,
         effort: String?,
+        web: Bool,
+        onStatus: (@MainActor @Sendable (String) -> Void)?,
         onPartial: (@MainActor @Sendable (String) -> Void)?,
         retried: Bool = false
-    ) async throws -> String {
+    ) async throws -> AIAnswer {
         let token = try await ChatGPTAuth.validAccessToken(forceRefresh: retried)
         var body: [String: Any] = [
             "model": model,
@@ -64,6 +101,7 @@ enum ChatGPTClient {
         ]
         if !instructions.isEmpty { body["instructions"] = instructions }
         if let effort, !effort.isEmpty, effort != "auto" { body["reasoning"] = ["effort": effort] }
+        if web { body["tools"] = [["type": "web_search"]] }
         var request = URLRequest(url: URL(string: ChatGPTAuth.apiBase + "/responses")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -79,12 +117,12 @@ enum ChatGPTClient {
             var data = Data()
             for try await byte in bytes { data.append(byte); if data.count > 64_000 { break } }
             if http.statusCode == 401, !retried {
-                return try await self.request(instructions: instructions, messages: messages, model: model, effort: effort, onPartial: onPartial, retried: true)
+                return try await self.request(instructions: instructions, messages: messages, model: model, effort: effort, web: web, onStatus: onStatus, onPartial: onPartial, retried: true)
             }
             throw failure(status: http.statusCode, data: data)
         }
 
-        var text = ""
+        var answer = AIAnswer(text: "")
         var lastEmit = Date.distantPast
         var completed = false
         for try await line in bytes.lines {
@@ -98,30 +136,53 @@ enum ChatGPTClient {
             switch type {
             case "response.output_text.delta":
                 if let piece = json["delta"] as? String {
-                    text += piece
+                    answer.text += piece
                     if let onPartial, Date().timeIntervalSince(lastEmit) > 0.06 {
                         lastEmit = Date()
-                        let snapshot = text
+                        let snapshot = answer.text
                         await onPartial(snapshot)
                     }
                 }
+            case "response.output_text.annotation.added":
+                if let annotation = json["annotation"] as? [String: Any] { collect(annotation, into: &answer) }
+            case "response.web_search_call.in_progress", "response.web_search_call.searching":
+                answer.searched = true
+                if let onStatus { await onStatus("Sucht im Internet …") }
+            case "response.web_search_call.completed":
+                if let onStatus { await onStatus("Quellen gefunden, schreibt …") }
             case "response.completed":
                 completed = true
+                if let output = (json["response"] as? [String: Any])?["output"] as? [[String: Any]] {
+                    for item in output {
+                        if (item["type"] as? String) == "web_search_call" { answer.searched = true }
+                        for content in item["content"] as? [[String: Any]] ?? [] {
+                            for annotation in content["annotations"] as? [[String: Any]] ?? [] { collect(annotation, into: &answer) }
+                        }
+                    }
+                }
             case "response.incomplete":
-                completed = !text.isEmpty
+                completed = !answer.text.isEmpty
             case "response.failed", "error":
                 let error = ((json["response"] as? [String: Any])?["error"] as? [String: Any]) ?? (json["error"] as? [String: Any]) ?? json
                 let code = error["code"] as? String ?? ""
                 let message = error["message"] as? String ?? "Die Anfrage ist fehlgeschlagen."
-                throw AIRequestError.http(code == "subscription_sharing_usage_limit_exceeded" ? 429 : 400, ChatGPTAuth.message(forCode: code, fallback: message), code: code)
+                let param = error["param"] as? String ?? ""
+                throw AIRequestError.http(code == "subscription_sharing_usage_limit_exceeded" ? 429 : 400, ChatGPTAuth.message(forCode: code, fallback: message), code: code, param: param)
             default:
                 continue
             }
             if completed { break }
         }
-        if !completed && text.isEmpty { throw AIRequestError.network("Die Verbindung zu ChatGPT wurde unterbrochen.") }
-        if let onPartial { let snapshot = text; await onPartial(snapshot) }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !completed && answer.text.isEmpty { throw AIRequestError.network("Die Verbindung zu ChatGPT wurde unterbrochen.") }
+        if let onPartial { let snapshot = answer.text; await onPartial(snapshot) }
+        answer.text = answer.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return answer
+    }
+
+    private static func collect(_ annotation: [String: Any], into answer: inout AIAnswer) {
+        guard (annotation["type"] as? String) == "url_citation", let url = annotation["url"] as? String, !answer.sources.contains(where: { $0.url == url }) else { return }
+        let title = (annotation["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (URL(string: url)?.host() ?? url)
+        answer.sources.append(AISource(title: title, url: url))
     }
 
     private static func failure(status: Int, data: Data) -> Error {

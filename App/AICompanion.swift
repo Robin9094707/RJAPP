@@ -18,6 +18,8 @@ struct AIContextDigest: Decodable, Sendable {
         var media: String? = nil
         var done: Bool? = nil
         var rating: Int? = nil
+        var place: String? = nil
+        var tags: String? = nil
     }
     struct Fart: Decodable, Sendable { let author: String; let at: String?; let title: String; let caption: String; let category: String; let seconds: Double; let stars: Double? }
     struct Upcoming: Decodable, Sendable { let kind: String; let title: String; let at: String?; let text: String; let done: Bool }
@@ -62,6 +64,9 @@ struct AIChatMessage: Codable, Hashable, Identifiable, Sendable {
     var date = Date()
     var model: String? = nil
     var failed: Bool? = nil
+    /// 9.0: web pages ChatGPT cited (optional so older saved chats still load).
+    var sources: [AISource]? = nil
+    var searched: Bool? = nil
 }
 
 struct AIConversation: Codable, Hashable, Identifiable, Sendable {
@@ -71,6 +76,8 @@ struct AIConversation: Codable, Hashable, Identifiable, Sendable {
     var createdAt = Date()
     var updatedAt = Date()
     var usesContext = true
+    /// 9.0: let ChatGPT search the internet in this chat (optional so older saved chats still load).
+    var usesWeb: Bool? = nil
 }
 
 enum AIEffort: String, CaseIterable, Identifiable, Sendable {
@@ -111,6 +118,11 @@ final class AICompanion {
     var includeChats: Bool { didSet { UserDefaults.standard.set(includeChats, forKey: "rjlove.ai.include-chats") } }
     var includeHealth: Bool { didSet { UserDefaults.standard.set(includeHealth, forKey: "rjlove.ai.include-health") } }
     var personality: String { didSet { UserDefaults.standard.set(personality, forKey: "rjlove.ai.personality") } }
+    /// Internet search through ChatGPT, only while the plan allows it.
+    var allowWeb: Bool { didSet { UserDefaults.standard.set(allowWeb, forKey: "rjlove.ai.allow-web") } }
+    /// Tagebuch 2.0: live follow-up questions and automatic mood/tag suggestions while writing.
+    var diaryLiveQuestions: Bool { didSet { UserDefaults.standard.set(diaryLiveQuestions, forKey: "rjlove.ai.diary-questions") } }
+    var diaryAutoMood: Bool { didSet { UserDefaults.standard.set(diaryAutoMood, forKey: "rjlove.ai.diary-mood") } }
 
     private let folder: URL
     private var saveTask: Task<Void, Never>?
@@ -124,6 +136,9 @@ final class AICompanion {
         includeChats = defaults.object(forKey: "rjlove.ai.include-chats") as? Bool ?? true
         includeHealth = defaults.bool(forKey: "rjlove.ai.include-health")
         personality = defaults.string(forKey: "rjlove.ai.personality") ?? "warm"
+        allowWeb = defaults.object(forKey: "rjlove.ai.allow-web") as? Bool ?? true
+        diaryLiveQuestions = defaults.object(forKey: "rjlove.ai.diary-questions") as? Bool ?? true
+        diaryAutoMood = defaults.object(forKey: "rjlove.ai.diary-mood") as? Bool ?? true
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
         folder = base.appendingPathComponent("rjlove-ai", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -185,14 +200,29 @@ final class AICompanion {
 
     /// One-shot answer for diary tools and small helpers.
     func ask(_ prompt: String, system: String, app: AppState?, includeContext: Bool, onPartial: (@MainActor @Sendable (String) -> Void)? = nil) async throws -> String {
+        try await askAnswer(prompt, system: system, app: app, includeContext: includeContext, history: [], webSearch: false, onPartial: onPartial).text
+    }
+
+    /// Full answer with optional chat history and internet search.
+    func askAnswer(_ prompt: String, system: String, app: AppState?, includeContext: Bool, history: [AIPromptMessage], webSearch: Bool, onStatus: (@MainActor @Sendable (String) -> Void)? = nil, onPartial: (@MainActor @Sendable (String) -> Void)? = nil) async throws -> AIAnswer {
         guard signedIn else { throw ChatGPTAuthError.notSignedIn }
         var instructions = baseInstructions(app: app) + "\n\n" + system
         if includeContext, let app { instructions += "\n\n" + (await contextText(app: app)) }
-        return try await ChatGPTClient.respond(instructions: instructions, messages: [AIPromptMessage(role: .user, content: prompt)], model: effectiveModel, alternatives: models.map(\.id), effort: effort == .auto ? nil : effort.rawValue, onPartial: onPartial)
+        let messages = history + [AIPromptMessage(role: .user, content: prompt)]
+        return try await ChatGPTClient.respond(instructions: instructions, messages: messages, model: effectiveModel, alternatives: models.map(\.id), effort: effort == .auto ? nil : effort.rawValue, webSearch: webSearch && allowWeb, onStatus: onStatus, onPartial: onPartial)
+    }
+
+    /// Small structured helper: asks for JSON and parses it leniently (code fences, extra text).
+    func askJSON(_ prompt: String, system: String, app: AppState?, includeContext: Bool) async throws -> [String: Any] {
+        let text = try await ask(prompt, system: system + " Antworte ausschließlich mit einem JSON-Objekt, ohne Markdown.", app: app, includeContext: includeContext)
+        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"), start < end,
+              let data = String(text[start...end]).data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw AIRequestError.empty }
+        return json
     }
 
     /// Continues a conversation and stores both sides.
-    func send(_ text: String, in conversationID: UUID, app: AppState, onPartial: @escaping @MainActor @Sendable (String) -> Void) async throws {
+    func send(_ text: String, in conversationID: UUID, app: AppState, onStatus: (@MainActor @Sendable (String) -> Void)? = nil, onPartial: @escaping @MainActor @Sendable (String) -> Void) async throws {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -205,8 +235,8 @@ final class AICompanion {
         if conversation.usesContext { instructions += "\n\n" + (await contextText(app: app)) }
         let history = conversation.messages.filter { $0.failed != true }.suffix(30).map { AIPromptMessage(role: $0.role == .user ? .user : .assistant, content: $0.text) }
         do {
-            let answer = try await ChatGPTClient.respond(instructions: instructions, messages: Array(history), model: effectiveModel, alternatives: models.map(\.id), effort: effort == .auto ? nil : effort.rawValue, onPartial: onPartial)
-            append(AIChatMessage(role: .assistant, text: answer, model: effectiveModel), to: conversationID)
+            let answer = try await ChatGPTClient.respond(instructions: instructions, messages: Array(history), model: effectiveModel, alternatives: models.map(\.id), effort: effort == .auto ? nil : effort.rawValue, webSearch: conversation.usesWeb == true && allowWeb, onStatus: onStatus, onPartial: onPartial)
+            append(AIChatMessage(role: .assistant, text: answer.text, model: effectiveModel, sources: answer.sources.isEmpty ? nil : answer.sources, searched: answer.searched ? true : nil), to: conversationID)
         } catch {
             append(AIChatMessage(role: .assistant, text: error.localizedDescription, failed: true), to: conversationID)
             refreshAccount()
@@ -223,14 +253,22 @@ final class AICompanion {
         persist()
     }
 
-    func newConversation(usesContext: Bool = true) -> AIConversation {
-        let conversation = AIConversation(usesContext: usesContext)
+    func newConversation(usesContext: Bool = true, usesWeb: Bool = false, title: String? = nil) -> AIConversation {
+        var conversation = AIConversation(usesContext: usesContext, usesWeb: usesWeb ? true : nil)
+        if let title { conversation.title = title }
         conversations.insert(conversation, at: 0)
         persist()
         return conversation
     }
 
     func conversation(_ id: UUID) -> AIConversation? { conversations.first { $0.id == id } }
+
+    func setUsesWeb(_ value: Bool, for id: UUID) {
+        guard let index = conversations.firstIndex(where: { $0.id == id }) else { return }
+        conversations[index].usesWeb = value
+        if value { ChatGPTClient.resetWebSearchCheck() }
+        persist()
+    }
 
     func setUsesContext(_ value: Bool, for id: UUID) {
         guard let index = conversations.firstIndex(where: { $0.id == id }) else { return }
@@ -327,7 +365,7 @@ final class AICompanion {
 enum AIContextFormatter {
     private static let kindNames: [String: String] = [
         "moment": "Moment", "instant": "BeReal-Foto", "diary": "Tagebuch", "note": "Notiz", "wish": "Wunsch", "gratitude": "Das mag ich an dir",
-        "checkin": "Gefühl", "chat": "Nachricht", "ritual": "Abendritual", "coupon": "Liebesgutschein", "poop": "Drop-Poop",
+        "checkin": "Gefühl", "chat": "Nachricht", "group": "Gruppenchat", "ritual": "Abendritual", "coupon": "Liebesgutschein", "poop": "Drop-Poop",
     ]
 
     static func lines(_ digest: AIContextDigest, includeFarts: Bool, includeChats: Bool) -> [String] {
@@ -353,6 +391,8 @@ enum AIContextFormatter {
                 var line = "- [\(kindNames[item.kind] ?? item.kind)\(item.together == true ? " · gemeinsame Seite" : "")] \(item.author)"
                 if let at = item.at, item.kind != "diary" { line += " \(format(at, time: true, dateless: true))" }
                 if let mood = item.mood, !mood.isEmpty { line += " \(mood)" }
+                if let place = item.place, !place.isEmpty { line += " 📍\(place)" }
+                if let tags = item.tags, !tags.isEmpty { line += " #" + tags.replacingOccurrences(of: ",", with: " #") }
                 if !item.title.isEmpty { line += ": \(item.title)" }
                 if !item.text.isEmpty { line += " – \(item.text)" }
                 if let rating = item.rating { line += " (Legendenstufe \(rating)/5)" }

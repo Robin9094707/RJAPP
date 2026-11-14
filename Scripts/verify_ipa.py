@@ -31,7 +31,8 @@ with zipfile.ZipFile(root/'RJ-Love-unsigned.ipa') as archive:
     assert external['UISceneDelegateClassName'].endswith('.LoveExternalSceneDelegate'), 'AirPlay scene missing'
     assert 'audio' in info.get('UIBackgroundModes', []), 'Native Plex background playback mode missing'
     assert 'push-to-talk' not in info.get('UIBackgroundModes', []), 'Obsolete PTT mode still present'
-    assert 'NSFaceIDUsageDescription' not in info, 'In-app Face ID lock still declared'
+    # 3.0 removed the whole-app Face ID lock; since 9.0 Face ID may only guard private diary pages (opt-in).
+    assert 'NSFaceIDUsageDescription' not in info or 'Tagebuch' in info['NSFaceIDUsageDescription'], 'In-app Face ID lock still declared'
     assert info.get('NSCameraUsageDescription') and info.get('NSRemindersFullAccessUsageDescription')
     assert info.get('NSPhotoLibraryUsageDescription'), 'Photo-library privacy purpose missing'
     assert info.get('NSMicrophoneUsageDescription'), 'Microphone purpose missing'

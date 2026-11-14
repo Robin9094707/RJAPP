@@ -67,15 +67,43 @@ struct AudioWaveform: View {
     }
 }
 
+/// One sheet per card instead of five: lighter rows while scrolling long archives.
+private enum FartCardSheet: Identifiable {
+    case comments, rating, editor, export(URL)
+    var id: String {
+        switch self {
+        case .comments: "comments"
+        case .rating: "rating"
+        case .editor: "editor"
+        case .export(let url): "export-" + url.path
+        }
+    }
+}
+
+/// Only the playing card reads the fast-changing playback time, so the rest of the card stays still.
+private struct FartClipWaveform: View {
+    let clip: FartClip
+    @Environment(AppState.self) private var appState
+    var body: some View {
+        let studio = appState.studio
+        let progress = studio.playingID == clip.id && studio.playbackDuration > 0 ? studio.playbackTime / studio.playbackDuration : 0
+        AudioWaveform(values: clip.waveform, progress: progress)
+    }
+}
+private struct FartPlaybackScrubber: View {
+    @Environment(AppState.self) private var appState
+    var body: some View {
+        let studio = appState.studio
+        Slider(value: Binding(get: { studio.playbackDuration > 0 ? studio.playbackTime / studio.playbackDuration : 0 }, set: { studio.seek(to: $0) }), in: 0...1)
+            .tint(LovePalette.violet).accessibilityLabel("Wiedergabeposition")
+    }
+}
+
 struct FartClipCard: View {
     let clip: FartClip
     @Environment(AppState.self) private var appState
-    @State private var rating = false
-    @State private var comments = false
+    @State private var sheet: FartCardSheet?
     @State private var deleting = false
-    @State private var editing = false
-    @State private var exporting=false
-    @State private var exportURL:URL?
     @State private var localSaving=false
     private var playing: Bool { appState.studio.playingID == clip.id }
     private var mine: Bool { clip.ownerID == appState.me?.id }
@@ -91,7 +119,7 @@ struct FartClipCard: View {
                 }
                 Spacer(minLength: 0)
                 if mine {
-                    Menu { Button("Auf diesem iPhone sichern",systemImage:"square.and.arrow.down"){saveLocal(share:false)};Button("Exportieren / iMessage teilen",systemImage:"square.and.arrow.up"){saveLocal(share:true)}; Button("Schneiden & umbenennen", systemImage: "scissors") { editing = true }; if clip.location != nil { Button("Geteilten Ort entfernen",systemImage: "mappin.slash",role: .destructive) { Task { await appState.removeFartLocation(clip) } } }; Button("Aufnahme löschen", systemImage: "trash", role: .destructive) { deleting = true } } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Aufnahme verwalten")
+                    Menu { Button("Auf diesem iPhone sichern",systemImage:"square.and.arrow.down"){saveLocal(share:false)};Button("Exportieren / iMessage teilen",systemImage:"square.and.arrow.up"){saveLocal(share:true)}; Button("Schneiden & umbenennen", systemImage: "scissors") { sheet = .editor }; if clip.location != nil { Button("Geteilten Ort entfernen",systemImage: "mappin.slash",role: .destructive) { Task { await appState.removeFartLocation(clip) } } }; Button("Aufnahme löschen", systemImage: "trash", role: .destructive) { deleting = true } } label: { Image(systemName: "ellipsis") }.accessibilityLabel("Aufnahme verwalten")
                 } else {
                     Menu {Button("Auf diesem iPhone sichern",systemImage:"square.and.arrow.down"){saveLocal(share:false)};Button("Exportieren / iMessage teilen",systemImage:"square.and.arrow.up"){saveLocal(share:true)}}label:{Image(systemName:"square.and.arrow.down")}
                 }
@@ -107,11 +135,11 @@ struct FartClipCard: View {
                         .background(LovePalette.dusk, in: Circle())
                         .overlay { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 1) }
                 }.buttonStyle(.lovePress).accessibilityLabel(playing ? "Wiedergabe stoppen" : "Aufnahme abspielen")
-                AudioWaveform(values: clip.waveform, progress: playing && appState.studio.playbackDuration > 0 ? appState.studio.playbackTime / appState.studio.playbackDuration : 0).frame(height: 40)
+                FartClipWaveform(clip: clip).frame(height: 40)
                 Text(String(format: "%.1f s", clip.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
             if playing {
-                Slider(value: Binding(get: { appState.studio.playbackDuration > 0 ? appState.studio.playbackTime / appState.studio.playbackDuration : 0 }, set: { appState.studio.seek(to: $0) }), in: 0...1).tint(LovePalette.violet).accessibilityLabel("Wiedergabeposition")
+                FartPlaybackScrubber()
                 speedControls
             }
             HStack(spacing: 8) {
@@ -128,14 +156,14 @@ struct FartClipCard: View {
                 }
                 Spacer(minLength: 0)
             }
-            Button { comments=true } label: {
+            Button { sheet = .comments } label: {
                 Label("Kommentare · \(clip.commentCount ?? 0)",systemImage:"bubble.left.and.bubble.right.fill").font(.subheadline.weight(.semibold))
             }.buttonStyle(.bordered)
             Divider().opacity(0.4)
             HStack {
                 Label(clip.stars.map { "\($0)/5 Sterne" } ?? "Jury noch sprachlos", systemImage: "star.fill").font(.caption.bold()).foregroundStyle(LovePalette.coral)
                 Spacer()
-                if !mine { Button(clip.ratings.isEmpty ? "Bewerten" : "Ändern") { rating = true }.font(.caption.bold()) }
+                if !mine { Button(clip.ratings.isEmpty ? "Bewerten" : "Ändern") { sheet = .rating }.font(.caption.bold()) }
             }
             if let score = clip.ratings.first {
                 Text("Wumms \(score.power)/5 · Stil \(score.style)/5").font(.caption2).foregroundStyle(.secondary)
@@ -148,16 +176,20 @@ struct FartClipCard: View {
             }.font(.caption2).foregroundStyle(LovePalette.violet).fixedSize(horizontal: false, vertical: true)
         }.loveCard()
         .animation(LoveMotion.spring, value: playing)
-        .sheet(isPresented:$exporting){if let exportURL{FileShareView(urls:[exportURL])}}
-        .sheet(isPresented:$comments){FartCommentsView(clip:clip)}
-        .sheet(isPresented: $rating) { FartRatingView(clip: clip) }
-        .sheet(isPresented: $editing) { FartEditorView(clip: clip) }
+        .sheet(item: $sheet) { value in
+            switch value {
+            case .comments: FartCommentsView(clip: clip)
+            case .rating: FartRatingView(clip: clip)
+            case .editor: FartEditorView(clip: clip)
+            case .export(let url): FileShareView(urls: [url])
+            }
+        }
         .alert("Dieses Meisterwerk löschen?", isPresented: $deleting) {
             Button("Löschen", role: .destructive) { Task { await appState.deleteFart(clip) } }
             Button("Abbrechen", role: .cancel) {}
         } message: { Text("Die Aufnahme und ihre Bewertungen werden für euch beide entfernt.") }
     }
-    private func saveLocal(share:Bool){localSaving=true;Task{defer{localSaving=false};do{if let server=appState.profile?.baseURL,let user=appState.me?.id{LocalFartStore.shared.configure(server:server,userID:user)};let file=try await LocalFartStore.shared.save(clip,api:appState.api);if share{exportURL=file;exporting=true}else{Haptics.success()}}catch{appState.alert=AppAlert(title:"Lokales Sichern",message:error.localizedDescription)}}}
+    private func saveLocal(share:Bool){localSaving=true;Task{defer{localSaving=false};do{if let server=appState.profile?.baseURL,let user=appState.me?.id{LocalFartStore.shared.configure(server:server,userID:user)};let file=try await LocalFartStore.shared.save(clip,api:appState.api);if share{sheet = .export(file)}else{Haptics.success()}}catch{appState.alert=AppAlert(title:"Lokales Sichern",message:error.localizedDescription)}}}
     private var speedControls:some View {
         @Bindable var studio=appState.studio
         return VStack(alignment:.leading,spacing:10){
@@ -168,9 +200,11 @@ struct FartClipCard: View {
 }
 
 /// Live level around the stop button. Scales instead of resizing, so the layout never moves while recording.
+/// Reads the meter itself: only this ring redraws 12 times a second, not the whole recorder.
 private struct RecorderLevelRing: View {
-    let level: Double
+    let studio: AudioStudioService
     let reduceMotion: Bool
+    private var level: Double { studio.mode == .recording ? min(1, max(0, studio.liveLevels.last ?? 0)) : 0 }
     var body: some View {
         ZStack {
             Circle().fill(LovePalette.pink.opacity(0.16)).frame(width: 96, height: 96).scaleEffect(1 + level * 0.3)
@@ -178,6 +212,21 @@ private struct RecorderLevelRing: View {
         }
         .animation(reduceMotion ? nil : .linear(duration: 0.08), value: level)
         .allowsHitTesting(false)
+    }
+}
+
+private struct RecorderClock: View {
+    let studio: AudioStudioService
+    var body: some View {
+        let seconds = Int(studio.elapsed)
+        Text(String(format: "%02d:%02d", seconds / 60, seconds % 60))
+            .font(.system(size: studio.mode == .review ? 32 : 52, weight: .light, design: .rounded)).monospacedDigit()
+    }
+}
+private struct RecorderLiveWaveform: View {
+    let studio: AudioStudioService
+    var body: some View {
+        AudioWaveform(values: studio.mode == .review ? studio.draft?.waveform ?? [] : studio.liveLevels)
     }
 }
 
@@ -222,8 +271,8 @@ struct FartRecorderView: View {
                     spruchCard
                     Text(studio.mode == .review ? "Bereit für die Duftpost?" : studio.mode == .paused ? "Kurze Atempause." : studio.isRecording ? "Lass es raus." : "Bühne frei.")
                         .font(.loveDisplay(30)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true).contentTransition(.opacity)
-                    Text(String(format: "%02d:%02d", Int(studio.elapsed) / 60, Int(studio.elapsed) % 60)).font(.system(size: studio.mode == .review ? 32 : 52, weight: .light, design: .rounded)).monospacedDigit()
-                    AudioWaveform(values: studio.mode == .review ? studio.draft?.waveform ?? [] : studio.liveLevels).frame(height: 58).padding(.horizontal, 12)
+                    RecorderClock(studio: studio)
+                    RecorderLiveWaveform(studio: studio).frame(height: 58).padding(.horizontal, 12)
                     if studio.mode == .review { recordingControls.disabled(saving) }
                     if studio.mode == .review { reviewForm }
                     if let error = studio.errorMessage { Text(error).font(.footnote).foregroundStyle(.orange) }
@@ -306,7 +355,7 @@ struct FartRecorderView: View {
                 Button { Haptics.impact(.light); studio.togglePause() } label: { Image(systemName: studio.mode == .paused ? "play.fill" : "pause.fill").font(.title2).contentTransition(.symbolEffect(.replace)).frame(width: 60, height: 60).loveInteractiveGlass(in: Circle()) }.buttonStyle(.lovePress).accessibilityLabel(studio.mode == .paused ? "Aufnahme fortsetzen" : "Aufnahme pausieren")
                 Button { Haptics.impact(.medium); studio.finishRecording() } label: {
                     ZStack {
-                        RecorderLevelRing(level: studio.mode == .recording ? min(1, max(0, studio.liveLevels.last ?? 0)) : 0, reduceMotion: reduceMotion)
+                        RecorderLevelRing(studio: studio, reduceMotion: reduceMotion)
                         Image(systemName: "stop.fill").font(.title).foregroundStyle(.white).frame(width: 82, height: 82)
                             .background(LovePalette.heart, in: Circle())
                             .overlay { Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1) }

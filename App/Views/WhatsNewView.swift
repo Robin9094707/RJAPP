@@ -13,6 +13,16 @@ struct WhatsNewView: View {
     @Environment(AppState.self) private var app
 
     static let features: [WhatsNewFeature] = [
+        WhatsNewFeature(id: "chatgpt", symbol: "wand.and.sparkles", tint: LovePalette.violet, title: "Mit ChatGPT anmelden",
+                        detail: "Jede Person verbindet auf dem eigenen iPhone ihr ChatGPT-Abo, gern auch dasselbe Konto. Kein API-Schlüssel, Passwort nur auf der Seite von OpenAI. Ganz optional."),
+        WhatsNewFeature(id: "diary", symbol: "book.pages.fill", tint: LovePalette.pink, title: "Unser Tagebuch",
+                        detail: "Eine gemeinsame Seite pro Tag, die ihr beide weiterschreibt, eure eigenen Seiten und private Seiten, die nur auf dem iPhone bleiben. Mit Stimmung, Fragen für den Abend und Suche."),
+        WhatsNewFeature(id: "writing", symbol: "pencil.and.scribble", tint: LovePalette.coral, title: "KI-Schreibhilfe",
+                        detail: "Aus Stichpunkten wird ein Eintrag, aus eurem Tag eine gemeinsame Seite. Schöner formulieren, kürzen, ein Gedanke dazu, Wochen- und Monatsrückblicke."),
+        WhatsNewFeature(id: "chat", symbol: "bubble.left.and.text.bubble.right.fill", tint: LovePalette.cyan, title: "KI-Chat mit eurem App-Wissen",
+                        detail: "Modell wählen, Gespräche behalten, Antworten ins Tagebuch übernehmen oder direkt verschicken. Der Chat kennt Momente, Pläne, Wünsche und das Duftstudio, sobald ihr es freigebt."),
+        WhatsNewFeature(id: "fluid", symbol: "speedometer", tint: LovePalette.blush, title: "Duftstudio noch flüssiger",
+                        detail: "Recorder und Wiedergabe zeichnen nur noch das, was sich wirklich bewegt. Suche ohne Verzögerung beim Tippen, leichtere Karten beim Scrollen."),
         WhatsNewFeature(id: "design", symbol: "sparkles", tint: LovePalette.pink, title: "Neues Design",
                         detail: "Klar wie die iOS-Einstellungen: deckende Karten, farbige Symbolkacheln und Liquid Glass für Leisten und Bedienelemente. Hochwertig, aber nie durchsichtig."),
         WhatsNewFeature(id: "walkie", symbol: "antenna.radiowaves.left.and.right", tint: LovePalette.coral, title: "Funk",
@@ -24,7 +34,9 @@ struct WhatsNewView: View {
         WhatsNewFeature(id: "location", symbol: "location.fill", tint: LovePalette.cyan, title: "Zuverlässiger Hintergrundstandort",
                         detail: "Kein automatisches Pausieren mehr, Neustart nach Ortswechseln und Besuchen und ein sofortiger, sparsamer Upload im Hintergrund."),
         WhatsNewFeature(id: "launch", symbol: "heart.fill", tint: LovePalette.plum, title: "Neue Öffnungsanimation",
-                        detail: "Euer Bild schlägt einmal wie ein Herz und öffnet euch den Raum. Mit „Bewegung reduzieren“ ganz ruhig.")
+                        detail: "Euer Bild schlägt einmal wie ein Herz und öffnet euch den Raum. Mit „Bewegung reduzieren“ ganz ruhig."),
+        WhatsNewFeature(id: "update", symbol: "arrow.down.app.fill", tint: LovePalette.plum, title: "Gemeinsam mit Server 8.0",
+                        detail: "Eure Daten, Anmeldungen, Aufnahmen und Einstellungen bleiben unverändert. Ältere Apps erinnern freundlich an das Update.")
     ]
 
     var body: some View {
@@ -54,10 +66,10 @@ struct WhatsNewView: View {
                 Text("RJ LOVE \(RJVersion.app)")
                     .font(.system(size: 13, weight: .bold, design: .rounded)).tracking(3)
                     .foregroundStyle(LovePalette.pink)
-                Text("Schöner. Näher.\nNur für euch zwei.")
+                Text("Eure Geschichte.\nJetzt mit KI.")
                     .font(.loveDisplay(34)).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Ein komplettes Redesign im Stil einer echten Apple-App, mit Funk, Frage des Tages und vielen Verbesserungen.")
+                Text("KI-Begleiter über euer ChatGPT-Abo, ein gemeinsames Tagebuch, Funk, Frage des Tages und ein komplettes Redesign im Stil einer Apple-App.")
                     .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }

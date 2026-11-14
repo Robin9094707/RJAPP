@@ -1,4 +1,4 @@
-"""Release 6.0: update prompt for older apps (5.x and 4.x), gzip responses and automatic IPA publishing."""
+"""Release 6.0+: update prompt for older apps (5.x and 4.x), gzip responses and automatic IPA publishing."""
 import gzip
 import hashlib
 import io
@@ -106,9 +106,9 @@ class Server60Tests(unittest.TestCase):
             source = json.load(response)
         self.assertEqual(source['apps'][0]['versions'][0]['version'], server.APP_VERSION)
         # A newer build supersedes it; the server-owned asset survives cleanup and costs no user quota.
-        newer = fake_ipa('7.0.1', '701')
+        newer = fake_ipa('8.0.1', '801')
         (folder / 'RJ-Love-unsigned.ipa').write_bytes(newer)
-        self.assertEqual(self.app.import_bundled_releases(), '7.0.1')
+        self.assertEqual(self.app.import_bundled_releases(), '8.0.1')
         self.app.cleanup_assets()
         with self.raw('/v1/app-release/ipa', who=0) as response:
             self.assertEqual(response.read(), newer)

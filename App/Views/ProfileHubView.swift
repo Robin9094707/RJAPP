@@ -28,6 +28,8 @@ struct SettingsView:View {
                 NavigationLink{InstantGalleryView()}label:{LoveSettingsRow(title:"Fotowünsche & BeReal",subtitle:"Ein Lächeln nur für euch",symbol:"camera.fill",tint:LovePalette.blue)}
             }
             LoveGroup("Dein Alltag") {
+                NavigationLink{DiaryView()}label:{LoveSettingsRow(title:"Unser Tagebuch",subtitle:"Gemeinsame, eigene und private Seiten",symbol:"book.pages.fill",tint:LovePalette.violet)}
+                LoveRowDivider()
                 NavigationLink{CinemaView()}label:{LoveSettingsRow(title:"Unser Kino & AirPlay",subtitle:"YouTube, Plex und euer Fernsehabend",symbol:"play.tv.fill",tint:LovePalette.violet)}
                 LoveRowDivider()
                 NavigationLink{StatusEditorView()}label:{LoveSettingsRow(title:"Mein Status",subtitle:app.myStatus?.visibleStatus ?? "Wie geht es dir gerade?",symbol:"person.crop.circle.badge.clock",tint:LovePalette.pink)}.accessibilityIdentifier("settings-status")
@@ -41,7 +43,7 @@ struct SettingsView:View {
                 NavigationLink{LiveActivitySettingsView()}label:{LoveSettingsRow(title:"Live-Aktivität",subtitle:"Euer Platz auf dem Sperrbildschirm",symbol:"livephoto",tint:LovePalette.cyan)}
             }
             LoveGroup("Deine Entscheidung",footer:"Freigaben und Ruhe, so wie du sie brauchst.") {
-                NavigationLink{AISettingsView()}label:{LoveSettingsRow(title:"KI-Rückblick",subtitle:"Optional · Freigaben & Kostenkontrolle",symbol:"sparkles",tint:LovePalette.violet)}
+                NavigationLink{ChatGPTAccountView()}label:{LoveSettingsRow(title:"KI & ChatGPT",subtitle:AICompanion.shared.signedIn ? "Verbunden · "+AICompanion.shared.modelName : "Optional · mit deinem ChatGPT-Abo",symbol:"wand.and.sparkles",tint:LovePalette.violet)}.accessibilityIdentifier("settings-ai")
                 LoveRowDivider()
                 detail(.sharing,"location.fill",LovePalette.cyan,"Standort, Fotos und Health")
                 LoveRowDivider();detail(.privacy,"hand.raised.fill",LovePalette.violet,"Fotowünsche, Wiedergabe & Tagesrückblick")

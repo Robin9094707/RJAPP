@@ -34,8 +34,8 @@ class Server70Tests(unittest.TestCase):
         return asset['id']
 
     def test_versions(self):
-        self.assertEqual(server.APP_VERSION, '7.0.0')
-        self.assertEqual(server.MINIMUM_APP_VERSION, '7.0.0')
+        self.assertEqual(server.APP_VERSION, '8.0.0')
+        self.assertEqual(server.MINIMUM_APP_VERSION, '8.0.0')
         with self.assertRaises(urllib.error.HTTPError) as failure:
             self.request('/v1/bootstrap', who=0, version='6.0.0')
         self.assertEqual(failure.exception.code, 426)
@@ -146,7 +146,7 @@ class Server70Tests(unittest.TestCase):
         self.assertEqual(kinds[:2], ['question', 'walkie'])
         dashboard = prefs['dashboard']; dashboard['tabs'][1]['action'] = 'walkie'
         saved = self.request('/v1/preferences', {'dashboard': dashboard, 'revision': prefs['revision']}, 0)
-        self.assertEqual(saved['dashboard']['layoutVersion'], 3)
+        self.assertEqual(saved['dashboard']['layoutVersion'], 4)
         # Layout from 6.0 gains the new cards without losing the existing order.
         with self.app.database.connect() as db:
             stored = json.loads(db.execute('SELECT dashboard FROM user_preferences WHERE user_id=?', (self.user,)).fetchone()[0])

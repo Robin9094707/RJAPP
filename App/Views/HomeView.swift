@@ -61,6 +61,9 @@ struct HomeView: View {
         case .dailyJournal:
             if card.size == .compact { homeLink(card,detail:"Euer gemeinsamer Tag") { SharedJournalView() } }
             else { DailyJournalHomeCard() }
+        case .companion:
+            if card.size == .compact { homeLink(card,detail:"Tagebuch, Chat & Ideen") { CompanionView() } }
+            else { CompanionHomeCard() }
         case .documents: homeLink(card,detail:"Dateien, Ordner & Favoriten") { DocumentsView() }
         case .heart:
             if card.size == .compact {

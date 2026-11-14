@@ -933,6 +933,8 @@ final class AppState {
         case "partner": selectedTab = .home;showingPartnerProfile=true
         case "status": selectedTab = .home; showingStatus=true
         case "bereal": selectedTab = .moments; experienceSection = .moments
+        case "diary": selectedTab = .shortcut(.diary)
+        case "ai", "chat": selectedTab = .shortcut(.aiChat)
         default: selectedTab = .home
         }
     }

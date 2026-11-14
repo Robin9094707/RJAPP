@@ -6,7 +6,10 @@ struct AIIntegrationStatus:Decodable {
     let myConsent:Bool
     let partnerConsent:Bool
     let dailyLimit:Int
-    enum CodingKeys:String,CodingKey {case available,model;case myConsent="my_consent",partnerConsent="partner_consent",dailyLimit="daily_limit"}
+    /// 8.0: whether each partner lets their own texts flow into the other's ChatGPT companion.
+    var mySharing:Bool? = nil
+    var partnerSharing:Bool? = nil
+    enum CodingKeys:String,CodingKey {case available,model;case myConsent="my_consent",partnerConsent="partner_consent",dailyLimit="daily_limit",mySharing="my_sharing",partnerSharing="partner_sharing"}
 }
 struct AIDaySummary:Decodable {
     struct Content:Decodable {let title:String;let intro:String;let highlights:[Highlight];let reflection:String;let question:String}

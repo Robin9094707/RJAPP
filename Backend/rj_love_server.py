@@ -53,12 +53,12 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "6.0.0"
+APP_VERSION = "6.1.0"
 # Apps older than this receive HTTP 426 and show their built-in "Zeit für die neue App" view.
-MINIMUM_APP_VERSION = "6.0.0"
+MINIMUM_APP_VERSION = "6.1.0"
 PROTOCOL_VERSION = 5
 CONFIG_FILENAME = "rjapp_config.json"
-ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop"}
+ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop", "diary"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
 
 
@@ -117,7 +117,7 @@ def compatibility_info() -> dict[str, Any]:
             "update_url": "https://github.com/Robin9094707/RJAPP/actions"}
 
 
-QUICK_ACTIONS={"wake","home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap"}
+QUICK_ACTIONS={"wake","home","together","experience","cinema","homeKit","airplay","documents","moments","captureMoment","instant","studio","recordFart","playlist","journal","feed","messenger","status","partner","nearby","map","health","countdowns","planner","ritual","notes","live","profile","updates","aiSummary","poop","logPoop","momentMap","diary","aiChat","companion"}
 
 def default_shortcuts():
     return [{"id":str(uuid.uuid5(uuid.NAMESPACE_URL,"rjlove/shortcut/"+action)),"action":action,"title":title} for action,title in [("moments","Momente"),("captureMoment","Aufnehmen"),("playlist","Unser Abend"),("instant","BeReal"),("status","Mein Status"),("journal","Unser Tag")]]
@@ -398,6 +398,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS ai_consent (user_id TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS ai_summaries (fingerprint TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS ai_usage (id TEXT PRIMARY KEY,local_day TEXT NOT NULL,created_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS ai_sharing (user_id TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS app_settings (user_id TEXT PRIMARY KEY, payload TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS document_folders (id TEXT PRIMARY KEY, parent_id TEXT, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS document_folder_parent ON document_folders(parent_id);
@@ -1592,6 +1593,7 @@ class RJLoveApplication:
             "chat": {"text", "asset_ids", "media_kind", "poster_base64", "autoplay", "urgency", "reference_id", "notification_priority"}, "wish": {"title", "text", "completed"},
             "ritual": {"title","text","message","notes","day","start_at"},
             "poop": {"title","text","location","latitude","longitude","captured_at","duration","rating","emoji"},
+            "diary": {"title","text","message","notes","day","emoji","entry_type","ai_assisted"},
             "coupon": {"title", "text", "target_id", "completed"}, "gratitude": {"title", "text"},
             "milestone": {"countdown_type", "title", "start_at", "text", "recurrence", "alarm_enabled", "reminder_sync", "calendar_sync"}, "checkin": {"title", "text", "message"},
             "album": {"title", "text"}, "instant": {"latitude", "longitude", "caption", "asset_ids", "media_kind", "captured_at", "request_id", "poster_base64"}, "photo_request": {"title", "target_id", "completed"},
@@ -1635,6 +1637,17 @@ class RJLoveApplication:
             for key,minimum,maximum in (("duration",0,180),("rating",1,5)):
                 if type(clean.get(key)) is not int or not minimum<=clean[key]<=maximum:raise APIError(400,"invalid_poop","Dauer oder Legendenstufe ungültig.")
             if not isinstance(clean.get("emoji"),str) or clean["emoji"] not in {"💩","🚽","🧻","👑","🌋"}:raise APIError(400,"invalid_poop","Dieses Sitzungs-Symbol ist unbekannt.")
+
+        if kind == "diary":
+            text_field("title",120,required=True);text_field("text",20_000);text_field("message",1_000);text_field("notes",6_000);text_field("emoji",8)
+            boolean_field("ai_assisted")
+            if clean.get("entry_type","personal") not in {"personal","together"}:raise APIError(400,"invalid_diary","Tagebuch-Art ungültig.")
+            clean["entry_type"]=clean.get("entry_type","personal")
+            try:
+                day=dt.date.fromisoformat(clean.get("day",""))
+                if day.isoformat()!=clean["day"]:raise ValueError()
+            except (ValueError,TypeError):raise APIError(400,"invalid_diary_day","Tag des Tagebucheintrags ungültig.")
+            if not clean.get("text") and not clean.get("notes"):raise APIError(400,"empty_diary","Ein Tagebucheintrag braucht ein paar Worte.")
 
         if kind == "ritual":
             text_field("title",120,required=True)
@@ -2095,7 +2108,77 @@ class RJLoveApplication:
     def ai_status(self,user_id):
         available,_,model,limit=self.ai_settings()
         with self.database.connect() as db:consent={r["user_id"]:bool(r["enabled"]) for r in db.execute("SELECT * FROM ai_consent")}
-        return {"available":available,"model":model,"my_consent":consent.get(user_id,False),"partner_consent":all(consent.get(i,False) for i in self.partner_ids(user_id)),"daily_limit":limit}
+        sharing=self.ai_sharing()
+        return {"available":available,"model":model,"my_consent":consent.get(user_id,False),"partner_consent":all(consent.get(i,False) for i in self.partner_ids(user_id)),"daily_limit":limit,
+                "my_sharing":sharing.get(user_id,False),"partner_sharing":all(sharing.get(i,False) for i in self.partner_ids(user_id))}
+
+    def ai_sharing(self):
+        with self.database.connect() as db:return {r["user_id"]:bool(r["enabled"]) for r in db.execute("SELECT user_id,enabled FROM ai_sharing")}
+
+    def set_ai_sharing(self,user_id,body):
+        if not isinstance(body,dict) or set(body)!={"enabled"} or type(body.get("enabled")) is not bool:raise APIError(400,"invalid_sharing","Freigabe ungültig.")
+        with self.database.connect() as db:
+            db.execute("INSERT INTO ai_sharing VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at",(user_id,int(body["enabled"]),iso_now()))
+        return self.ai_status(user_id)
+
+    AI_CONTEXT_KINDS=("moment","instant","diary","note","wish","gratitude","checkin","chat","ritual","milestone","calendar","reminder","coupon","poop")
+
+    def ai_context(self,user_id,query):
+        """Compact, text-only digest for the user's own ChatGPT companion on the phone.
+
+        The partner's texts are only included while the partner allows it (ai_sharing). Media files,
+        GPS coordinates, health values and credentials are never part of the digest."""
+        try:days=int(query.get("days",["21"])[0])
+        except (TypeError,ValueError):raise APIError(400,"invalid_days","Zeitraum ungültig.")
+        days=max(1,min(120,days))
+        me=self.user_by_id(user_id) or {"id":user_id,"display_name":"Ich"}
+        partners=[p for p in (self.user_by_id(i) for i in self.partner_ids(user_id)) if p]
+        sharing=self.ai_sharing()
+        partner_shares=bool(partners) and all(sharing.get(p["id"],False) for p in partners)
+        allowed={user_id}|({p["id"] for p in partners} if partner_shares else set())
+        names={u["id"]:u["display_name"] for u in self.config["users"]}
+        since=(utc_now()-dt.timedelta(days=days)).isoformat()
+        def clip(value,limit):
+            value=" ".join(value.split()) if isinstance(value,str) else ""
+            return value if len(value)<=limit else value[:limit-1]+"…"
+        stamp="CASE WHEN kind IN ('moment','instant','poop') THEN COALESCE(json_extract(payload,'$.captured_at'),created_at) WHEN kind='ritual' THEN COALESCE(json_extract(payload,'$.start_at'),created_at) ELSE created_at END"
+        marks=",".join("?" for _ in self.AI_CONTEXT_KINDS)
+        items=[];upcoming=[];farts=[];hearts={}
+        with self.database.connect() as db:
+            rows=db.execute(f"SELECT id,kind,owner_id,payload,{stamp} at FROM records WHERE deleted_at IS NULL AND kind IN ({marks}) AND (julianday({stamp})>=julianday(?) OR (kind IN ('milestone','calendar','reminder','wish','note','diary') AND julianday(updated_at)>=julianday(?))) ORDER BY {stamp} DESC LIMIT 600",(*self.AI_CONTEXT_KINDS,since,since)).fetchall()
+            for row in rows:
+                if row["owner_id"] not in allowed:continue
+                p=json.loads(row["payload"]);kind=row["kind"]
+                if kind in {"milestone","calendar","reminder"}:
+                    upcoming.append({"kind":kind,"title":clip(p.get("title"),120),"at":p.get("start_at") or p.get("due_at"),"text":clip(p.get("text") or p.get("notes") or p.get("message"),300),"done":bool(p.get("completed"))})
+                    continue
+                limit=900 if kind=="diary" else 500
+                text=" · ".join(x for x in (clip(p.get("text"),limit),clip(p.get("message"),200),clip(p.get("caption"),400),clip(p.get("notes"),600 if kind=="diary" else 200)) if x)
+                entry={"id":row["id"],"kind":kind,"author":names.get(row["owner_id"],"?"),"at":row["at"],"title":clip(p.get("title"),120),"text":text}
+                if kind=="diary":entry.update({"day":p.get("day"),"mood":clip(p.get("emoji"),8),"together":p.get("entry_type")=="together"})
+                if kind=="poop":entry.update({"text":"","rating":p.get("rating")})
+                if kind in {"moment","instant"}:entry["media"]=p.get("media_kind") or "photo"
+                if kind in {"wish","coupon"}:entry["done"]=bool(p.get("completed"))
+                items.append(entry)
+            for row in db.execute("SELECT id,owner_id,title,caption,category,duration,COALESCE(recorded_at,created_at) at FROM fart_clips WHERE julianday(COALESCE(recorded_at,created_at))>=julianday(?) ORDER BY at DESC LIMIT 120",(since,)).fetchall():
+                if row["owner_id"] not in allowed:continue
+                stars=[r[0] for r in db.execute("SELECT overall FROM fart_ratings WHERE clip_id=?",(row["id"],))]
+                farts.append({"author":names.get(row["owner_id"],"?"),"at":row["at"],"title":clip(row["title"],100),"caption":clip(row["caption"],200),"category":row["category"],"seconds":round(float(row["duration"]),1),"stars":round(sum(stars)/len(stars),1) if stars else None})
+            for row in db.execute("SELECT user_id,substr(COALESCE(occurred_at,received_at),1,10) day,count(*) n FROM thought_events WHERE julianday(COALESCE(occurred_at,received_at))>=julianday(?) GROUP BY user_id,day",(since,)).fetchall():
+                if row["user_id"] in allowed:hearts.setdefault(row["day"],{})[names.get(row["user_id"],"?")]=row["n"]
+            presence={r["user_id"]:json.loads(r["payload"]) for r in db.execute("SELECT user_id,payload FROM presence")}
+        status={}
+        for uid in allowed:
+            value=presence.get(uid) or {}
+            message=value.get("status_message") if isinstance(value.get("status_message"),str) else ""
+            expires=parse_iso(value.get("status_expires_at"))
+            if message and (expires is None or expires>utc_now()):status[names.get(uid,"?")]=clip(message,160)
+        partner=partners[0] if partners else None
+        return {"generated_at":iso_now(),"days":days,"local_day":self.local_day(),
+                "me":{"id":user_id,"name":me["display_name"]},
+                "partner":{"id":partner["id"],"name":partner["display_name"],"shares":partner_shares} if partner else None,
+                "my_sharing":sharing.get(user_id,False),
+                "items":items[:400],"farts":farts,"upcoming":upcoming[:60],"hearts":hearts,"status":status}
 
     def ai_source(self,start,end,db=None):
         stamp="COALESCE(json_extract(payload,'$.captured_at'),created_at)"
@@ -2300,11 +2383,17 @@ class RJLoveApplication:
                 existing = {c["kind"] for c in dashboard["cards"]}
                 dashboard["cards"] = [{"kind": k, "size": "large"} for k in ("shortcuts","cinema","homeKit","eveningPlayer","dailyJournal") if k not in existing] + dashboard["cards"]
                 dashboard["layoutVersion"] = 2
+            if dashboard.get("layoutVersion", 0) < 3:
+                # 6.1: the new AI & diary card appears once, right after the daily journal.
+                cards = [c for c in dashboard["cards"] if c.get("kind") != "companion"]
+                index = next((i + 1 for i, c in enumerate(cards) if c.get("kind") == "dailyJournal"), min(1, len(cards)))
+                dashboard["cards"] = cards[:index] + [{"kind": "companion", "size": "large"}] + cards[index:]
+                dashboard["layoutVersion"] = 3
             dashboard.setdefault("tabs", default_tabs())
             dashboard.setdefault("actions", default_actions())
             return {"dashboard":dashboard,"revision":row["revision"]}
-        cards = ["shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
-        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts(),"tabs":default_tabs(),"layoutVersion":2,"actions":default_actions()}, "revision": 0}
+        cards = ["shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "companion", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery"]
+        return {"dashboard": {"cards": [{"kind": k, "size": "large"} for k in cards], "theme": "rose", "title": "Euer kleines Wir.","shortcuts":default_shortcuts(),"tabs":default_tabs(),"layoutVersion":3,"actions":default_actions()}, "revision": 0}
 
     def bootstrap(self, user_id: str, compact_media=False) -> dict[str, Any]:
         day = self.local_day()
@@ -3479,6 +3568,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/ai/status":
                 self.send_json(200,self.app.ai_status(self.current_user()));return
+            if path == "/v1/ai/context":
+                self.send_json(200,self.app.ai_context(self.current_user(),parse_qs(urlparse(self.path).query)));return
             if path == "/v1/preferences":
                 self.send_json(200, self.app.preferences(self.current_user()))
                 return
@@ -3582,6 +3673,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(200,self.app.ai_status(user_id));return
             if path == "/v1/ai/summary":
                 body=self.read_json();self.send_json(200,self.app.summarize_day(user_id,body));return
+            if path == "/v1/ai/sharing":
+                self.send_json(200,self.app.set_ai_sharing(user_id,self.read_json()));return
             if path == "/v1/activity":
                 body=self.read_json()
                 mode=body.get("mode")
@@ -4093,7 +4186,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         if not isinstance(dashboard, dict) or not {"cards","theme","title"}.issubset(dashboard) or set(dashboard)-{"cards","theme","title","shortcuts","tabs","layoutVersion","actions"}:
             raise APIError(400, "invalid_dashboard", "Die Startseite ist ungültig.")
         cards = dashboard["cards"]
-        allowed = {"shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop"}
+        allowed = {"shortcuts", "cinema", "homeKit", "eveningPlayer", "dailyJournal", "documents", "heart", "partner", "quickActions", "studio", "messenger", "history", "planner", "instant", "milestone", "health", "live", "delivery", "relationship", "poop", "companion"}
         if not isinstance(cards, list) or len(cards) > len(allowed):
             raise APIError(400, "invalid_cards", "Die Kartenliste ist ungültig.")
         seen = set()
@@ -4134,7 +4227,7 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             except (ValueError,TypeError,AttributeError): raise APIError(400,"invalid_tabs","Ungültige Schaltfläche.")
             if tab["action"] in seen_tabs or tab["id"] in seen_tab_ids: raise APIError(400,"invalid_tabs","Jedes Ziel nur einmal auswählen.")
             seen_tabs.add(tab["action"]);seen_tab_ids.add(tab["id"]);tab["title"]=safe_text(tab["title"],24,allow_empty=False)
-        dashboard["tabs"]=tabs;dashboard["layoutVersion"]=2
+        dashboard["tabs"]=tabs;dashboard["layoutVersion"]=3
         dashboard["title"] = safe_text(dashboard["title"], 80, allow_empty=False)
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -4382,6 +4475,8 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if kind=="photo_request" and old and owner_id!=user_id:
                 if prior_payload.get("target_id")!=user_id or {k:v for k,v in payload.items() if k!="completed"}!={k:v for k,v in prior_payload.items() if k!="completed"}:
                     raise APIError(403,"not_owner","Nur der Fotowunsch darf beantwortet werden.")
+            if old and kind=="diary" and owner_id!=user_id and (prior_payload.get("entry_type")!="together" or payload.get("entry_type")!="together"):
+                raise APIError(403,"diary_owner","Persönliche Tagebuchseiten kann nur ihr Autor ändern.")
             if old and kind in {"chat", "checkin", "gratitude", "instant", "poop"} and owner_id != user_id:
                 raise APIError(403, "not_owner", "Du kannst fremde Nachrichten oder Gefühle nicht ändern.")
             if kind == "coupon":
@@ -4421,11 +4516,12 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             "coupon": ("Ein kleiner Liebesgutschein 💌", "hat einen Gutschein aktualisiert."),
             "ritual": ("Ein Abendmoment für uns ✨", "hat euer Abendritual ergänzt."),
             "poop": ("Drop-Poop · Nur für euch 💩", "hat ein stilles Örtchen verewigt."),
+            "diary": ("Unser Tagebuch 📖", "hat eine Tagebuchseite geschrieben."),
             "gratitude": ("Das mag ich an dir 💗", "hat dir liebe Worte dagelassen."),
             "photo_request": ("Ein Foto nur für dich 📷", "wünscht sich ein Foto von dir."),
         }
         title, phrase = labels.get(kind,("Ein Moment für uns","hat etwas Neues für dich geteilt."))
-        content = "\n".join(str(payload[k]) for k in ("title", "text", "message", "caption", "notes", "location") if isinstance(payload.get(k), str) and payload[k])
+        content = "\n".join(str(payload[k]) for k in (("title",) if kind=="diary" else ("title", "text", "message", "caption", "notes", "location")) if isinstance(payload.get(k), str) and payload[k])
         if kind == "chat":
             title = (f"Dringende Nachricht von {sender['display_name']} ❗" if payload.get("notification_priority") == "urgent" else f"{sender['display_name']} hat dir geschrieben 💌")
         preview = f"{sender['display_name']} {phrase}" + ("\n" + content if content else "")

@@ -2,7 +2,7 @@
 
 Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widgets und Alltag.
 
-**Aktuelle App: 6.0.0 (600), Server 6.0.0.** Gründliche Überarbeitung: ruhiges, einheitliches Design mit festen Karten (Liquid Glass nur noch in den Systemleisten), deutlich weniger Animationen für flüssiges Scrollen auch auf älteren iPhones, reparierte Notfallaufnahme und ein neuer nahtloser Startbildschirm: [Release 6.0.0](RELEASE-6.0.0.md).
+**Aktuelle App: 6.1.0 (610), Server 6.1.0.** Gemeinsames Tagebuch (gemeinsame, eigene und private Seiten), optionale Anmeldung mit ChatGPT für einen KI-Begleiter über euer eigenes Abo (Chat mit App-Wissen, Schreibhilfe, Rückblicke) und ein noch flüssigeres Duftstudio: [Release 6.1.0](RELEASE-6.1.0.md). Vorher: [Release 6.0.0](RELEASE-6.0.0.md).
 
 ## Neu: Unser Kino
 
@@ -20,7 +20,7 @@ Plex-Fernsteuerung setzt einen kompatiblen Empfänger und passende Serverrechte 
 
 Server stoppen, Konfiguration und Datenordner sichern, nur `Backend/rj_love_server.py` ersetzen und neu starten. Konfiguration, Konto-IDs und Datenpfad unverändert behalten. Die neue IPA mit demselben Signierteam, derselben Bundle-ID und identischer App Group über die bestehende App installieren. Die App nicht löschen.
 
-Die Datenbank wird ausschließlich additiv erweitert. App 6.0.0 benötigt Server 6.0.0. Server 6.0.0 zeigt älteren Apps (5.x und 4.x) ihr eingebautes Update-Fenster; der IPA-Download und die Feather-Quelle bleiben für sie erreichbar. Eine `RJ-Love…ipa` neben der Serverdatei (oder in `rjlove_data/updates/`) wird automatisch als neues Release bereitgestellt.
+Die Datenbank wird ausschließlich additiv erweitert. App 6.1.0 benötigt Server 6.1.0. Server 6.1.0 zeigt älteren Apps (6.0 und älter) ihr eingebautes Update-Fenster; der IPA-Download und die Feather-Quelle bleiben für sie erreichbar. Eine `RJ-Love…ipa` neben der Serverdatei (oder in `rjlove_data/updates/`) wird automatisch als neues Release bereitgestellt.
 
 ## Installation
 

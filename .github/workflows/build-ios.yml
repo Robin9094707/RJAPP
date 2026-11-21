@@ -2,7 +2,7 @@ name: Build RJ Love unsigned IPA
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/jolly-volta-8cgxxb"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -46,6 +46,7 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Backend/rj_love_server.py
           python3 Scripts/validate_project.py
+          python3 -m unittest -q Tests/test_widget_profiles.py
           python3 -m unittest -q Tests/test_cinema42.py Tests/test_dashboard43.py Tests/test_documents431.py Tests/test_server60.py Tests/test_server70.py Tests/test_server80.py Tests/test_server90.py
           swiftc Shared/HomeShortcuts.swift Shared/HomeLayout.swift Tests/PreferencesSmoke.swift -o /tmp/rj-preferences-smoke
           /tmp/rj-preferences-smoke
@@ -110,7 +111,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-9.0.0-Komplettpaket
+          name: RJ-Love-9.0.1-Komplettpaket
           path: |
             RJ-Love-9.0.0-Komplettpaket.zip
             Backend/rj_love_server.py

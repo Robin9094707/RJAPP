@@ -1,6 +1,7 @@
 import AlarmKit
 import Foundation
 import UIKit
+import WidgetKit
 
 struct BackgroundSnapshot: Decodable {
     let userID: String
@@ -94,6 +95,48 @@ struct PushReadiness: Decodable {
         return result
     }
     func cancel() { work?.cancel() }
+    // Refresh widget information through the existing authenticated server API.
+    // A failed widget update must not block alarms or command acknowledgments.
+    private func refreshWidgetFromServer(api: APIClient) async {
+        guard WidgetSharedStore.connected, !Task.isCancelled else { return }
+        do {
+            let bootstrap = try await api.bootstrap()
+            guard !Task.isCancelled else { return }
+            var value = WidgetSharedStore.loadSnapshot()
+            if let partner = bootstrap.partners.first {
+                let presence = partner.presence
+                let previousLocationTime = value.locationUpdatedAt
+                value.partnerName = partner.displayName
+                value.partnerBattery = presence?.batteryLevel
+                value.partnerBatteryState = presence?.batteryState
+                value.partnerNetwork = presence?.networkType
+                value.partnerMotion = presence?.motion
+                value.partnerLastSeen = presence?.updatedAt ?? presence?.reportedAt
+                value.partnerSteps = presence?.steps
+                value.partnerSleepMinutes = presence?.sleepMinutes
+                value.locationSharing = presence?.locationSharing == true
+                value.locationUpdatedAt = presence?.locationSharing == true ? presence?.locationTimestamp : nil
+                // Never report an outdated relative distance as a fresh GPS fix.
+                if value.locationSharing != true || value.locationUpdatedAt != previousLocationTime ||
+                   (value.distanceValidUntil?.rjDate ?? .distantPast) <= .now {
+                    value.distanceMeters = nil
+                    value.distanceValidUntil = nil
+                }
+            }
+            let today = bootstrap.localDay == WidgetSharedStore.localDayStamp()
+            value.myThoughts = (today ? (bootstrap.thoughts[bootstrap.me.id] ?? 0) : 0)
+                + WidgetSharedStore.pendingThoughtsToday()
+            value.partnerThoughts = today
+                ? (bootstrap.partners.first.flatMap { bootstrap.thoughts[$0.id] } ?? 0) : 0
+            value.lastSync = Date.now.rjISO8601
+            WidgetSharedStore.saveSnapshot(value)
+            WidgetSharedStore.defaults?.set(Date.now.rjISO8601,forKey:"rjlove.widget-background-synced-at")
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {
+            DebugLogger.shared.log("Widget-Hintergrundabruf: " + error.localizedDescription, category: "Hintergrund")
+        }
+    }
+
     private func perform(source: String) async -> Bool {
         UserDefaults.standard.set(Date.now.rjISO8601, forKey: "rjlove.last-background-at")
         UserDefaults.standard.set(source, forKey: "rjlove.last-background-source")
@@ -114,6 +157,7 @@ struct PushReadiness: Decodable {
             guard !Task.isCancelled else { return false }
             await AlarmService.shared.reconcile(reminders: snapshot.reminders, myID: snapshot.userID, senderName: snapshot.senderName)
             if UIApplication.shared.applicationState != .active {
+                await refreshWidgetFromServer(api: api)
                 try await api.reportActivity(mode:"background",source:source)
                 UserDefaults.standard.set(Date.now.rjISO8601,forKey:"rjlove.last-successful-background-at")
             }

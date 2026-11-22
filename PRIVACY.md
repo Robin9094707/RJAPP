@@ -1,3 +1,15 @@
+# RJ Love – Datenschutz und Datenflüsse (App 9.0.1)
+
+**Stand:** iOS-App 9.0.1, Python-Server 9.0.0. Die folgenden historischen Ergänzungen gelten im jeweils beschriebenen Kontext.
+
+**Widgets und Hintergrundaktualisierung:** Widget-Daten liegen lokal im von iOS freigegebenen App-Group-Container. Bei einem durch iOS gestarteten Hintergrundlauf kann die App denselben authentifizierten privaten Server-Endpunkt `GET /v1/bootstrap` nutzen, den sie auch beim normalen Synchronisieren verwendet, um die angezeigten Partnerdaten zu aktualisieren. Dabei werden keine neuen Server-Endpunkte eingeführt und es wird kein zusätzlicher Standort ohne die bestehenden Freigaben erhoben. Push, Widget-Aktualisierungen und Standort sind an iOS-Berechtigungen und dessen Hintergrundregeln gebunden.
+
+**Signierung:** Zertifikate, `.p12`-Schlüssel und die Passwörter der Signierung gehören ausschließlich in die lokale Signierungsumgebung, nicht in dieses öffentliche Repository oder in Build-Artefakte.
+
+Details: [9.0.1 – Widgets](RELEASE-9.0.1.md), [9.0.0 – Tagebuch und Gruppenchat](RELEASE-9.0.0.md).
+
+---
+
 # Datenschutz-Ergänzung 4.2.0
 
 Die Plex-Automatik übermittelt nach Verbindung Profil-Zugangstoken an euren eigenen HTTPS-Server. Er prüft die Serverberechtigung und beobachtet nur passende Sitzungen. Tokens werden ausschließlich befristet im Arbeitsspeicher gehalten, nicht in Datenbank oder Konfiguration. Titel, Filmdetails, Kinozeiten und bestätigte Anwesenheit am selben Bildschirm liegen in eurer eigenen Datenbank. Die Anwesenheitsbestätigung gilt pro Film höchstens vier Stunden; mindestens eine frische Wiedergabequelle ist erforderlich. Beide können Kino-Statistiken mit Bestätigung zurücksetzen.

@@ -55,6 +55,20 @@ for expected in ["workflow_dispatch", "CODE_SIGNING_ALLOWED=NO", "RJ-Love-unsign
         fail(f"workflow missing {expected}")
 
 
+
+# Keep versioned release package and GitHub artifact naming in sync.
+import re
+version_match = re.search(r'MARKETING_VERSION:\s*"([^"]+)"', project)
+if version_match is None:
+    fail("missing MARKETING_VERSION in project.yml")
+app_version = version_match.group(1)
+package_name = f"RJ-Love-{app_version}-Komplettpaket.zip"
+packager = (ROOT / "Scripts/package_release.py").read_text()
+if package_name not in packager or package_name not in workflow:
+    fail(f"release artifact path mismatch: {package_name}")
+if f"RJ-Love-{app_version}-Komplettpaket" not in workflow:
+    fail("artifact label does not match app version")
+
 for path in ROOT.rglob("*"):
     if not path.is_file() or path.suffix not in {".swift", ".yml", ".md", ".plist"}:
         continue

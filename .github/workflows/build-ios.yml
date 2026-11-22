@@ -107,13 +107,31 @@ jobs:
         run: |
           python3 Scripts/package_release.py
 
+      - name: Verify complete package before publishing
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RJ-Love-9.0.1-Komplettpaket.zip
+          unzip -t RJ-Love-9.0.1-Komplettpaket.zip
+          python3 - <<'PY'
+          import json, zipfile
+          archive = zipfile.ZipFile('RJ-Love-9.0.1-Komplettpaket.zip')
+          names = set(archive.namelist())
+          prefix = 'RJ-Love-9.0.1/'
+          required = {prefix + 'RJ-Love-unsigned.ipa', prefix + 'Backend/rj_love_server.py', prefix + 'manifest.json'}
+          assert required <= names, 'Missing complete-package contents: ' + str(required - names)
+          manifest = json.loads(archive.read(prefix + 'manifest.json'))
+          assert manifest['version'] == '9.0.1' and manifest['build'] == 901
+          PY
+
       - name: Upload complete package
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: RJ-Love-9.0.1-Komplettpaket
           path: |
-            RJ-Love-9.0.0-Komplettpaket.zip
+            RJ-Love-9.0.1-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30

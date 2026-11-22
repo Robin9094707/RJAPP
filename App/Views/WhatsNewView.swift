@@ -111,7 +111,7 @@ struct WhatsNewView: View {
             }
             .buttonStyle(.glassProminent).tint(LovePalette.pink).controlSize(.large)
             .accessibilityIdentifier("whats-new-continue")
-            Text("Gemeinsam mit Server 7.0 · einmalig angezeigt").font(.caption2).foregroundStyle(.secondary)
+            Text("Kompatibel mit Server 9.0.0 · einmalig angezeigt").font(.caption2).foregroundStyle(.secondary)
         }
         .padding(.horizontal, LoveMetrics.screenPadding).padding(.top, 12).padding(.bottom, 8)
         .frame(maxWidth: 620).frame(maxWidth: .infinity)

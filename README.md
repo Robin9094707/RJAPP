@@ -2,7 +2,13 @@
 
 Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widgets und Alltag.
 
-**Aktuelle App: 9.0.0 (900), Server 9.0.0.** Tagebuch 2.0 mit Rückfragen, automatischer Stimmung, Kontext, Sprach-Tagebuch und Einblicken; Gruppenchat für euch zwei mit ChatGPT und live mitgeschriebenen Sprachnachrichten; Internetsuche im KI-Chat: [Release 9.0.0](RELEASE-9.0.0.md) · vorher [8.0.0](RELEASE-8.0.0.md) · [7.0.0](RELEASE-7.0.0.md).
+**Aktueller Stand: iOS-App 9.0.1 (Build 901), Python-Server 9.0.0, Protokoll 5.**
+
+- **[9.0.1 – Widgets und Hintergrund-Sync](RELEASE-9.0.1.md):** erkennt die zugelassene App Group der jeweiligen Signierung automatisch und aktualisiert Widget-Daten bei von iOS erlaubten Hintergrundläufen.
+- **[9.0.0 – Tagebuch 2.0 und Gruppenchat](RELEASE-9.0.0.md):** Rückfragen, Stimmung, Sprach-Tagebuch, ChatGPT-Gruppenchat mit Sprachnachrichten und Websuche.
+- Frühere Änderungen: [8.0.0](RELEASE-8.0.0.md) · [7.0.0](RELEASE-7.0.0.md).
+
+**Ein Quellcode-Stand für beide iPhones:** Die gleiche **unsigned IPA** wird auf jedem Gerät separat mit dessen Zertifikat signiert. Für Widgets muss auch die eingebettete Erweiterung ein passendes Profil und dieselbe erlaubte App Group wie die Haupt-App erhalten.
 
 ## Neu: Unser Kino
 
@@ -18,9 +24,9 @@ Plex-Fernsteuerung setzt einen kompatiblen Empfänger und passende Serverrechte 
 
 ## Aktualisieren und Daten behalten
 
-Server stoppen, Konfiguration und Datenordner sichern, nur `Backend/rj_love_server.py` ersetzen und neu starten. Konfiguration, Konto-IDs und Datenpfad unverändert behalten. Die neue IPA mit demselben Signierteam, derselben Bundle-ID und identischer App Group über die bestehende App installieren. Die App nicht löschen.
+**Von App 9.0.0 auf 9.0.1:** Der Server bleibt 9.0.0; du musst die Python-Datei nicht ersetzen. Die bestehende App mit derselben Bundle-ID und derselben Signierungsidentität aktualisieren, wenn die lokalen Daten erhalten bleiben sollen. Die App nicht vorher löschen.
 
-Die Datenbank wird ausschließlich additiv erweitert. App 9.0.0 benötigt Server 9.0.0. Server 9.0.0 zeigt älteren Apps (8.x und älter) ihr eingebautes Update-Fenster; der IPA-Download und die Feather-Quelle bleiben für sie erreichbar. Eine `RJ-Love…ipa` neben der Serverdatei (oder in `rjlove_data/updates/`) wird automatisch als neues Release bereitgestellt.
+**Von älteren Serverständen:** Server stoppen, Konfiguration und Datenordner sichern und ausschließlich `Backend/rj_love_server.py` aus dem passenden Komplettpaket ersetzen. Konto-IDs, Datenpfad und Konfiguration behalten. App 9.0.1 benötigt mindestens Server 9.0.0. Ältere Apps erhalten den vorgesehenen Updatehinweis. Eine `RJ-Love…ipa` neben der Serverdatei (oder in `rjlove_data/updates/`) kann als neues Release bereitgestellt werden. Details: [Installation und Signierung](INSTALLATION.md).
 
 ## Installation
 
@@ -34,7 +40,9 @@ Details: [Installation](INSTALLATION.md), [Funktionen](FEATURES.md), [Datenschut
 
 ## Build
 
-GitHub Actions baut auf `main` und für Pull Requests App und Widgets als unsignierte IPA und liefert die einzelne Serverdatei sowie ein Komplettpaket. Einundzwanzig schnelle HTTP-Prüfungen sowie Swift-Tests für Layout und Notfallübergabe prüfen Kino, Dokumente, Einstellungen und Migration. Keine zusätzlichen Simulator-Jobs. Compiler- und Paketprüfung bleiben erhalten.
+GitHub Actions baut bei Änderungen auf `main`, auf dem Release-Entwicklungszweig und bei Pull Requests eine **unsignierte IPA samt Widget-Erweiterung**. Die Aktion überprüft den Projektaufbau, die Server-Tests, Swift-Smoke-Tests und das IPA-Paket; sie veröffentlicht die IPA sowie ein separates Komplettpaket mit der Serverdatei. Das Kompilieren bestätigt **nicht** die korrekte Gerätesignierung oder Push-/Widget-Funktion auf echten iPhones.
+
+[GitHub Actions – neueste Builds](https://github.com/Robin9094707/RJAPP/actions) · [Versionshinweise](RELEASE-9.0.1.md).
 
 YouTube verwendet [YouTubeKit](https://github.com/b5i/YouTubeKit), fest auf eine Revision gebunden; der Lizenztext liegt in den App-Ressourcen. Google-/YouTube-Anmeldedaten bleiben auf dem jeweiligen iPhone. Plex-Brücken speichern Zugangstokens ausschließlich befristet im Serverspeicher.
 

@@ -16,3 +16,19 @@ __pycache__/
 *.pyc
 .sim-derived/
 Preview-*.png
+
+# Local signing credentials and provider profiles: NEVER commit private keys.
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+*.cer
+*.pfx
+*.pem
+*.key
+*certificate*.zip
+*Certificate*.zip
+*Zertifikat*.zip
+*.xcarchive
+*.app/
+RJ-Love-*-Komplettpaket.zip

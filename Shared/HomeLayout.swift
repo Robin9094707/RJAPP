@@ -1,7 +1,7 @@
 import Foundation
 
 enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
-    case shortcuts, cinema, homeKit, eveningPlayer, dailyJournal, documents, heart, partner, quickActions, studio, messenger, history, planner, instant, milestone, health, live, delivery, relationship, poop
+    case shortcuts, cinema, homeKit, eveningPlayer, dailyJournal, companion, documents, heart, partner, quickActions, studio, messenger, history, planner, instant, milestone, health, live, delivery, relationship, poop, walkie, question
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -10,6 +10,7 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .homeKit: "Unser Zuhause & Kameras"
         case .eveningPlayer: "Abendplayer"
         case .dailyJournal: "Unser Tagesrückblick"
+        case .companion: "KI & Tagebuch"
         case .documents: "Gemeinsame Dokumente"
         case .heart: "Herzgedanken"
         case .partner: "Mein Lieblingsmensch"
@@ -25,6 +26,8 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .delivery: "Push & Wecker"
         case .relationship: "Unsere Beziehungsmonate"
         case .poop: "Drop-Poop"
+        case .walkie: "Funk"
+        case .question: "Frage des Tages"
         }
     }
     var symbol: String {
@@ -34,6 +37,7 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .homeKit: "house.fill"
         case .eveningPlayer: "play.square.stack.fill"
         case .dailyJournal: "book.closed.fill"
+        case .companion: "wand.and.sparkles"
         case .documents: "folder.fill"
         case .heart: "heart.fill"
         case .partner: "person.crop.circle.fill"
@@ -49,6 +53,8 @@ enum HomeCardKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .delivery: "checkmark.shield.fill"
         case .relationship: "heart.circle.fill"
         case .poop: "toilet.fill"
+        case .walkie: "antenna.radiowaves.left.and.right"
+        case .question: "bubble.left.and.text.bubble.right.fill"
         }
     }
 }
@@ -59,13 +65,13 @@ struct HomeCard: Codable, Hashable, Identifiable, Sendable {
     var id: String { kind.rawValue }
 }
 struct HomeLayout: Codable, Hashable, Sendable {
-    var cards: [HomeCard] = HomeCardKind.allCases.map { HomeCard(kind: $0) }
+    var cards: [HomeCard] = ([HomeCardKind.question,.walkie] + HomeCardKind.allCases.filter { $0 != .question && $0 != .walkie }).map { HomeCard(kind: $0) }
     var theme: String = "rose"
     var title: String = "Euer kleines Wir."
     var shortcuts:[HomeShortcut]=HomeShortcut.standard
     var actions:[HomeShortcut]=HomeShortcut.standardActions
     var tabs: [HomeShortcut] = HomeShortcut.standardTabs
-    var layoutVersion = 2
+    var layoutVersion = 4
     static let standard = HomeLayout()
     enum CodingKeys:String,CodingKey {case cards,theme,title,shortcuts,tabs,layoutVersion,actions}
     init(){}
@@ -80,6 +86,18 @@ struct HomeLayout: Codable, Hashable, Sendable {
         if layoutVersion < 2 {
             cards = [HomeCardKind.shortcuts,.cinema,.homeKit,.eveningPlayer,.dailyJournal].filter { kind in !cards.contains { $0.kind == kind } }.map { HomeCard(kind:$0) } + cards
             layoutVersion = 2
+        }
+        if layoutVersion < 3 {
+            // 7.0: the question of the day and the walkie-talkie join the top of the page once.
+            cards = [HomeCardKind.question,.walkie].filter { kind in !cards.contains { $0.kind == kind } }.map { HomeCard(kind:$0) } + cards
+            layoutVersion = 3
+        }
+        if layoutVersion < 4 {
+            // 8.0: the AI & diary card appears once, right after the daily journal.
+            cards.removeAll { $0.kind == .companion }
+            let index = cards.firstIndex { $0.kind == .dailyJournal }.map { $0 + 1 } ?? min(1, cards.count)
+            cards.insert(HomeCard(kind: .companion), at: index)
+            layoutVersion = 4
         }
         shortcuts=try c.decodeIfPresent([HomeShortcut].self,forKey:.shortcuts) ?? HomeShortcut.standard
     }

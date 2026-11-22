@@ -62,9 +62,15 @@ struct QuickActionDestination:View {
     case .live:LiveActivitySettingsView()
     case .updates:AppUpdateView()
     case .aiSummary:AIDaySummaryView()
+    case .diary:DiaryView()
+    case .aiChat:AIChatEntryView()
+    case .companion:CompanionView()
+    case .groupChat:GroupChatView()
     case .status:StatusEditorView()
     case .partner:PartnerProfileView()
     case .profile:SettingsView()
     case .recordFart:FartRecorderView(autoStart:true)
+    case .walkie:WalkieView()
+    case .question:DailyQuestionView()
     }}
 }

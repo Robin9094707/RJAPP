@@ -19,7 +19,7 @@ struct SharedJournalView:View {
                 if loading{ProgressView("Euer Tag wird zusammengestellt …").frame(maxWidth:.infinity).padding(30)}
                 else if let error {ContentUnavailableView("Tag gerade nicht geladen",systemImage:"wifi.exclamationmark",description:Text(error));Button("Erneut versuchen"){Task{await load()}}.buttonStyle(.bordered)}
                 else if let page {summary(page);NavigationLink{AIDaySummaryView(day:day)}label:{Label("Unsere Momente mit KI zusammenfassen",systemImage:"sparkles").frame(maxWidth:.infinity)}.buttonStyle(.bordered)}
-                if !loading,error==nil {NavigationLink{EveningRitualView(day:day)}label:{Label("Ein kleiner Abendmoment für uns",systemImage:"moon.stars.fill").frame(maxWidth:.infinity)}.buttonStyle(.borderedProminent)}
+                if !loading,error==nil {NavigationLink{EveningRitualView(day:day)}label:{Label("Ein kleiner Abendmoment für uns",systemImage:"moon.stars.fill").frame(maxWidth:.infinity)}.buttonStyle(.borderedProminent);NavigationLink{DiaryView()}label:{Label("Unser Tagebuch",systemImage:"book.pages.fill").frame(maxWidth:.infinity)}.buttonStyle(.bordered)}
             }else{
                 VStack(alignment:.leading,spacing:10){LoveEyebrow(text:"Was bei euch passiert");Text("Unser Leben,\nganz nebenbei.").font(.system(size:32,weight:.medium,design:.serif));Text("Die neuesten synchronisierten Beiträge: Fotos, Worte, Wünsche und kleine Meisterwerke. Tippe einen Moment an, um mehr zu sehen.").font(.subheadline).foregroundStyle(.secondary)}.loveCard()
             }

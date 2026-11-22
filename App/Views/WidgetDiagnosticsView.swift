@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct WidgetDiagnosticsView:View {
     @State private var checked=Date.now
@@ -11,7 +12,17 @@ struct WidgetDiagnosticsView:View {
                 if let read=defaults?.string(forKey:"rjlove.widget-read-at")?.rjDate {Text("Widget hat den Speicher gelesen: \(read.formatted(date:.abbreviated,time:.shortened))")}
                 else{Text("Noch kein bestätigter Zugriff der Widget-Erweiterung. Nach Installation App öffnen und Widget hinzufügen.")}
                 if let reader=defaults?.string(forKey:"rjlove.widget-reader"){Text(reader).font(.caption)}
-                Button("Status neu prüfen"){checked = .now}.id(checked)
+                Button {
+                    if WidgetSharedStore.connected {
+                        WidgetSharedStore.saveSnapshot(WidgetSharedStore.loadSnapshot())
+                    }
+                    WidgetCenter.shared.reloadAllTimelines()
+                    checked = .now
+                } label: {
+                    Label("Widget-Daten und Anzeige aktualisieren", systemImage: "arrow.clockwise")
+                }.id(checked)
+                Text("Die App erkennt automatisch eine App Group, die von der installierten Signatur erlaubt ist. Eine frei eingegebene ID kann keine iOS-Berechtigung hinzufügen.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Signierung") {
                 Text("Haupt-App: "+SigningProfile.current.bundleID).font(.caption)
@@ -21,9 +32,22 @@ struct WidgetDiagnosticsView:View {
                 }
                 Text("Ein erreichbarer Container bestätigt noch nicht, dass die Erweiterung installiert und korrekt signiert ist. Der bestätigte Widget-Zugriff oben prüft den tatsächlichen Datenaustausch.")
             }
-            Section("Deine bereitgestellten Profile") {
-                Text("Die Profile gelten für app.lake6191.velvet1751 und erlauben diese App Group. Sie enthalten kein separates Profil für die Widget-Erweiterung. Signiere in Feather/ArcticSign beide Targets mit jeweils passenden IDs und Profilen. Eine fremde Haupt-App-ID wird hier nicht automatisch übernommen; so bleiben deine bisherigen App-Daten erreichbar.")
-                Text("Standort und Entfernung erscheinen nur mit eurer Freigabe und aktuellen Messungen. Widgets und Live-Aktivitäten zeigen den letzten bestätigten Stand; iOS bestimmt die Aktualisierung im Hintergrund.")
+            Section("Server und Hintergrund") {
+                if let date=defaults?.string(forKey:"rjlove.widget-background-synced-at")?.rjDate {
+                    Text("Letzter Widget-Hintergrundabruf: \(date.formatted(date:.abbreviated,time:.shortened))")
+                } else { Text("Noch kein Widget-Hintergrundabruf bestätigt.") }
+                if let date=UserDefaults.standard.string(forKey:"rjlove.last-successful-background-at")?.rjDate {
+                    Text("Letzter Server-Hintergrundlauf: \(date.formatted(date:.abbreviated,time:.shortened))")
+                }
+                if let result=UserDefaults.standard.string(forKey:"rjlove.last-background-result") { Text(result) }
+                Text("Die vorhandene Serveradresse und Anmeldung bleiben unverändert. iOS bestimmt, wann Hintergrundläufe stattfinden.")
+            }.font(.footnote)
+            Section("Beide Zertifikate nutzen") {
+                Text("iPhone 17 Pro Max: group.dfbc88d056a46f1b.1")
+                Text("iPhone 14 Pro: group.4d9963ba648cf299.1")
+                Text("Die App erkennt den tatsächlich verfügbaren Container automatisch. Auf jedem iPhone muss die gleiche unsigned IPA separat mit seinem Zertifikat signiert werden.")
+                Text("Die Widget-Erweiterung benötigt eine eigene passende Widget-Bundle-ID und ein Provisioning-Profil mit derselben App Group wie die Haupt-App. Ein App-Eingabefeld kann diese Signierung nicht ersetzen.")
+                Text("Standort und Entfernung erscheinen nur mit eurer Freigabe und aktuellen Messungen.")
             }.font(.footnote)
         }.navigationTitle("Widgets verbinden")
     }

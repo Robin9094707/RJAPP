@@ -25,13 +25,21 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
 struct PendingThought:Codable {let id:String;let occurredAt:String?}
 
 enum WidgetSharedStore {
+    // The same unsigned IPA can be signed for either Apple team. Detect the
+    // container authorized by this installed signature (app and widget alike).
     static let configuredSuite = "group.dfbc88d056a46f1b.1"
+    static let supportedSuites: [String] =
+        (1...5).map { "group.dfbc88d056a46f1b.\($0)" } +
+        (1...5).map { "group.4d9963ba648cf299.\($0)" }
     static let suiteName: String = {
-        let configured=Bundle.main.object(forInfoDictionaryKey:"RJAppGroupIdentifier") as? String ?? configuredSuite
-        for candidate in [configured,"group.eu.rjuhas.rjlove"] {
-            if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier:candidate) != nil {return candidate}
+        let configured = Bundle.main.object(forInfoDictionaryKey: "RJAppGroupIdentifier") as? String
+        let candidates = [configured].compactMap { $0 } + supportedSuites + ["group.eu.rjuhas.rjlove"]
+        for candidate in candidates {
+            if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: candidate) != nil {
+                return candidate
+            }
         }
-        return configured
+        return configured ?? configuredSuite
     }()
     static var connected:Bool {FileManager.default.containerURL(forSecurityApplicationGroupIdentifier:suiteName) != nil}
     static var connectionMessage:String? {connected ? nil:"App und Widget sind nicht verbunden. App-Group-Signierung prüfen."}

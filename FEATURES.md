@@ -1,4 +1,30 @@
-# Neu in 4.2.0
+# RJ Love – aktuelle Funktionen (App 9.0.1)
+
+## Stand 9.0.1 – Widgets und Hintergrund
+
+- **Widgets und Live-Aktivitäten:** Partnerstatus, Gedanken, Entfernung bei freiwilliger Standortfreigabe, Countdown und weitere Widget-Ansichten.
+- **Automatische App-Group-Auswahl:** Die App und die Widget-Erweiterung erkennen die vom installierten Profil tatsächlich erlaubte gemeinsame Gruppe beider unterstützter Signier-Teams.
+- **Widget-Diagnose:** gemeinsamer Speicher, Zugriffe der Erweiterung und signierte Profile; manuelle Aktualisierung der WidgetKit-Timelines.
+- **Hintergrund-Abruf:** Soweit iOS ihn gewährt, werden Partnerstatusdaten über den bestehenden privaten Server geladen und im Widget-Snapshot aktualisiert. Kein garantierter Zeitplan, keine unbemerkte Standortaufnahme.
+- **Sichere Installation:** Eine gemeinsame unsigned IPA, die auf den beiden Geräten separat signiert werden muss. Ein eigenes Widget-Provisioning-Profil bleibt erforderlich.
+
+Details: [Release 9.0.1](RELEASE-9.0.1.md).
+
+## Stand 9.0 – Tagebuch, Chat und KI
+
+- Tagebuch 2.0 mit Schreibfragen, Stimmungen, Kategorien, Spracheingabe und privatem Face-ID-Schutz für einzelne Tagebuchseiten.
+- Gemeinsamer Gruppenchat für euch zwei und ChatGPT, Sprachnachrichten und optionale KI-Funktionen.
+- Eigenständiger privater Python-Server 9.0.0, der bestehende Konten und Daten weiter verwendet.
+
+Details: [Release 9.0.0](RELEASE-9.0.0.md) · [8.0.0](RELEASE-8.0.0.md) · [7.0.0](RELEASE-7.0.0.md).
+
+---
+
+## Historische Funktionsnotizen
+
+Die folgenden älteren Versionshinweise bleiben zur Nachvollziehbarkeit erhalten. Hinweise auf „aktuell“ in den historischen Abschnitten beziehen sich auf deren damaligen Stand, nicht auf die heutige App-Version.
+
+### Neu in 4.2.0
 
 Gemeinsames Plex-Kino mit Sitzungsbeobachtung, optionalem zweitem iPhone-Stream, Fernsteuerung kompatibler Empfänger, erweiterten Filminformationen, Kinozeit und bestätigtem Statistik-Reset. Native YouTube-Suche ohne eigenen API-Schlüssel und direkte YouTube-Ansicht innerhalb der App. Optionale Apple-Home-Auswahl mit Kameraansichten sowie gläserne Dashboard-Karten. Funktionsgrenzen: [Release 4.2.0](RELEASE-4.2.0.md).
 
@@ -32,6 +58,10 @@ Recorder mit fester Aufnahme-/Sendeaktion, Schnitt vor und nach dem Teilen und 4
 ### Neu in 3.7
 - Abendplayer für das vollständige Serverarchiv: Duftaufnahmen und Moment-Videos, eigene/Partner-/gemischte Auswahl, Shuffle, Warteschlange, Einschlaftimer, Hintergrund-Audio und Sperrbildschirm-Steuerung.
 - Bis zu zwölf kleine persönliche Schnellzugriffe mit eigenen Namen und Reihenfolge direkt oben auf der Startseite.
+- Tagebuch 2.0 (9.0): Rückfragen als Buttons beim Schreiben, automatische Stimmung/Themen/Titel, Kontext (Ort, Zeit, Schritte, Momente), Sprach-Tagebuch mit Live-Transkription, Vorlagen, Einblicke mit Stimmungsverlauf, „Frag dein Tagebuch“, Face-ID-Schutz für private Seiten.
+- Gruppenchat mit ChatGPT (9.0): ihr zwei plus KI, live mitgeschriebene Sprachnachrichten, @KI, Herz-Knöpfe; Internetsuche mit Quellen im KI-Chat.
+- Unser Tagebuch (8.0): gemeinsame Tagesseite für beide, eigene Seiten, private Seiten nur auf dem iPhone, Stimmung, Abendfrage, Suche, Serie und Rückblicke.
+- Mit ChatGPT anmelden (8.0, optional): KI-Chat mit App-Wissen und Modellwahl, Tagebuch-Schreibhilfe und Ideen über das eigene ChatGPT-Abo, gegenseitige Freigabe. Einrichtung: RELEASE-8.0.0.md.
 - Optionaler KI-Tagesrückblick aus Momenttexten: OpenAI-Schlüssel nur am Server, beiderseitige Freigabe, formatierte Karten, Quellen-Verweise, Cache und gemeinsames Tageslimit. Einrichtung: RELEASE-3.7.md.
 # Neu in 3.8
 

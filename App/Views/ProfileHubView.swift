@@ -20,7 +20,18 @@ struct SettingsView:View {
                 LoveRowDivider()
                 NavigationLink { DocumentsView() } label: { LoveSettingsRow(title:"Gemeinsame Dokumente",subtitle:"Dateien, Ordner und Favoriten",symbol:"folder.fill",tint:LovePalette.blue) }
             }
+            LoveGroup("Für euch zwei") {
+                NavigationLink{WalkieView()}label:{LoveSettingsRow(title:"Funk",subtitle:"Sprechen, loslassen – wird laut abgespielt",symbol:"antenna.radiowaves.left.and.right",tint:LovePalette.coral)}
+                LoveRowDivider()
+                NavigationLink{DailyQuestionView()}label:{LoveSettingsRow(title:"Frage des Tages",subtitle:"Eine Frage, zwei Antworten",symbol:"bubble.left.and.text.bubble.right.fill",tint:LovePalette.violet)}
+                LoveRowDivider()
+                NavigationLink{InstantGalleryView()}label:{LoveSettingsRow(title:"Fotowünsche & BeReal",subtitle:"Ein Lächeln nur für euch",symbol:"camera.fill",tint:LovePalette.blue)}
+            }
             LoveGroup("Dein Alltag") {
+                NavigationLink{DiaryView()}label:{LoveSettingsRow(title:"Unser Tagebuch",subtitle:"Gemeinsam, für uns und privat · mit Einblicken",symbol:"book.pages.fill",tint:LovePalette.violet)}
+                LoveRowDivider()
+                NavigationLink{GroupChatView()}label:{LoveSettingsRow(title:"Gruppenchat mit ChatGPT",subtitle:"Ihr zwei und eure KI",symbol:"person.3.fill",tint:LovePalette.pink)}
+                LoveRowDivider()
                 NavigationLink{CinemaView()}label:{LoveSettingsRow(title:"Unser Kino & AirPlay",subtitle:"YouTube, Plex und euer Fernsehabend",symbol:"play.tv.fill",tint:LovePalette.violet)}
                 LoveRowDivider()
                 NavigationLink{StatusEditorView()}label:{LoveSettingsRow(title:"Mein Status",subtitle:app.myStatus?.visibleStatus ?? "Wie geht es dir gerade?",symbol:"person.crop.circle.badge.clock",tint:LovePalette.pink)}.accessibilityIdentifier("settings-status")
@@ -34,7 +45,7 @@ struct SettingsView:View {
                 NavigationLink{LiveActivitySettingsView()}label:{LoveSettingsRow(title:"Live-Aktivität",subtitle:"Euer Platz auf dem Sperrbildschirm",symbol:"livephoto",tint:LovePalette.cyan)}
             }
             LoveGroup("Deine Entscheidung",footer:"Freigaben und Ruhe, so wie du sie brauchst.") {
-                NavigationLink{AISettingsView()}label:{LoveSettingsRow(title:"KI-Rückblick",subtitle:"Optional · Freigaben & Kostenkontrolle",symbol:"sparkles",tint:LovePalette.violet)}
+                NavigationLink{ChatGPTAccountView()}label:{LoveSettingsRow(title:"KI & ChatGPT",subtitle:AICompanion.shared.signedIn ? "Verbunden · "+AICompanion.shared.modelName : "Optional · mit deinem ChatGPT-Abo",symbol:"wand.and.sparkles",tint:LovePalette.violet)}.accessibilityIdentifier("settings-ai")
                 LoveRowDivider()
                 detail(.sharing,"location.fill",LovePalette.cyan,"Standort, Fotos und Health")
                 LoveRowDivider();detail(.privacy,"hand.raised.fill",LovePalette.violet,"Fotowünsche, Wiedergabe & Tagesrückblick")
@@ -46,23 +57,32 @@ struct SettingsView:View {
                 LoveRowDivider();NavigationLink{AccountView()}label:{LoveSettingsRow(title:"Mein Zugang",subtitle:"Benutzername & Passwort",symbol:"person.badge.key.fill",tint:LovePalette.cyan)}
                 LoveRowDivider();detail(.connection,"network",LovePalette.cyan,"Server, Synchronisation & Diagnose")
             }
-            DisclosureGroup("Weitere Möglichkeiten") {
-                VStack(spacing:16){
-                    NavigationLink{DeliveryCenterView()}label:{LoveSettingsRow(title:"Push, Wecker & Hintergrund",symbol:"bell.badge.fill")}
-                    NavigationLink{CapabilitiesView()}label:{LoveSettingsRow(title:"Funktionen & Signatur",symbol:"checkmark.seal.fill")}
-                    Button{app.showingProfile=false;Task{try? await Task.sleep(for:.milliseconds(350));app.setupJourney.presented=true}}label:{LoveSettingsRow(title:"Einrichtung erneut ansehen",symbol:"checklist")}
-                }.padding(.top,16)
-            }.font(.subheadline.bold()).loveCard()
+            LoveGroup("Weitere Möglichkeiten") {
+                NavigationLink{DeliveryCenterView()}label:{LoveSettingsRow(title:"Push, Wecker & Hintergrund",symbol:"bell.badge.fill",tint:.red)}
+                LoveRowDivider()
+                NavigationLink{CapabilitiesView()}label:{LoveSettingsRow(title:"Funktionen & Signatur",symbol:"checkmark.seal.fill",tint:.green)}
+                LoveRowDivider()
+                Button{app.showingProfile=false;Task{try? await Task.sleep(for:.milliseconds(350));app.setupJourney.presented=true}}label:{LoveSettingsRow(title:"Einrichtung erneut ansehen",symbol:"checklist",tint:.gray)}
+            }
             Button("Von diesem iPhone abmelden",role:.destructive){logout=true}.font(.subheadline).frame(maxWidth:.infinity).padding(.vertical,10)
-            Text("Ein sicherer kleiner Platz für euch zwei.").font(.caption).foregroundStyle(.tertiary).frame(maxWidth:.infinity)
+            Text("RJ Love \(RJVersion.app) · Ein sicherer kleiner Platz für euch zwei.").font(.caption).foregroundStyle(.tertiary).frame(maxWidth:.infinity)
         }.padding(20)}.background(LoveBackground()).navigationTitle("Dein Profil").navigationBarTitleDisplayMode(.inline).buttonStyle(.lovePress)
         .confirmationDialog("Wirklich abmelden?",isPresented:$logout,titleVisibility:.visible){Button("Abmelden",role:.destructive){Task{await app.logout()}};Button("Bleiben",role:.cancel){}}message:{Text("Du kannst dich mit deinem bestehenden Zugang jederzeit wieder anmelden.")}
     }
+    /// Like the Apple Account header in iOS Settings: big avatar, name, one quiet line.
     private var profileHero:some View {
-        VStack(alignment:.leading,spacing:18){
-            HStack(spacing:16){PartnerAvatar(name:app.me?.displayName ?? "Du",size:74);VStack(alignment:.leading,spacing:6){LoveEyebrow(text:"Dein Platz in unserem Wir");Text(app.me?.displayName ?? "Dein Profil").font(.system(size:30,weight:.medium,design:.serif));if app.myStatus?.isQuiet==true{Label("Gerade in Ruhe",systemImage:"moon.fill").font(.caption).foregroundStyle(LovePalette.violet)}};Spacer(minLength:0)}
-            Text(app.myStatus?.visibleStatus ?? "Du darfst hier ganz du selbst sein.").font(.subheadline).foregroundStyle(.secondary)
-        }.loveCard()
+        NavigationLink{StatusEditorView()}label:{
+            HStack(spacing:16){
+                PartnerAvatar(name:app.me?.displayName ?? "Du",size:64)
+                VStack(alignment:.leading,spacing:3){
+                    Text(app.me?.displayName ?? "Dein Profil").font(.title2.weight(.semibold)).foregroundStyle(.primary)
+                    Text(app.myStatus?.visibleStatus ?? "Status, Ruhe & Freigaben").font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    if app.myStatus?.isQuiet==true{Label("Gerade in Ruhe",systemImage:"moon.fill").font(.caption.weight(.semibold)).foregroundStyle(LovePalette.violet)}
+                }
+                Spacer(minLength:0)
+                Image(systemName:"chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }.loveCard()
+        }.accessibilityIdentifier("settings-hero")
     }
     private func detail(_ section:ProfileSettingsSection,_ symbol:String,_ tint:Color,_ subtitle:String)->some View {
         NavigationLink{ProfileSettingsDetailView(section:section)}label:{LoveSettingsRow(title:section.rawValue,subtitle:subtitle,symbol:symbol,tint:tint)}

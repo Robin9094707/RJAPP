@@ -55,7 +55,7 @@ struct SharedActivityItem:Identifiable {
             .checkin:("So geht es mir","face.smiling.fill"),.gratitude:("Das mag ich an dir","heart.text.square.fill"),
             .coupon:("Ein Liebesgutschein","gift.fill"),.milestone:("Unsere gemeinsame Zeit","calendar.badge.heart"),
             .calendar:("Ein Termin gespeichert","calendar"),.reminder:("Eine Erinnerung","checklist"),
-            .note:("Eine gemeinsame Notiz","note.text"),.ritual:("Unser Abendritual","moon.stars.fill")]
+            .note:("Eine gemeinsame Notiz","note.text"),.ritual:("Unser Abendritual","moon.stars.fill"),.diary:("Eine Tagebuchseite","book.pages.fill")]
         var items=records.compactMap{r->Self? in
             guard let pair=words[r.kind],let date=JournalDates.date(r) else{return nil}
             let text=r.payload.caption ?? r.payload.text ?? r.payload.notes ?? ""

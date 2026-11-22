@@ -6,7 +6,7 @@ enum RecordKind: String, Codable, CaseIterable, Sendable {
     case moment
     case geofence
     case calendar
-    case chat, wish, milestone, checkin, coupon, gratitude, album, instant, photo_request, ritual, poop
+    case chat, wish, milestone, checkin, coupon, gratitude, album, instant, photo_request, ritual, poop, diary, group
 }
 
 struct UserProfile: Codable, Identifiable, Hashable, Sendable {
@@ -163,6 +163,18 @@ struct RecordPayload: Codable, Hashable, Sendable {
     var duration:Int? = nil
     var rating:Int? = nil
     var emoji:String? = nil
+    /// 8.0 diary: "personal" (one author) or "together" (a shared page both partners may continue).
+    var entryType:String? = nil
+    var aiAssisted:Bool? = nil
+    /// 9.0 diary context and group chat.
+    var tags:String? = nil
+    var template:String? = nil
+    var context:String? = nil
+    var ai:Bool? = nil
+    var model:String? = nil
+    var requestedBy:String? = nil
+    var sources:String? = nil
+    var audioSeconds:Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case notificationPriority="notification_priority"
@@ -178,6 +190,9 @@ struct RecordPayload: Codable, Hashable, Sendable {
         case assetIDs = "asset_ids", mediaKind = "media_kind", albumID = "album_id", capturedAt = "captured_at", posterBase64 = "poster_base64", autoplay, urgency, referenceID = "reference_id", recurrence, reminderSync = "reminder_sync", calendarSync = "calendar_sync", requestID = "request_id"
         case countdownType = "countdown_type", day, duration, rating, emoji
         case legacyImage="legacy_image"
+        case entryType="entry_type", aiAssisted="ai_assisted"
+        case tags, template, context, ai, model, sources
+        case requestedBy="requested_by", audioSeconds="audio_seconds"
         case startAt = "start_at"
         case endAt = "end_at"
     }
@@ -318,6 +333,8 @@ struct BootstrapResponse: Codable, Sendable {
     var openedRecords: [OpenedRecord]? = nil
     var preferences: UserPreferences? = nil
     var activity: [String:PartnerActivity]? = nil
+    var walkieUnplayed: Int? = nil
+    var dailyQuestion: DailyQuestionState? = nil
     let features: ServerFeatures
 
     enum CodingKeys: String, CodingKey {
@@ -326,6 +343,7 @@ struct BootstrapResponse: Codable, Sendable {
         case localDay = "local_day"
         case myPresence = "my_presence"
         case deletedRecordIDs = "deleted_record_ids"
+        case walkieUnplayed = "walkie_unplayed", dailyQuestion = "daily_question"
         case storageUsedBytes = "storage_used_bytes", storageByUser = "storage_by_user", thoughtHistory = "thought_history", lastOpened = "last_opened", openedRecords = "opened_records"
     }
 }

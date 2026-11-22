@@ -10,6 +10,10 @@ struct FartStudioView: View {
     @State private var filtersExpanded=false
     @State private var room: DuftRoom = .sammlung
     @State private var query = ""
+    /// What the search field shows; `query` follows it after a short pause so typing stays smooth.
+    @State private var searchText = ""
+    @State private var dayCount = 0
+    @State private var commentCount = 0
     @State private var owner = "all"
     @State private var category = "all"
     @State private var favorites = false
@@ -111,7 +115,11 @@ struct FartStudioView: View {
         .safeAreaInset(edge: .top, spacing: 0) { controlBar(results: visible.count) }
         .safeAreaInset(edge: .bottom, spacing: 0) { recordBar }
         .background(LoveBackground()).navigationTitle("Duftstudio").navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Titel, Datum, Person, Jury-Kommentar …")
+            .searchable(text: $searchText, prompt: "Titel, Datum, Person, Jury-Kommentar …")
+            .task(id: searchText) {
+                if !searchText.isEmpty { try? await Task.sleep(for: .milliseconds(160)) }
+                if !Task.isCancelled { query = searchText }
+            }
             .sheet(isPresented: $showingDates) { dateFilter }
             .task {
                 app.fartArchiveVisible = true
@@ -143,6 +151,8 @@ struct FartStudioView: View {
         }
         dates = nextDates
         searchIndex = nextIndex
+        dayCount = Set(nextDates.values.map { cal.startOfDay(for: $0) }).count
+        commentCount = value.reduce(0) { $0 + ($1.commentCount ?? 0) }
     }
     private func controlBar(results: Int) -> some View {
         VStack(spacing: 10) {
@@ -161,7 +171,7 @@ struct FartStudioView: View {
                 }.transition(.opacity)
             }
             if !query.isEmpty {
-                HStack {Text("\(results) Treffer").font(.caption.bold()).contentTransition(.numericText()).accessibilityIdentifier("duft-results");Spacer();Button("Suche leeren"){query=""}.font(.caption)}
+                HStack {Text("\(results) Treffer").font(.caption.bold()).contentTransition(.numericText()).accessibilityIdentifier("duft-results");Spacer();Button("Suche leeren"){searchText="";query=""}.font(.caption)}
             }
         }
         .padding(10)
@@ -196,8 +206,8 @@ struct FartStudioView: View {
             }
             HStack(spacing:10) {
                 studioStat(app.farts.count,"Meisterwerke","cloud.fill")
-                studioStat(Set(app.farts.compactMap{$0.date.map{cal.startOfDay(for:$0)}}).count,"Dufttage","calendar")
-                studioStat(app.farts.reduce(0){$0+($1.commentCount ?? 0)},"Kommentare","bubble.left.fill")
+                studioStat(dayCount,"Dufttage","calendar")
+                studioStat(commentCount,"Kommentare","bubble.left.fill")
             }
         }.loveCard()
     }
@@ -241,7 +251,7 @@ struct FartStudioView: View {
                 Toggle("Aufnahmezeitraum filtern", isOn: $useDates)
                 DatePicker("Von", selection: $from, in: ...until, displayedComponents: .date).disabled(!useDates)
                 DatePicker("Bis", selection: $until, in: from...Date.now, displayedComponents: .date).disabled(!useDates)
-                Button("Filter zurücksetzen") { useDates = false; query = ""; owner = "all"; category = "all"; favorites = false }
+                Button("Filter zurücksetzen") { useDates = false; searchText = ""; query = ""; owner = "all"; category = "all"; favorites = false }
             }.navigationTitle("Euer Zeitraum").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { showingDates = false } } }
         }.presentationDetents([.medium,.large])
     }

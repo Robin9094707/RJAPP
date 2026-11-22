@@ -1,3 +1,15 @@
+# RJ Love – Datenschutz und Datenflüsse (App 9.0.1)
+
+**Stand:** iOS-App 9.0.1, Python-Server 9.0.0. Die folgenden historischen Ergänzungen gelten im jeweils beschriebenen Kontext.
+
+**Widgets und Hintergrundaktualisierung:** Widget-Daten liegen lokal im von iOS freigegebenen App-Group-Container. Bei einem durch iOS gestarteten Hintergrundlauf kann die App denselben authentifizierten privaten Server-Endpunkt `GET /v1/bootstrap` nutzen, den sie auch beim normalen Synchronisieren verwendet, um die angezeigten Partnerdaten zu aktualisieren. Dabei werden keine neuen Server-Endpunkte eingeführt und es wird kein zusätzlicher Standort ohne die bestehenden Freigaben erhoben. Push, Widget-Aktualisierungen und Standort sind an iOS-Berechtigungen und dessen Hintergrundregeln gebunden.
+
+**Signierung:** Zertifikate, `.p12`-Schlüssel und die Passwörter der Signierung gehören ausschließlich in die lokale Signierungsumgebung, nicht in dieses öffentliche Repository oder in Build-Artefakte.
+
+Details: [9.0.1 – Widgets](RELEASE-9.0.1.md), [9.0.0 – Tagebuch und Gruppenchat](RELEASE-9.0.0.md).
+
+---
+
 # Datenschutz-Ergänzung 4.2.0
 
 Die Plex-Automatik übermittelt nach Verbindung Profil-Zugangstoken an euren eigenen HTTPS-Server. Er prüft die Serverberechtigung und beobachtet nur passende Sitzungen. Tokens werden ausschließlich befristet im Arbeitsspeicher gehalten, nicht in Datenbank oder Konfiguration. Titel, Filmdetails, Kinozeiten und bestätigte Anwesenheit am selben Bildschirm liegen in eurer eigenen Datenbank. Die Anwesenheitsbestätigung gilt pro Film höchstens vier Stunden; mindestens eine frische Wiedergabequelle ist erforderlich. Beide können Kino-Statistiken mit Bestätigung zurücksetzen.
@@ -134,3 +146,19 @@ Plex-Home-PINs werden ausschließlich zur Online-Prüfung an Plex übermittelt u
 ## Version 4.3.0: gemeinsame Dokumente und Einstellungssicherung
 
 Gemeinsam hochgeladene Dateien und Ordner liegen auf eurem konfigurierten RJ-Server und sind für beide angemeldeten Konten zugänglich. Ordnerfavoriten und portable App-Einstellungen werden pro Konto gespeichert. Nur der Ersteller kann Dokumente bzw. leere eigene Ordner entfernen. Bark erhält beim Upload den Dateinamen und einen kontogebunden geprüften App-Link. Kamera-Livebilder bleiben bei Apple Home; RJ-Server und Bark erhalten keine Kamera-Streams. Das Mikrofon wird erst nach ausdrücklichem Aktivieren von Sprechen mit unterstützter Kamera verwendet. HomeKit-Freigaben, Betriebssystem-Berechtigungen, Anmeldetokens und iOS-Widget-Platzierungen werden nicht als App-Einstellungssicherung kopiert.
+
+## Tagebuch und KI-Begleiter mit ChatGPT (8.0)
+
+Die ChatGPT-Anmeldung ist freiwillig und gilt nur für das jeweilige iPhone. Zugangsdaten werden ausschließlich auf der Seite von OpenAI eingegeben; die App speichert nur die ausgestellten Tokens im iOS-Schlüsselbund dieses Geräts. Anfragen gehen direkt vom iPhone an OpenAI (`store: false`) und laufen über das ChatGPT-Abo der angemeldeten Person; es gelten deren OpenAI-Bedingungen und Einstellungen.
+
+Text wird nur übertragen, wenn du etwas fragst oder ein KI-Werkzeug antippst. Mit eingeschaltetem App-Wissen gehen begrenzte Texte der gewählten Tage mit: Momentbeschreibungen, Tagebuchseiten, Notizen, Wünsche, Gefühle, Nachrichten, Abendrituale, Termine, Herzgedanken-Zähler, Drop-Poop-Titel und -Stufen sowie Titel, Kategorie, Länge und Jury-Wertung von Duftstudio-Aufnahmen. Nachrichten, Duftstudio und Schritte/Schlaf lassen sich einzeln abschalten. Inhalte deines Lieblingsmenschen werden nur einbezogen, solange er oder sie das unter „Eure gegenseitige Freigabe“ erlaubt. Fotos, Videos, Audiodateien, GPS-Koordinaten, Passwörter und Server-Tokens werden nie übertragen.
+
+Private Tagebuchseiten liegen nur auf dem iPhone (Dateischutz „vollständig“) und werden nie zum Server übertragen; die KI liest sie nur für deine eigenen Anfragen. KI-Gespräche werden nur auf dem iPhone gespeichert und lassen sich jederzeit löschen. Die KI kann sich irren und bewertet keine Beziehung.
+
+## Tagebuch 2.0, Gruppenchat und Sprache (9.0)
+
+Spracheingaben (Sprach-Tagebuch, Sprachnachrichten im Gruppenchat) werden mit Apples Spracherkennung auf dem iPhone in Text umgewandelt, wenn das Gerät es unterstützt; sonst nutzt iOS Apples Spracherkennungsdienst. Audio wird nie an OpenAI gesendet. Sprachnachrichten im Gruppenchat werden wie Funk-Aufnahmen auf eurem eigenen Server gespeichert.
+
+Tagebuchseiten können Kontext speichern: einen ungefähren Ortsnamen und auf etwa 100 m gerundete Koordinaten (abschaltbar), Tageszeit, Schritte, Herzgedanken und Momente des Tages. Bei privaten Seiten bleibt das auf dem iPhone. Rückfragen, Stimmungs- und Themenvorschläge senden den aktuellen Entwurf an dein ChatGPT, wenn du angemeldet bist und die Funktionen eingeschaltet sind (KI & ChatGPT → Fähigkeiten).
+
+Im Gruppenchat entsteht eine ChatGPT-Antwort auf dem iPhone der Person, die fragt, mit deren Abo. Dafür gehen die letzten 40 Textnachrichten und das App-Wissen dieser Person an OpenAI; die Freigabe-Regeln für Inhalte des Gegenübers gelten unverändert. Mit eingeschalteter Internetsuche kann ChatGPT Webseiten aufrufen; die Quellen werden angezeigt.

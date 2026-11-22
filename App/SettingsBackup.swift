@@ -26,7 +26,7 @@ extension APIClient {
     private var generation=UUID()
     private var baseline:[String:String]=[:]
     private var ready=false
-    private static let keys=["rjlove.homekit.enabled","rjlove.homekit.home","rjlove.homekit.camera","rjlove.evening-auto","rjlove.instant-enabled","rjlove.sweet-autoplay","rjlove.keyboard-dismiss-after-send","rjlove.fart-locations","rjlove.live-enabled","rjlove.live-auto-resume","rjlove.live-battery","rjlove.live-thoughts","rjlove.live-status","rjlove.live-action","rjlove.nearby-auto","rjlove.nearby-background","rjlove.sleep-goal-hours","rjlove.location-sharing","rjlove.background-location","rjlove.photo-location","rjlove.health-sharing","rjlove.share-activity","rjlove.share-sleep","rjlove.share-vitals","rjlove.share-wifi-name","rjlove.status-message"]
+    private static let keys=["rjlove.homekit.enabled","rjlove.homekit.home","rjlove.homekit.camera","rjlove.evening-auto","rjlove.instant-enabled","rjlove.sweet-autoplay","rjlove.keyboard-dismiss-after-send","rjlove.fart-locations","rjlove.live-enabled","rjlove.live-auto-resume","rjlove.live-battery","rjlove.live-thoughts","rjlove.live-status","rjlove.live-action","rjlove.nearby-auto","rjlove.nearby-background","rjlove.sleep-goal-hours","rjlove.location-sharing","rjlove.background-location","rjlove.photo-location","rjlove.health-sharing","rjlove.share-activity","rjlove.share-sleep","rjlove.share-vitals","rjlove.share-wifi-name","rjlove.status-message","rjlove.walkie-autoplay","rjlove.walkie-loud","rjlove.walkie-roger"]
     private func storageKey(_ key:String)->String {
         switch key {
         case "tv.layout":return "rjlove.tv.layout."+CinemaCoordinator.shared.namespace

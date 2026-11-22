@@ -19,11 +19,12 @@ enum LovePalette {
 
 /// Shared spacing and shape tokens, so every screen breathes the same way.
 enum LoveMetrics {
-    static let cardRadius:CGFloat=24
-    static let tileRadius:CGFloat=20
+    /// 7.0: iOS 26 proportions – generous, concentric corners like system widgets and grouped lists.
+    static let cardRadius:CGFloat=26
+    static let tileRadius:CGFloat=22
     static let cardPadding:CGFloat=18
-    static let screenPadding:CGFloat=20
-    static let stackSpacing:CGFloat=16
+    static let screenPadding:CGFloat=18
+    static let stackSpacing:CGFloat=14
 }
 
 /// Motion tokens. Every animation in the app goes through these so the rhythm stays calm and consistent.
@@ -45,20 +46,25 @@ enum LoveSurface {
     /// Same color iOS uses for grouped list rows, so cards and Forms match (also elevated in sheets).
     static let card=Color(uiColor:.secondarySystemGroupedBackground)
     static let inset=Color(uiColor:.tertiarySystemGroupedBackground)
-    static let hairline=Color.primary.opacity(0.07)
+    static let hairline=Color.primary.opacity(0.06)
 }
 
 // MARK: - Backgrounds
 
-/// A calm, static backdrop: a deep night-blue fade in dark mode, a soft paper tone in light mode.
-/// A plain gradient is the cheapest full-screen fill; it is drawn once and never animates.
+/// 7.0: the grouped-list background of iOS Settings with a soft rosé glow behind the top of the
+/// screen, like Apple's Health and Fitness apps. Static: drawn once, never animated.
 struct LoveBackground:View {
     @Environment(\.colorScheme) private var scheme
-    private static let dark=LinearGradient(colors:[Color(red:0.075,green:0.07,blue:0.16),Color(red:0.035,green:0.035,blue:0.075),Color(red:0.02,green:0.02,blue:0.035)],startPoint:.top,endPoint:.bottom)
-    private static let light=LinearGradient(colors:[Color(red:0.975,green:0.955,blue:0.975),Color(red:0.95,green:0.95,blue:0.97)],startPoint:.top,endPoint:.bottom)
     var body:some View {
-        Rectangle().fill(scheme == .dark ? Self.dark:Self.light)
-            .ignoresSafeArea().accessibilityHidden(true).allowsHitTesting(false)
+        ZStack(alignment:.top) {
+            Color(uiColor:.systemGroupedBackground)
+            LinearGradient(colors:scheme == .dark
+                           ? [LovePalette.plum.opacity(0.34),LovePalette.violet.opacity(0.10),Color.clear]
+                           : [LovePalette.blush.opacity(0.22),LovePalette.pink.opacity(0.06),Color.clear],
+                           startPoint:.top,endPoint:.bottom)
+                .frame(height:420)
+        }
+        .ignoresSafeArea().accessibilityHidden(true).allowsHitTesting(false)
     }
 }
 
@@ -86,16 +92,17 @@ struct LoveAurora:View {
 
 // MARK: - Icons and rows
 
+/// 7.0: the iOS Settings icon tile – a solid, softly lit color square with a white glyph.
 struct LoveIcon:View {
     let symbol:String
     var tint:Color=LovePalette.pink
     var size:CGFloat=44
     var body:some View {
-        let shape=RoundedRectangle(cornerRadius:size*0.32,style:.continuous)
-        Image(systemName:symbol).font(.system(size:size*0.42,weight:.semibold)).symbolRenderingMode(.hierarchical).foregroundStyle(tint)
+        let shape=RoundedRectangle(cornerRadius:size*0.27,style:.continuous)
+        Image(systemName:symbol).font(.system(size:size*0.46,weight:.semibold)).symbolRenderingMode(.monochrome).foregroundStyle(.white)
             .frame(width:size,height:size)
-            .background{shape.fill(LinearGradient(colors:[tint.opacity(0.22),tint.opacity(0.08)],startPoint:.topLeading,endPoint:.bottomTrailing))}
-            .overlay{shape.strokeBorder(tint.opacity(0.16),lineWidth:0.6)}
+            .background{shape.fill(tint.gradient)}
+            .overlay{shape.strokeBorder(.white.opacity(0.14),lineWidth:0.5)}
             .accessibilityHidden(true)
     }
 }
@@ -105,7 +112,7 @@ struct LoveSettingsRow:View {
     let symbol:String
     var tint:Color=LovePalette.pink
     var body:some View {
-        HStack(spacing:14){LoveIcon(symbol:symbol,tint:tint,size:34);VStack(alignment:.leading,spacing:3){Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary);if let subtitle{Text(subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)}};Spacer(minLength:8);Image(systemName:"chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)}.padding(.vertical,2).contentShape(Rectangle())
+        HStack(spacing:14){LoveIcon(symbol:symbol,tint:tint,size:32);VStack(alignment:.leading,spacing:2){Text(title).font(.body).foregroundStyle(.primary);if let subtitle{Text(subtitle).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)}};Spacer(minLength:8);Image(systemName:"chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)}.padding(.vertical,3).contentShape(Rectangle())
     }
 }
 
@@ -120,7 +127,7 @@ struct LoveGroup<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let title {
-                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, 6)
+                Text(title).font(.headline).foregroundStyle(.primary).padding(.horizontal, 6)
                     .accessibilityAddTraits(.isHeader)
             }
             VStack(alignment: .leading, spacing: 10) { content() }.loveCard()
@@ -132,7 +139,7 @@ struct LoveGroup<Content: View>: View {
 }
 /// Row separator aligned with the row text, not the icon.
 struct LoveRowDivider: View {
-    var body: some View { Divider().padding(.leading, 48) }
+    var body: some View { Divider().padding(.leading, 46) }
 }
 
 // MARK: - Glass surfaces
@@ -141,6 +148,21 @@ private struct LoveCardSurface:ViewModifier {
     func body(content:Content)->some View {
         content.padding(LoveMetrics.cardPadding).frame(maxWidth:.infinity,alignment:.leading)
             .loveGlass(in:RoundedRectangle(cornerRadius:LoveMetrics.cardRadius,style:.continuous))
+    }
+}
+
+/// Opaque card fill with a hairline edge and, in light mode, a whisper of depth.
+private struct LoveSolidSurface<S: Shape>: ViewModifier {
+    let shape: S
+    let tint: Color
+    @Environment(\.colorScheme) private var scheme
+    func body(content: Content) -> some View {
+        content
+            .background {
+                ZStack { shape.fill(LoveSurface.card); shape.fill(tint) }
+                    .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.05), radius: 10, y: 3)
+            }
+            .overlay { shape.stroke(LoveSurface.hairline, lineWidth: 0.5).allowsHitTesting(false) }
     }
 }
 
@@ -161,12 +183,12 @@ extension View {
     /// A solid card surface in any shape. Kept under its 5.0 name so every screen switches at once;
     /// the optional tint is laid over the card as a faint wash.
     func loveGlass<S: Shape>(in shape: S, tint: Color = .clear) -> some View {
-        self.background { ZStack { shape.fill(LoveSurface.card); shape.fill(tint) } }
-            .overlay { shape.stroke(LoveSurface.hairline, lineWidth: 0.5).allowsHitTesting(false) }
+        modifier(LoveSolidSurface(shape: shape, tint: tint))
     }
-    /// Tappable variant; press feedback comes from the button style.
+    /// Small floating controls (round header buttons, chips) get real Liquid Glass, lightly tinted
+    /// so they never turn into see-through blobs over busy content.
     func loveInteractiveGlass<S: Shape>(in shape: S, tint: Color = .clear) -> some View {
-        loveGlass(in: shape, tint: tint)
+        self.glassEffect(.regular.tint(tint == .clear ? LovePalette.pink.opacity(0.08) : tint).interactive(), in: shape)
     }
     /// Dark, readable backing for text over photos and video (AirPlay stage, camera).
     func loveScrim<S: Shape>(in shape: S, opacity: Double = 0.42) -> some View {

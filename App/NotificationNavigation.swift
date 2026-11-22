@@ -52,6 +52,8 @@ struct NotificationDestinationView: View {
         } else if let clip = content?.clip {
             ScrollView { FartClipCard(clip: app.farts.first { $0.id == clip.id } ?? clip).padding(20) }
                 .navigationTitle("Deine Duftpost")
+        } else if content?.record?.kind == .group {
+            GroupChatView()
         } else if let record = content?.record, record.kind != .chat {
             NotificationRecordDetail(original: record)
         } else {
@@ -65,6 +67,9 @@ struct NotificationDestinationView: View {
             case "farts": FartStudioView()
             case "poop": DropPoopView()
             case "countdowns": CountdownHubView()
+            case "walkie": WalkieView()
+            case "question": DailyQuestionView()
+            case "instant": InstantGalleryView()
             default: SharedJournalView(showFeed: true)
             }
         }

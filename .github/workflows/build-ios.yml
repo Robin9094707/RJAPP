@@ -2,7 +2,7 @@ name: Build RJ Love unsigned IPA
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/jolly-volta-8cgxxb"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -46,7 +46,8 @@ jobs:
           set -euo pipefail
           python3 -m py_compile Backend/rj_love_server.py
           python3 Scripts/validate_project.py
-          python3 -m unittest -q Tests/test_cinema42.py Tests/test_dashboard43.py Tests/test_documents431.py Tests/test_server60.py
+          python3 -m unittest -q Tests/test_widget_profiles.py
+          python3 -m unittest -q Tests/test_cinema42.py Tests/test_dashboard43.py Tests/test_documents431.py Tests/test_server60.py Tests/test_server70.py Tests/test_server80.py Tests/test_server90.py
           swiftc Shared/HomeShortcuts.swift Shared/HomeLayout.swift Tests/PreferencesSmoke.swift -o /tmp/rj-preferences-smoke
           /tmp/rj-preferences-smoke
           swiftc Shared/QuickCaptureRequest.swift Tests/QuickCaptureSmoke.swift -o /tmp/rj-quick-capture-smoke
@@ -106,13 +107,31 @@ jobs:
         run: |
           python3 Scripts/package_release.py
 
+      - name: Verify complete package before publishing
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s RJ-Love-9.0.1-Komplettpaket.zip
+          unzip -t RJ-Love-9.0.1-Komplettpaket.zip
+          python3 - <<'PY'
+          import json, zipfile
+          archive = zipfile.ZipFile('RJ-Love-9.0.1-Komplettpaket.zip')
+          names = set(archive.namelist())
+          prefix = 'RJ-Love-9.0.1/'
+          required = {prefix + 'RJ-Love-unsigned.ipa', prefix + 'Backend/rj_love_server.py', prefix + 'manifest.json'}
+          assert required <= names, 'Missing complete-package contents: ' + str(required - names)
+          manifest = json.loads(archive.read(prefix + 'manifest.json'))
+          assert manifest['version'] == '9.0.1' and manifest['build'] == 901
+          PY
+
       - name: Upload complete package
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: RJ-Love-6.0.0-Komplettpaket
+          name: RJ-Love-9.0.1-Komplettpaket
           path: |
-            RJ-Love-6.0.0-Komplettpaket.zip
+            RJ-Love-9.0.1-Komplettpaket.zip
             Backend/rj_love_server.py
           if-no-files-found: error
           retention-days: 30

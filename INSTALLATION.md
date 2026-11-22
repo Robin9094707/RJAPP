@@ -1,18 +1,25 @@
-# App-Update 4.3.0
-
-App und Server auf 4.3.0 aktualisieren. Bestehende Konfiguration, Konto-IDs und Datenordner behalten. Details: [Release 4.3.0](RELEASE-4.3.0.md).
-
 # RJ Love installieren und aktualisieren
 
-## Bestehende Installation auf 4.3.0 aktualisieren
+**Aktuell:** App **9.0.1 (Build 901)** mit Python-Server **9.0.0** und Protokoll **5**.
 
-1. Python-Server stoppen. Vorhandene Konfiguration und kompletten Datenordner sichern.
-2. Nur `rj_love_server.py` ersetzen. Vorhandene Konto-IDs, Datenpfad, Passwörter und Serveradresse beibehalten.
-3. Server wie bisher starten. Die Datenbank bekommt nur zusätzliche Tabellen.
-4. Beide iPhones mit der neuen IPA aktualisieren. Dieselbe Bundle-ID und dasselbe Signierteam verwenden; die bestehende App nicht löschen.
-5. Haupt-App und eingebettete Widget-Extension zusammen signieren. Die bereits funktionierende App Group in beiden erhalten; die aktuelle Projektvorgabe ist `group.dfbc88d056a46f1b.1`.
+## Bestehende Installation aktualisieren
 
-App und Server müssen beide 4.3.0 sein. Alte Apps erhalten vor Änderungen einen Updatehinweis. Ein Wechsel des Signierteams oder der Bundle-ID kann den Zugriff auf Keychain und lokale App-Daten verändern.
+1. **App 9.0.0 → 9.0.1:** Die Python-Serverdatei bleibt unverändert. Die neue **unsigned IPA** auf beiden iPhones jeweils mit dem eigenen Zertifikat signieren und installieren.
+2. **Server älter als 9.0.0:** Server stoppen, `rjapp_config.json` und den Datenordner sichern. Nur `Backend/rj_love_server.py` auf 9.0.0 aktualisieren und wieder starten. Vorhandene Konten, Passwörter, Datenbank, Datenpfade und Serveradresse beibehalten.
+3. Bei einer Aktualisierung **auf derselben App-Installation** Bundle-ID und Signierungsidentität möglichst nicht ändern. Ein Team- oder Bundle-ID-Wechsel kann iOS-Keychain-Zugriff und lokale Daten verändern; ein Wechsel kann eine separate App erzeugen.
+4. Die Widget-Erweiterung ist ein eigenes iOS-Target. Haupt-App und Extension jeweils mit **passenden App-IDs, Provisioning-Profilen und identischer erlaubter App Group** signieren.
+5. Nach Installation **RJ Love → Widgets verbinden → Widget-Daten und Anzeige aktualisieren** auf beiden Geräten ausführen. Für Hintergrundupdates iOS-Berechtigungen und Hintergrundaktualisierung prüfen. Den Zeitpunkt bestimmt weiterhin iOS.
+
+### Die zwei vorhandenen Zertifikatsprofile
+
+| Gerät | Haupt-App-Bundle-ID im bereitgestellten Profil | Zu verwendende App Group |
+| --- | --- | --- |
+| iPhone 17 Pro Max | `app.lake6191.velvet1751` | `group.dfbc88d056a46f1b.1` |
+| iPhone 14 Pro | `app.andromeda203.garnet9008` | `group.4d9963ba648cf299.1` |
+
+Die gleiche **unsigned IPA** enthält den Code für beide Gruppen; er wählt zur Laufzeit nur einen durch die Signierung erlaubten Container. **Die Widget-Erweiterung benötigt trotzdem ein eigenes, korrektes Extension-Profil**, das in den beiden bereitgestellten Zertifikats-ZIPs nicht enthalten ist. Eine ID-Eingabe innerhalb der App kann keine iOS-Berechtigungen freischalten. Keine privaten Zertifikate, `.p12`-Dateien oder Passwörter ins GitHub-Repository hochladen.
+
+[Änderungen in 9.0.1](RELEASE-9.0.1.md) · [GitHub Actions](https://github.com/Robin9094707/RJAPP/actions).
 
 ## Neue Installation
 

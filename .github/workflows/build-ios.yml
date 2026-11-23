@@ -156,3 +156,90 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  launch-test:
+    name: Launch test in iOS Simulator
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select available Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP=$(python3 - <<'PYCODE'
+          import glob, re
+          apps = [p for p in glob.glob('/Applications/Xcode*.app') if re.search(r'Xcode_26[._]', p) and 'beta' not in p.lower()]
+          if not apps:
+              raise SystemExit('No stable Xcode 26 SDK installed')
+          print(max(apps, key=lambda p: tuple(int(n) for n in re.findall(r'\d+', p))))
+          PYCODE
+          )
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+
+      - name: Build Debug app for the simulator
+        shell: bash
+        run: |
+          set -o pipefail
+          brew install xcodegen
+          xcodegen generate --spec project.yml
+          xcodebuild -project RJLove.xcodeproj -scheme RJLove -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$PWD/.sim-derived" CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO build 2>&1 | tail -40
+
+      - name: Launch app with real server and check for crashes
+        shell: bash
+        run: |
+          set -uo pipefail
+          APP="$(find "$PWD/.sim-derived/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' -type d -print -quit)"
+          BUNDLE=eu.rjuhas.rjlove
+          python3 Scripts/ci_smoke_server.py > smoke-server.log 2>&1 &
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; c=[x for r,l in d.items() if 'iOS' in r for x in l if x['name'].startswith('iPhone')]; print(sorted(c,key=lambda x:x['name'])[-1]['udid'])")
+          xcrun simctl boot "$DEVICE"; xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" "$APP"
+          for service in location-always photos notifications; do xcrun simctl privacy "$DEVICE" grant $service $BUNDLE || true; done
+          xcrun simctl location "$DEVICE" set 52.5200,13.4050 || true
+          mkdir -p launch-shots
+          FAILED=0
+          alive() { xcrun simctl spawn "$DEVICE" launchctl list | grep -q "UIKitApplication:$BUNDLE"; }
+          run_case() {
+            local name="$1"; shift
+            xcrun simctl terminate "$DEVICE" $BUNDLE >/dev/null 2>&1 || true
+            echo "::group::Launch $name"
+            xcrun simctl launch "$DEVICE" $BUNDLE "$@"
+            sleep 30
+            xcrun simctl io "$DEVICE" screenshot "launch-shots/$name.png" || true
+            if alive; then echo "OK: $name läuft nach 30 s"; else echo "::error::Absturz beim Start ($name)"; FAILED=1; fi
+            echo "::endgroup::"
+          }
+          run_case plain
+          run_case ci-login --ci-login
+          # Background + foreground round trip: heartbeat, live mode, geofence.
+          xcrun simctl launch "$DEVICE" com.apple.Preferences || true
+          xcrun simctl location "$DEVICE" set 52.5300,13.4200 || true
+          sleep 25
+          if alive; then echo "OK: im Hintergrund weiter aktiv"; else echo "::error::Absturz im Hintergrund"; FAILED=1; fi
+          xcrun simctl openurl "$DEVICE" "rjlove://home" || true
+          sleep 15
+          xcrun simctl io "$DEVICE" screenshot launch-shots/after-background.png || true
+          if alive; then echo "OK: zurück im Vordergrund"; else echo "::error::Absturz beim Zurückkehren"; FAILED=1; fi
+          run_case preview --preview
+          mkdir -p crash-logs
+          find ~/Library/Logs/DiagnosticReports -name '*RJ*' -newer smoke-server.log -exec cp {} crash-logs/ \; 2>/dev/null || true
+          for f in crash-logs/*; do [ -f "$f" ] || continue; echo "::group::Crash report $f"; head -c 20000 "$f"; echo "::endgroup::"; FAILED=1; done
+          xcrun simctl spawn "$DEVICE" log show --last 6m --style compact --predicate 'process == "RJ Love"' 2>/dev/null | grep -iE "fault|fatal|crash|exception|terminat|assert" | tail -80 || true
+          echo "::group::Server log"; tail -60 smoke-server.log; echo "::endgroup::"
+          exit $FAILED
+
+      - name: Upload launch screenshots and crash logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RJ-Love-launch-test
+          path: |
+            launch-shots
+            crash-logs
+            smoke-server.log
+          if-no-files-found: ignore
+          retention-days: 14

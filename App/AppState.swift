@@ -123,6 +123,12 @@ final class AppState {
         restoreSession()
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview") { loadPreview() }
+        // CI launch test: real start path against the local smoke server, without Keychain.
+        if ProcessInfo.processInfo.arguments.contains("--ci-login"), let url = URL(string: "http://127.0.0.1:8787") {
+            profile = ServerProfile(baseURL: url.absoluteString, username: "robin")
+            api.configure(baseURL: url, token: "ui-test-token")
+            phase = .authenticated
+        }
         #endif
     }
 

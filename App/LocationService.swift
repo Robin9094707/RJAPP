@@ -124,6 +124,22 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         }
     }
 
+    static let departureRegionID = "rjlive.departure"
+    var departureRegionCenter: CLLocationCoordinate2D? {
+        (manager.monitoredRegions.first { $0.identifier == Self.departureRegionID } as? CLCircularRegion)?.center
+    }
+    func armDepartureRegion(at center: CLLocationCoordinate2D, radius: CLLocationDistance) {
+        guard manager.authorizationStatus == .authorizedAlways,
+              CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else { return }
+        let region = CLCircularRegion(center: center, radius: min(radius, manager.maximumRegionMonitoringDistance), identifier: Self.departureRegionID)
+        region.notifyOnEntry = false
+        region.notifyOnExit = true
+        manager.startMonitoring(for: region)
+    }
+    func disarmDepartureRegion() {
+        for region in manager.monitoredRegions where region.identifier == Self.departureRegionID { manager.stopMonitoring(for: region) }
+    }
+
     func requestTemporaryPrecision() {
         manager.requestTemporaryFullAccuracyAuthorization(withPurposeKey: "PartnerMapPrecision")
     }
@@ -270,6 +286,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        if region.identifier == Self.departureRegionID { DepartureFence.shared.handleExit(); return }
         guard sharingEnabled, region.identifier.hasPrefix("rjlove.") else { return }
         onGeofenceEvent?(String(region.identifier.dropFirst("rjlove.".count)), placeNames[region.identifier] ?? "Ort", "exit")
     }

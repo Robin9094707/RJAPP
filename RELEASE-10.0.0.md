@@ -1,3 +1,13 @@
+# RJ Love 10.0.1 (1001) · Absturz beim Öffnen behoben
+
+**Bitte 10.0.0 sofort durch 10.0.1 ersetzen.** Der Server bleibt 10.0.0; die Python-Datei muss nicht erneut ersetzt werden.
+
+- Behoben: 10.0.0 stürzte unter iOS 27.3 direkt beim Öffnen ab. Apples `CLMonitor` brach beim Anlegen der Abfahrts-Geofence mit einer internen Prüfung ab. Die Geofence nutzt jetzt die bewährte Region-Überwachung von `CLLocationManager`; sie weckt die App weiterhin auch nach dem Wegwischen.
+- Behoben: Ein normaler Start wurde als Hintergrundstart gezählt, weil iOS den App-Zustand vor dem Verbinden der Szene noch nicht als aktiv meldet. Jetzt wird erst nach dem Start entschieden.
+- Neu in CI: Ein Starttest öffnet die App im iOS-Simulator gegen den echten Server, schickt sie in den Hintergrund und zurück und schlägt bei jedem Absturz fehl.
+
+---
+
 # RJ Love 10.0.0 (1000) · Live-Daten und neue Hintergrund-Engine
 
 Großes Update. **App und Python-Server gemeinsam aktualisieren**: App 10.0.0 benötigt Server 10.0.0, Server 10.0.0 erwartet App 10.0.0. Protokoll 5 bleibt, die Datenbank ergänzt zwei Tabellen automatisch. Konten, Daten, Serveradresse und Konfiguration bleiben erhalten.

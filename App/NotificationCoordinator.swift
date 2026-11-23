@@ -12,10 +12,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        let background = application.applicationState == .background
-        let reason = launchOptions?[.location] != nil ? "Standortereignis"
-            : launchOptions?[.remoteNotification] != nil ? "Push" : nil
-        WakeJournal.shared.noteLaunch(background: background, reason: reason)
         BackgroundRefreshCoordinator.shared.handler = { await BackgroundDeliveryService.shared.run(source: "iOS-Hintergrundaktualisierung") }
         BackgroundRefreshCoordinator.shared.processingHandler = { await BackgroundDeliveryService.shared.run(source: "iOS-Wartungsfenster") }
         BackgroundRefreshCoordinator.shared.register()
@@ -27,10 +23,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // 10.0: every wake source is armed at launch, also after iOS relaunched the app in the background.
         DeviceStatusService.shared.start()
         HealthBackgroundDelivery.shared.start()
-        if LocationService.shared.sharingEnabled { Task { await DepartureFence.shared.start() } }
-        if background {
+        // With scenes, applicationState is not yet .active during launch, even for a normal tap.
+        // Decide after the scene had time to connect: only a real background launch starts the engine.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            let background = UIApplication.shared.applicationState == .background
+            WakeJournal.shared.noteLaunch(background: background, reason: background ? "von iOS gestartet" : nil)
+            guard background else { return }
             LiveBackgroundEngine.shared.enterBackground()
-            Task { await PresenceHeartbeat.shared.report(source: reason.map { "Neustart durch " + $0 } ?? "Neustart im Hintergrund", force: true) }
+            await PresenceHeartbeat.shared.report(source: "Neustart im Hintergrund", force: true)
         }
         return true
     }

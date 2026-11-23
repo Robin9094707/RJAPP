@@ -1,6 +1,6 @@
 # RJ Love installieren und aktualisieren
 
-**Aktuell:** App **10.0.0 (Build 1000)** mit Python-Server **10.0.0** und Protokoll **5**.
+**Aktuell:** App **10.0.1 (Build 1001)** mit Python-Server **10.0.0** und Protokoll **5**.
 
 ## Bestehende Installation aktualisieren
 

@@ -342,66 +342,35 @@ private final class HeartbeatTaskBox: @unchecked Sendable { var id = UIBackgroun
     }
 }
 
-// MARK: - Departure geofence (CLMonitor)
+// MARK: - Departure geofence
 
 /// A 150 m circle around the last position. Leaving it relaunches the app in the background, even
 /// after it was swiped away, which then reports battery and the new position and re-arms the circle.
+/// 10.0.1: uses CLLocationManager region monitoring. CLMonitor raised an internal assertion at
+/// launch on iOS 27.3 and crashed the app, so it is not used.
 @MainActor final class DepartureFence {
     static let shared = DepartureFence()
     static let radius: CLLocationDistance = 150
-    private static let identifier = "departure"
-    private var monitor: CLMonitor?
-    private var events: Task<Void, Never>?
-    private var starting = false
     private var arming = false
-    private(set) var center: CLLocationCoordinate2D?
+    var center: CLLocationCoordinate2D? { LocationService.shared.departureRegionCenter }
     var armed: Bool { center != nil }
-
-    func start() async {
-        guard monitor == nil, !starting else { return }
-        starting = true
-        let monitor = await CLMonitor("rjlove-live-departure")
-        self.monitor = monitor
-        starting = false
-        if let record = await monitor.record(for: Self.identifier),
-           let condition = record.condition as? CLMonitor.CircularGeographicCondition {
-            center = condition.center
-        }
-        events = Task { @MainActor [weak self] in
-            do {
-                for try await event in await monitor.events {
-                    self?.handle(event)
-                }
-            } catch {
-                DebugLogger.shared.log("Geofence: " + error.localizedDescription, category: "Standort")
-            }
-        }
-    }
 
     func arm(around location: CLLocation) async {
         let service = LocationService.shared
         guard service.sharingEnabled, service.authorizationStatus == .authorizedAlways,
-              location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 500 else { return }
+              location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 500, !arming else { return }
         if let center, CLLocation(latitude: center.latitude, longitude: center.longitude).distance(from: location) < 75 { return }
-        guard !arming else { return }
         arming = true
         defer { arming = false }
-        await start()
-        guard let monitor else { return }
-        await monitor.remove(Self.identifier)
-        await monitor.add(CLMonitor.CircularGeographicCondition(center: location.coordinate, radius: Self.radius),
-                          identifier: Self.identifier, assuming: .satisfied)
-        center = location.coordinate
+        service.armDepartureRegion(at: location.coordinate, radius: Self.radius)
     }
 
     func disarm() async {
-        await monitor?.remove(Self.identifier)
-        center = nil
+        LocationService.shared.disarmDepartureRegion()
     }
 
-    private func handle(_ event: CLMonitor.Event) {
-        guard event.identifier == Self.identifier, event.state == .unsatisfied else { return }
-        center = nil
+    /// Called by LocationService when the departure region was left.
+    func handleExit() {
         Task { @MainActor in
             let fix = await LocationService.shared.freshFix(timeout: 8)
             await PresenceHeartbeat.shared.report(source: "Geofence verlassen", location: fix, force: true)

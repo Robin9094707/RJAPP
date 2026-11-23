@@ -2,7 +2,7 @@
 
 Privater iOS-Raum für zwei: gemeinsames Kino, Nachrichten, Momente, Karte, Widgets und Alltag.
 
-**Aktueller Stand: iOS-App 10.0.0 (Build 1000), Python-Server 10.0.0, Protokoll 5.**
+**Aktueller Stand: iOS-App 10.0.1 (Build 1001), Python-Server 10.0.0, Protokoll 5.**
 
 - **[10.0.0 – Live-Daten und Hintergrund-Engine](RELEASE-10.0.0.md):** zeigt sekundengenau, wann Akku, Standort und Health beider iPhones am Server ankamen und über welchen Weg. Dazu Nerd-Telemetrie, Live-Modus, Abfahrts-Geofence, Live-Abfrage per stillem Push, HealthKit-Weckung und Designfeinschliff.
 - **[9.0.1 – Widgets und Hintergrund-Sync](RELEASE-9.0.1.md):** erkennt die zugelassene App Group der jeweiligen Signierung automatisch und aktualisiert Widget-Daten bei von iOS erlaubten Hintergrundläufen.

@@ -202,12 +202,15 @@ jobs:
           xcrun simctl location "$DEVICE" set 52.5200,13.4050 || true
           mkdir -p launch-shots
           FAILED=0
-          alive() { xcrun simctl spawn "$DEVICE" launchctl list | grep -q "UIKitApplication:$BUNDLE"; }
+          PID=""
+          # Simulator apps are host processes: check the PID that simctl launch reported.
+          alive() { [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; }
           run_case() {
             local name="$1"; shift
             xcrun simctl terminate "$DEVICE" $BUNDLE >/dev/null 2>&1 || true
             echo "::group::Launch $name"
-            xcrun simctl launch "$DEVICE" $BUNDLE "$@"
+            PID=$(xcrun simctl launch "$DEVICE" $BUNDLE "$@" | awk -F': ' '{print $2}' | tr -d '[:space:]')
+            echo "PID $PID"
             sleep 30
             xcrun simctl io "$DEVICE" screenshot "launch-shots/$name.png" || true
             if alive; then echo "OK: $name läuft nach 30 s"; else echo "::error::Absturz beim Start ($name)"; FAILED=1; fi
@@ -220,7 +223,7 @@ jobs:
           xcrun simctl location "$DEVICE" set 52.5300,13.4200 || true
           sleep 25
           if alive; then echo "OK: im Hintergrund weiter aktiv"; else echo "::error::Absturz im Hintergrund"; FAILED=1; fi
-          xcrun simctl openurl "$DEVICE" "rjlove://home" || true
+          xcrun simctl launch "$DEVICE" $BUNDLE >/dev/null || true
           sleep 15
           xcrun simctl io "$DEVICE" screenshot launch-shots/after-background.png || true
           if alive; then echo "OK: zurück im Vordergrund"; else echo "::error::Absturz beim Zurückkehren"; FAILED=1; fi

@@ -158,7 +158,7 @@ struct WakeEntry: Codable, Identifiable, Hashable, Sendable {
 extension APIClient {
     /// A client built only from Keychain + UserDefaults, so it works after a cold background launch
     /// without RootView, Face ID or AppState.
-    static func storedBackgroundClient() -> APIClient? {
+    @MainActor static func storedBackgroundClient() -> APIClient? {
         guard let bytes = UserDefaults.standard.data(forKey: AppState.profileKey),
               let profile = try? JSONDecoder().decode(ServerProfile.self, from: bytes),
               let url = AppState.normalizedServerURL(profile.baseURL),
@@ -353,6 +353,7 @@ private final class HeartbeatTaskBox: @unchecked Sendable { var id = UIBackgroun
     private var monitor: CLMonitor?
     private var events: Task<Void, Never>?
     private var starting = false
+    private var arming = false
     private(set) var center: CLLocationCoordinate2D?
     var armed: Bool { center != nil }
 
@@ -382,6 +383,9 @@ private final class HeartbeatTaskBox: @unchecked Sendable { var id = UIBackgroun
         guard service.sharingEnabled, service.authorizationStatus == .authorizedAlways,
               location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 500 else { return }
         if let center, CLLocation(latitude: center.latitude, longitude: center.longitude).distance(from: location) < 75 { return }
+        guard !arming else { return }
+        arming = true
+        defer { arming = false }
         await start()
         guard let monitor else { return }
         await monitor.remove(Self.identifier)

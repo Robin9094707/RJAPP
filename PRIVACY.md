@@ -1,6 +1,6 @@
-# RJ Love – Datenschutz und Datenflüsse (App 9.0.1)
+# RJ Love – Datenschutz und Datenflüsse (App 10.0.0)
 
-**Stand:** iOS-App 9.0.1, Python-Server 9.0.0. Die folgenden historischen Ergänzungen gelten im jeweils beschriebenen Kontext.
+**Stand:** iOS-App 10.0.0, Python-Server 10.0.0. **Neu in 10.0:** Hintergrund-Meldungen enthalten technische Telemetrie (Temperaturzustand, Netzart, iOS-Version, Modellkennung, App-Build, Uptime, freier Speicher, Standortrecht, Weckquelle). Sie geht nur an euren eigenen Server und ist nur für euch beide sichtbar. Die Meldungshistorie speichert keine Koordinaten und wird nach 7 Tagen gelöscht. Das Weckprotokoll bleibt lokal auf dem iPhone. Die folgenden historischen Ergänzungen gelten im jeweils beschriebenen Kontext.
 
 **Widgets und Hintergrundaktualisierung:** Widget-Daten liegen lokal im von iOS freigegebenen App-Group-Container. Bei einem durch iOS gestarteten Hintergrundlauf kann die App denselben authentifizierten privaten Server-Endpunkt `GET /v1/bootstrap` nutzen, den sie auch beim normalen Synchronisieren verwendet, um die angezeigten Partnerdaten zu aktualisieren. Dabei werden keine neuen Server-Endpunkte eingeführt und es wird kein zusätzlicher Standort ohne die bestehenden Freigaben erhoben. Push, Widget-Aktualisierungen und Standort sind an iOS-Berechtigungen und dessen Hintergrundregeln gebunden.
 

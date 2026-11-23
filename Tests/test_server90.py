@@ -27,7 +27,7 @@ class Server90Tests(unittest.TestCase):
         return caught.exception.code, json.loads(caught.exception.read())
 
     def test_versions(self):
-        self.assertEqual(server.APP_VERSION, '9.0.0')
+        self.assertEqual(server.APP_VERSION, '10.0.0')
         code, _ = self.failure(lambda: self.request('/v1/bootstrap', who=0, version='8.0.0'))
         self.assertEqual(code, 426)
 

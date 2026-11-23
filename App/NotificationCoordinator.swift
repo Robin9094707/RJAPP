@@ -12,13 +12,26 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        let background = application.applicationState == .background
+        let reason = launchOptions?[.location] != nil ? "Standortereignis"
+            : launchOptions?[.remoteNotification] != nil ? "Push" : nil
+        WakeJournal.shared.noteLaunch(background: background, reason: reason)
         BackgroundRefreshCoordinator.shared.handler = { await BackgroundDeliveryService.shared.run(source: "iOS-Hintergrundaktualisierung") }
+        BackgroundRefreshCoordinator.shared.processingHandler = { await BackgroundDeliveryService.shared.run(source: "iOS-Wartungsfenster") }
         BackgroundRefreshCoordinator.shared.register()
         let action = UNNotificationAction(identifier: "RJ_SCHEDULE_WAKE", title: "Weckruf jetzt einplanen", options: [])
         let open = UNNotificationAction(identifier: "RJ_OPEN_WAKE", title: "App öffnen & prüfen", options: [.foreground])
         UNUserNotificationCenter.current().setNotificationCategories([UNNotificationCategory(identifier: "RJ_WAKE", actions: [action, open], intentIdentifiers: [], options: [])])
         application.registerForRemoteNotifications()
         LocationService.shared.resumeAfterLaunch()
+        // 10.0: every wake source is armed at launch, also after iOS relaunched the app in the background.
+        DeviceStatusService.shared.start()
+        HealthBackgroundDelivery.shared.start()
+        if LocationService.shared.sharingEnabled { Task { await DepartureFence.shared.start() } }
+        if background {
+            LiveBackgroundEngine.shared.enterBackground()
+            Task { await PresenceHeartbeat.shared.report(source: reason.map { "Neustart durch " + $0 } ?? "Neustart im Hintergrund", force: true) }
+        }
         return true
     }
 
@@ -41,8 +54,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        let pingID = userInfo["rj_presence_ping"] as? String
         Task { @MainActor in
             let completion = BackgroundPushCompletion(completionHandler)
+            if let pingID {
+                // 10.0: the partner asked for live data. Answer first (fresh fix within 8 s), then
+                // run the regular command pipeline in the remaining budget.
+                let fix = await LocationService.shared.freshFix(timeout: 8)
+                await PresenceHeartbeat.shared.report(source: "Stiller Push (Live-Abfrage)", location: fix, pingID: pingID, force: true)
+            } else if UIApplication.shared.applicationState != .active {
+                await PresenceHeartbeat.shared.report(source: "Push empfangen")
+            }
             let timeout = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(25))
                 guard !Task.isCancelled else { return }

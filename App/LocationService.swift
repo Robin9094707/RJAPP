@@ -52,6 +52,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     private var backgroundSession: CLBackgroundActivitySession?
     private var authorizationWaiter: CheckedContinuation<Void, Never>?
     private var placeNames: [String: String] = [:]
+    private var fixWaiters: [UUID: CheckedContinuation<CLLocation?, Never>] = [:]
 
     private override init() {
         authorizationStatus = manager.authorizationStatus
@@ -92,6 +93,34 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
             manager.requestWhenInUseAuthorization()
         } else {
             manager.requestAlwaysAuthorization()
+        }
+    }
+
+    var authorizationStatusName: String {
+        switch authorizationStatus {
+        case .authorizedAlways: "always"
+        case .authorizedWhenInUse: "when_in_use"
+        case .denied: "denied"
+        case .restricted: "restricted"
+        case .notDetermined: "not_determined"
+        @unknown default: "unknown"
+        }
+    }
+
+    /// 10.0: one fresh position for a background wake (silent push, geofence). Returns the last
+    /// known fix when iOS cannot deliver a new one in time. Never asks for permission.
+    func freshFix(timeout: Double) async -> CLLocation? {
+        guard sharingEnabled, manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return nil }
+        if let last = lastLocation, -last.timestamp.timeIntervalSinceNow < 20 { return last }
+        let id = UUID()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<CLLocation?, Never>) in
+            fixWaiters[id] = continuation
+            manager.requestLocation()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(timeout))
+                guard let self, let waiter = self.fixWaiters.removeValue(forKey: id) else { return }
+                waiter.resume(returning: self.lastLocation)
+            }
         }
     }
 
@@ -154,6 +183,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         manager.stopMonitoringVisits()
         backgroundSession?.invalidate(); backgroundSession = nil
         manager.allowsBackgroundLocationUpdates = false
+        Task { await DepartureFence.shared.disarm() }
         for region in manager.monitoredRegions where region.identifier.hasPrefix("rjlove.") { manager.stopMonitoring(for: region) }
     }
 
@@ -168,7 +198,7 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
 
     func synchronizeGeofences(_ places: [MonitoredLovePlace]) {
         let permitted = sharingEnabled ? places : []
-        let desired = Dictionary(uniqueKeysWithValues: permitted.prefix(20).map { ("rjlove.\($0.id)", $0) })
+        let desired = Dictionary(uniqueKeysWithValues: permitted.prefix(19).map { ("rjlove.\($0.id)", $0) })
         placeNames = Dictionary(uniqueKeysWithValues: desired.map { ($0.key, $0.value.name) })
 
         for region in manager.monitoredRegions where region.identifier.hasPrefix("rjlove.") && desired[region.identifier] == nil {
@@ -202,9 +232,15 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         lastLocation = location
         lastError = nil
         onLocation?(location)
-        if sharingEnabled, UIApplication.shared.applicationState != .active {
+        if !fixWaiters.isEmpty {
+            // A wake path (ping, geofence) asked for this fix and uploads it itself.
+            let waiters = fixWaiters.values
+            fixWaiters.removeAll()
+            waiters.forEach { $0.resume(returning: location) }
+        } else if sharingEnabled, UIApplication.shared.applicationState != .active {
             Task { await BackgroundLocationUploader.shared.upload(location) }
         }
+        if sharingEnabled { Task { await DepartureFence.shared.arm(around: location) } }
     }
 
     func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
@@ -213,11 +249,16 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
         lastLocation = location
         onLocation?(location)
         if UIApplication.shared.applicationState != .active {
-            Task { await BackgroundLocationUploader.shared.upload(location, force: true) }
+            Task { await BackgroundLocationUploader.shared.upload(location, force: true, source: "Besuch erkannt") }
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if !fixWaiters.isEmpty {
+            let waiters = fixWaiters.values
+            fixWaiters.removeAll()
+            waiters.forEach { $0.resume(returning: lastLocation) }
+        }
         if let locationError = error as? CLError, locationError.code == .locationUnknown { return }
         lastError = error.localizedDescription
         DebugLogger.shared.log("Standortfehler: \(error.localizedDescription)", category: "Standort")
@@ -243,64 +284,32 @@ final class LocationService: NSObject, ObservableObject, @preconcurrency CLLocat
     private var inFlight = false
     private var pending: CLLocation?
 
-    func upload(_ location: CLLocation, force: Bool = false) async {
+    func upload(_ location: CLLocation, force: Bool = false, source: String = "Standortänderung") async {
         if inFlight { pending = location; return }
         var next: CLLocation? = location
         var forced = force
+        var reason = source
         // Drain in a loop: a fix that arrives during an upload is sent right after it, never dropped.
         while let current = next {
             next = nil
-            await send(current, force: forced)
+            await send(current, force: forced, source: reason)
             forced = false
             // The newest fix that arrived meanwhile is the current position: always send it.
-            if let waiting = pending { pending = nil; next = waiting; forced = true }
+            if let waiting = pending { pending = nil; next = waiting; forced = true; reason = "Standortänderung" }
         }
     }
 
-    private func send(_ location: CLLocation, force: Bool) async {
+    /// 10.0: sent through the heartbeat endpoint, so battery, telemetry and the wake source travel
+    /// with every background position.
+    private func send(_ location: CLLocation, force: Bool, source: String) async {
         let moved = lastSent.map { location.distance(from: $0) } ?? .greatestFiniteMagnitude
         guard force || Date.now.timeIntervalSince(lastUpload) >= 60 || moved >= 150 else { return }
-        guard let bytes = UserDefaults.standard.data(forKey: AppState.profileKey),
-              let profile = try? JSONDecoder().decode(ServerProfile.self, from: bytes),
-              let url = AppState.normalizedServerURL(profile.baseURL),
-              let token = KeychainStore.get(AppState.tokenKey) else { return }
         inFlight = true
-        let box = BackgroundTaskBox()
-        box.id = UIApplication.shared.beginBackgroundTask(withName: "rj-location") {
-            if box.id != .invalid { UIApplication.shared.endBackgroundTask(box.id); box.id = .invalid }
-        }
-        defer {
-            inFlight = false
-            if box.id != .invalid { UIApplication.shared.endBackgroundTask(box.id); box.id = .invalid }
-        }
-        UIDevice.current.isBatteryMonitoringEnabled = true
-        var body: [String: Any] = [
-            "latitude": location.coordinate.latitude, "longitude": location.coordinate.longitude,
-            "horizontal_accuracy": location.horizontalAccuracy, "altitude": location.altitude,
-            "location_timestamp": location.timestamp.rjISO8601, "app_state": "background",
-            "low_power_mode": ProcessInfo.processInfo.isLowPowerModeEnabled
-        ]
-        if location.speed >= 0 { body["speed"] = location.speed }
-        if location.course >= 0 { body["course"] = location.course }
-        let level = UIDevice.current.batteryLevel
-        if level >= 0 { body["battery_level"] = Int((level * 100).rounded()) }
-        switch UIDevice.current.batteryState {
-        case .charging: body["battery_state"] = "charging"
-        case .full: body["battery_state"] = "full"
-        case .unplugged: body["battery_state"] = "unplugged"
-        default: break
-        }
-        let api = APIClient(background: true)
-        api.configure(baseURL: url, token: token)
-        do {
-            let data = try JSONSerialization.data(withJSONObject: body)
-            _ = try await api.execute(try api.request(path: "/v1/presence/location", method: "POST", body: data), as: EmptyResponse.self)
+        defer { inFlight = false }
+        if await PresenceHeartbeat.shared.report(source: source, location: location, force: true) {
             lastUpload = .now; lastSent = location
             UserDefaults.standard.set(Date.now.rjISO8601, forKey: "rjlove.last-background-location-at")
-        } catch {
-            DebugLogger.shared.log("Hintergrundstandort: " + error.localizedDescription, category: "Standort")
         }
     }
 }
 
-private final class BackgroundTaskBox: @unchecked Sendable { var id = UIBackgroundTaskIdentifier.invalid }

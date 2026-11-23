@@ -22,8 +22,8 @@ class Server80Tests(unittest.TestCase):
         return caught.exception.code, json.loads(caught.exception.read())
 
     def test_version_gate_for_older_apps(self):
-        self.assertEqual(server.APP_VERSION, '9.0.0')
-        self.assertEqual(server.MINIMUM_APP_VERSION, '9.0.0')
+        self.assertEqual(server.APP_VERSION, '10.0.0')
+        self.assertEqual(server.MINIMUM_APP_VERSION, '10.0.0')
         code, body = self.failure(lambda: self.request('/v1/bootstrap', who=0, version='8.0.0'))
         self.assertEqual(code, 426)
         self.assertEqual(body['error'], 'app_update_required')

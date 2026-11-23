@@ -25,11 +25,14 @@ struct PartnerProfileView:View {
                     }
                     VStack(alignment:.leading,spacing:16) {
                         Text("Die einzelnen Datenstände").font(.headline)
+                        ActivityDateRow(title:"Akku übertragen",date:partner?.presence?.batteryReportedAt,symbol:"battery.100percent.bolt",detail:partner?.presence?.reportSource.map{"Zuletzt über: "+$0} ?? "Zeitpunkt, an dem der Akkustand am Server ankam.")
+                        ActivityDateRow(title:"Standort übertragen",date:partner?.presence?.locationReportedAt,symbol:"location.circle",detail:"Wann eine Position zuletzt am Server ankam.")
                         ActivityDateRow(title:"Standort aufgenommen",date:partner?.presence?.locationTimestamp,symbol:"location.fill",detail:partner?.presence?.locationSharing==true ? "Zeitpunkt der Standortmessung auf dem anderen iPhone.":"Standort ist momentan nicht freigegeben.")
                         ActivityDateRow(title:"Health ausgewertet",date:partner?.presence?.healthUpdatedAt,symbol:"heart.text.square",detail:"Zeitpunkt der zuletzt geteilten Health-Zusammenfassung.")
                         ActivityDateRow(title:"Auf deinem iPhone abgeglichen",date:app.lastSync?.rjISO8601,symbol:"iphone",detail:"Wann diese App den Server zuletzt erfolgreich abgerufen hat.")
                     }.loveCard()
                     Text("Eine Hintergrundaktualisierung bedeutet nicht, dass die App geöffnet wurde. Ohne Netz, nach erzwungenem Beenden oder wenn iOS pausiert, bleiben die letzten bestätigten Zeiten stehen. Frühere Zeitpunkte werden nicht nachträglich erfunden.").font(.footnote).foregroundStyle(.secondary)
+                    NavigationLink{LiveTelemetryView()}label:{Label("Live-Daten & Nerd-Infos",systemImage:"waveform.path.ecg.rectangle").frame(maxWidth:.infinity)}.buttonStyle(.borderedProminent).controlSize(.large)
                     NavigationLink{CountdownHubView()}label:{Label("Jahrestag & Countdowns",systemImage:"calendar.badge.heart")}.buttonStyle(.bordered)
                 }.padding(20)
             }.background(LoveBackground()).navigationTitle("Dein Lieblingsmensch").navigationBarTitleDisplayMode(.inline)

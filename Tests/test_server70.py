@@ -34,8 +34,8 @@ class Server70Tests(unittest.TestCase):
         return asset['id']
 
     def test_versions(self):
-        self.assertEqual(server.APP_VERSION, '9.0.0')
-        self.assertEqual(server.MINIMUM_APP_VERSION, '9.0.0')
+        self.assertEqual(server.APP_VERSION, '10.0.0')
+        self.assertEqual(server.MINIMUM_APP_VERSION, '10.0.0')
         with self.assertRaises(urllib.error.HTTPError) as failure:
             self.request('/v1/bootstrap', who=0, version='6.0.0')
         self.assertEqual(failure.exception.code, 426)

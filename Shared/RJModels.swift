@@ -54,9 +54,23 @@ struct PresencePayload: Codable, Hashable, Sendable {
     var appVersion: String?
     var reportedAt: String?
     var updatedAt: String?
+    // 10.0: per-field transfer timestamps, wake source and nerd telemetry.
+    var batteryReportedAt: String?
+    var locationReportedAt: String?
+    var healthReportedAt: String?
+    var telemetryReportedAt: String?
+    var reportSource: String?
+    var reportCount: Int?
+    var telemetry: [String: TelemetryValue]?
+    /// Upload only: why this report was sent and which presence ping it answers.
+    var source: String?
+    var pingID: String?
 
     enum CodingKeys: String, CodingKey {
-        case latitude, longitude, altitude, speed, course, steps, motion
+        case latitude, longitude, altitude, speed, course, steps, motion, telemetry, source
+        case batteryReportedAt = "battery_reported_at", locationReportedAt = "location_reported_at"
+        case healthReportedAt = "health_reported_at", telemetryReportedAt = "telemetry_reported_at"
+        case reportSource = "report_source", reportCount = "report_count", pingID = "ping_id"
         case motionConfidence="motion_confidence",motionUpdatedAt="motion_updated_at"
         case horizontalAccuracy = "horizontal_accuracy"
         case locationTimestamp = "location_timestamp"
@@ -78,6 +92,44 @@ struct PresencePayload: Codable, Hashable, Sendable {
         case appVersion = "app_version"
         case reportedAt = "reported_at"
         case updatedAt = "updated_at"
+    }
+}
+
+/// A small scalar JSON value for nerd telemetry (string, number, bool or null).
+enum TelemetryValue: Codable, Hashable, Sendable {
+    case string(String), number(Double), bool(Bool), null
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .bool(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else if let value = try? container.decode(String.self) { self = .string(value) }
+        else { self = .null }
+    }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+    var number: Double? {
+        if case .number(let value) = self { return value }
+        return nil
+    }
+    var bool: Bool? {
+        if case .bool(let value) = self { return value }
+        return nil
+    }
+    var text: String? {
+        switch self {
+        case .string(let value): return value
+        case .number(let value): return value.rounded() == value && abs(value) < 1e12 ? String(Int(value)) : String(format: "%.2f", value)
+        case .bool(let value): return value ? "ja" : "nein"
+        case .null: return nil
+        }
     }
 }
 

@@ -5,6 +5,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>eu.rjuhas.rjlove.refresh</string>
+		<string>eu.rjuhas.rjlove.processing</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>de</string>
@@ -93,6 +94,7 @@
 		<string>location</string>
 		<string>fetch</string>
 		<string>remote-notification</string>
+		<string>processing</string>
 		<string>nearby-interaction</string>
 	</array>
 	<key>UILaunchScreen</key>

@@ -1,4 +1,13 @@
-# RJ Love – aktuelle Funktionen (App 9.0.1)
+# RJ Love – aktuelle Funktionen (App 10.0.0)
+
+## Stand 10.0 – Live-Daten und Hintergrund-Engine
+
+- Live-Daten für beide iPhones: sekundengenaue Übertragungszeiten für Akku, Standort und Health, letzte Weckquelle, Akkuverlauf über 24 h, Weckquellen-Diagramm und ausführliche Nerd-Telemetrie.
+- Hintergrund-Engine: Live-Modus mit Akkumeldung in Sekunden und einstellbarem Herzschlag, Abfahrts-Geofence (CLMonitor), stille Live-Abfrage per APNs, HealthKit-Hintergrundlieferung, BGProcessing-Wartungsfenster und ein Herzschlag bei jeder iOS-Weckung.
+- Lokales Weckprotokoll und eine Checkliste für alle Hintergrundvoraussetzungen.
+- Designfeinschliff: Karten mit Lichtkante, Akku-Ringe, Live-Zähler.
+
+Details: [Release 10.0.0](RELEASE-10.0.0.md).
 
 ## Stand 9.0.1 – Widgets und Hintergrund
 

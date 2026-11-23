@@ -63,6 +63,10 @@ struct LoveBackground:View {
                            : [LovePalette.blush.opacity(0.22),LovePalette.pink.opacity(0.06),Color.clear],
                            startPoint:.top,endPoint:.bottom)
                 .frame(height:420)
+            // 10.0: a second, cooler glow from the top corner adds depth without any animation.
+            RadialGradient(colors:[(scheme == .dark ? LovePalette.violet : LovePalette.blue).opacity(scheme == .dark ? 0.22:0.10),Color.clear],
+                           center:.topTrailing,startRadius:10,endRadius:360)
+                .frame(height:420)
         }
         .ignoresSafeArea().accessibilityHidden(true).allowsHitTesting(false)
     }
@@ -151,7 +155,9 @@ private struct LoveCardSurface:ViewModifier {
     }
 }
 
-/// Opaque card fill with a hairline edge and, in light mode, a whisper of depth.
+/// Opaque card fill with a light-catching edge and layered depth.
+/// 10.0: the hairline is a gradient (brighter at the top, like light falling on glass), plus a soft
+/// ambient shadow and a tighter key shadow in light mode. Still opaque, so scrolling stays smooth.
 private struct LoveSolidSurface<S: Shape>: ViewModifier {
     let shape: S
     let tint: Color
@@ -159,10 +165,23 @@ private struct LoveSolidSurface<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background {
-                ZStack { shape.fill(LoveSurface.card); shape.fill(tint) }
-                    .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.05), radius: 10, y: 3)
+                ZStack {
+                    shape.fill(LoveSurface.card)
+                    shape.fill(tint)
+                    if scheme == .dark {
+                        shape.fill(LinearGradient(colors: [.white.opacity(0.045), .clear], startPoint: .top, endPoint: .center))
+                    }
+                }
+                .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.035), radius: 18, y: 8)
+                .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.04), radius: 2, y: 1)
             }
-            .overlay { shape.stroke(LoveSurface.hairline, lineWidth: 0.5).allowsHitTesting(false) }
+            .overlay {
+                shape.stroke(LinearGradient(colors: scheme == .dark
+                                            ? [.white.opacity(0.16), .white.opacity(0.04)]
+                                            : [.white.opacity(0.9), LoveSurface.hairline],
+                                            startPoint: .top, endPoint: .bottom), lineWidth: 0.75)
+                    .allowsHitTesting(false)
+            }
     }
 }
 
@@ -327,28 +346,35 @@ struct BatteryBadge: View {
     let state: String?
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol).contentTransition(.symbolEffect(.replace))
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .symbolRenderingMode(.hierarchical)
+                .contentTransition(.symbolEffect(.replace))
             Text(level.map { "\($0) %" } ?? "– %")
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(level ?? 0)))
         }
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(color)
+        .padding(.horizontal, 9).padding(.vertical, 4)
+        .background(color.opacity(0.12), in: Capsule())
         .animation(LoveMotion.gentle, value: level)
-        .accessibilityLabel("Akku \(level.map(String.init) ?? "unbekannt") Prozent")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Akku \(level.map(String.init) ?? "unbekannt") Prozent" + (charging ? ", lädt" : ""))
     }
+
+    private var charging: Bool { state == "charging" || state == "full" }
 
     private var color: Color {
         guard let level else { return .secondary }
-        if state == "charging" || state == "full" { return .green }
+        if charging { return .green }
         if level <= 10 { return .red }
         if level <= 20 { return .orange }
         return .green
     }
 
     private var symbol: String {
-        if state == "charging" { return "battery.100percent.bolt" }
+        if charging { return "battery.100percent.bolt" }
         guard let level else { return "battery.0percent" }
         if level >= 88 { return "battery.100percent" }
         if level >= 63 { return "battery.75percent" }

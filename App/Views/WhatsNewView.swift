@@ -13,6 +13,18 @@ struct WhatsNewView: View {
     @Environment(AppState.self) private var app
 
     static let features: [WhatsNewFeature] = [
+        WhatsNewFeature(id: "live10", symbol: "waveform.path.ecg.rectangle.fill", tint: LovePalette.pink, title: "Live-Daten & Nerd-Infos",
+                        detail: "Sekundengenau sehen, wann Akku, Standort und Health von euch beiden zuletzt am Server ankamen und über welchen Weg: Live-Herzschlag, Geofence, stiller Push, Health oder Wartungsfenster. Mit Akkuverlauf, Weckquellen, Latenz, Temperatur, Netz, Speicher und mehr."),
+        WhatsNewFeature(id: "engine10", symbol: "bolt.heart.fill", tint: LovePalette.coral, title: "Neue Hintergrund-Engine",
+                        detail: "Im Live-Modus geht jede Akkuänderung in Sekunden raus, dazu ein Herzschlag im gewählten Takt. Jede iOS-Weckung meldet Akku und Telemetrie mit."),
+        WhatsNewFeature(id: "fence10", symbol: "mappin.and.ellipse", tint: LovePalette.cyan, title: "Abfahrts-Geofence",
+                        detail: "Ein 150-m-Kreis um die letzte Position weckt die App beim Losgehen, auch wenn sie weggewischt wurde, und meldet sofort Standort und Akku."),
+        WhatsNewFeature(id: "ping10", symbol: "dot.radiowaves.left.and.right", tint: LovePalette.violet, title: "Live-Abfrage per stillem Push",
+                        detail: "Ein Tipp weckt das andere iPhone. Es antwortet mit frischem Standort und Akku, und ihr seht die Antwortzeit. Braucht APNs auf dem Server."),
+        WhatsNewFeature(id: "health10", symbol: "heart.text.square.fill", tint: LovePalette.blush, title: "Health weckt mit",
+                        detail: "Neue Schritte wecken die App über die HealthKit-Hintergrundlieferung. Zusätzlich nutzt RJ Love das längere iOS-Wartungsfenster."),
+        WhatsNewFeature(id: "design10", symbol: "sparkles", tint: LovePalette.blue, title: "Feinschliff im Design",
+                        detail: "Karten mit Lichtkante und mehr Tiefe, ein zweiter Farbschimmer im Hintergrund, Akku-Ringe und Live-Zähler, die sich jede Sekunde weiterdrehen."),
         WhatsNewFeature(id: "diary2", symbol: "book.pages.fill", tint: LovePalette.pink, title: "Tagebuch 2.0",
                         detail: "ChatGPT stellt dir beim Schreiben Rückfragen als Buttons, schlägt Stimmung, Themen und Titel vor und kennt deine früheren Einträge. Ort, Uhrzeit, Schritte und Momente des Tages kommen automatisch dazu."),
         WhatsNewFeature(id: "voice-diary", symbol: "mic.fill", tint: LovePalette.coral, title: "Sprach-Tagebuch",
@@ -45,7 +57,7 @@ struct WhatsNewView: View {
                         detail: "Kein automatisches Pausieren mehr, Neustart nach Ortswechseln und Besuchen und ein sofortiger, sparsamer Upload im Hintergrund."),
         WhatsNewFeature(id: "launch", symbol: "heart.fill", tint: LovePalette.plum, title: "Neue Öffnungsanimation",
                         detail: "Euer Bild schlägt einmal wie ein Herz und öffnet euch den Raum. Mit „Bewegung reduzieren“ ganz ruhig."),
-        WhatsNewFeature(id: "update", symbol: "arrow.down.app.fill", tint: LovePalette.plum, title: "Gemeinsam mit Server 9.0",
+        WhatsNewFeature(id: "update", symbol: "arrow.down.app.fill", tint: LovePalette.plum, title: "Gemeinsam mit Server 10.0",
                         detail: "Eure Daten, Anmeldungen, Aufnahmen und Einstellungen bleiben unverändert. Ältere Apps erinnern freundlich an das Update.")
     ]
 

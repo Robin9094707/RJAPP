@@ -157,6 +157,7 @@ final class AppState {
         acceptQuickCaptureRequest()
         guard UIApplication.shared.applicationState == .active, !activating else { return }
         activating = true; defer { activating = false }
+        LiveBackgroundEngine.shared.enterForeground()
         acceptQuickCaptureRequest()
         nearby.resumeForeground()
         Task{await refreshNearbySearch()}
@@ -211,6 +212,13 @@ final class AppState {
         pollTask?.cancel()
         pollTask = nil
         BackgroundRefreshCoordinator.shared.schedule()
+        // 10.0: hand over to the live engine. One heartbeat right away, so the partner sees the
+        // battery at the moment the app was left.
+        if phase == .authenticated {
+            LiveBackgroundEngine.shared.enterBackground()
+            HealthBackgroundDelivery.shared.start()
+            Task { await PresenceHeartbeat.shared.report(source: "App verlassen", location: location.sharingEnabled ? location.lastLocation : nil, force: true) }
+        }
     }
 
     func login(server: String, username: String, password: String) async {
@@ -574,6 +582,9 @@ final class AppState {
         payload.statusMessage = statusMessage
         payload.deviceName = UIDevice.current.model
         payload.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        let source = payload.appState == "foreground" ? "App im Vordergrund" : "App-Abgleich im Hintergrund"
+        payload.source = source
+        payload.telemetry = DeviceTelemetry.collect(source: source)
         do {
             try await api.postPresence(payload)
             lastPresenceUpload = .now

@@ -10,7 +10,10 @@ class WidgetProfilesTest(unittest.TestCase):
         self.assertIn("containerURL(forSecurityApplicationGroupIdentifier: candidate)",s)
     def test_existing_server(self):
         s=(R/"App/VersionCompatibility.swift").read_text()
-        self.assertIn('minimumServer = "9.0.0"',s)
+        import re
+        server=re.search(r'^APP_VERSION = "([^"]+)"',(R/"Backend/rj_love_server.py").read_text(),re.M).group(1)
+        # The app never requires a newer server than the one shipped in the same package.
+        self.assertIn(f'minimumServer = "{server}"',s)
         self.assertIn("protocolVersion = 5",s)
         b=(R/"App/BackgroundDeliveryService.swift").read_text()
         self.assertIn("api.bootstrap()",b)

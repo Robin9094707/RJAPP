@@ -157,6 +157,7 @@ struct PushReadiness: Decodable {
             guard !Task.isCancelled else { return false }
             await AlarmService.shared.reconcile(reminders: snapshot.reminders, myID: snapshot.userID, senderName: snapshot.senderName)
             if UIApplication.shared.applicationState != .active {
+                await PresenceHeartbeat.shared.report(source: source)
                 await refreshWidgetFromServer(api: api)
                 try await api.reportActivity(mode:"background",source:source)
                 UserDefaults.standard.set(Date.now.rjISO8601,forKey:"rjlove.last-successful-background-at")

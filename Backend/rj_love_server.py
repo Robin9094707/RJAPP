@@ -53,14 +53,23 @@ from urllib.parse import parse_qs, urlparse, unquote, urlencode
 from zoneinfo import ZoneInfo
 
 
-APP_VERSION = "9.0.0"
+APP_VERSION = "10.0.0"
 # Apps older than this receive HTTP 426 and show their built-in "Zeit für die neue App" view.
-MINIMUM_APP_VERSION = "9.0.0"
+MINIMUM_APP_VERSION = "10.0.0"
 PHOTO_REQUEST_TTL_HOURS = 12
 PHOTO_REQUEST_NUDGE_MINUTES = 30
 WALKIE_MAX_SECONDS = 120
 WALKIE_WAIT_SECONDS = 25
 PROTOCOL_VERSION = 5
+PRESENCE_PING_COOLDOWN_SECONDS = 30
+PRESENCE_REPORT_RETENTION_DAYS = 7
+TELEMETRY_KEYS = {
+    "thermal_state", "uptime_s", "os_version", "device_model", "app_build", "network_expensive", "network_constrained",
+    "storage_free_gb", "wake_source", "background_refresh", "location_authorization", "precise_location", "push_registered",
+    "notifications", "live_mode", "health_background", "last_upload_latency_ms", "battery_monitoring", "location_age_s",
+    "geofence_armed", "significant_changes", "visits", "process_launches", "wakes_24h", "memory_mb", "locale", "timezone",
+    "motion", "brightness", "audio_route", "carrier_link",
+}
 CONFIG_FILENAME = "rjapp_config.json"
 ALLOWED_RECORD_KINDS = {"note", "reminder", "moment", "geofence", "calendar", "chat", "wish", "milestone", "checkin", "coupon", "gratitude", "album", "instant", "photo_request", "ritual", "poop", "diary", "group"}
 ALLOWED_COMMAND_KINDS = {"wake", "love_alarm"}
@@ -416,6 +425,18 @@ class Database:
                     payload TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS presence_reports (
+                    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, source TEXT NOT NULL, app_state TEXT NOT NULL,
+                    battery_level INTEGER, battery_state TEXT, low_power_mode INTEGER, thermal_state TEXT,
+                    network_type TEXT, has_location INTEGER NOT NULL DEFAULT 0, horizontal_accuracy REAL,
+                    upload_latency_ms INTEGER, ping_id TEXT, created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS presence_reports_user ON presence_reports(user_id, created_at);
+                CREATE TABLE IF NOT EXISTS presence_pings (
+                    id TEXT PRIMARY KEY, requester_id TEXT NOT NULL, target_id TEXT NOT NULL, status TEXT NOT NULL,
+                    reason TEXT NOT NULL, created_at TEXT NOT NULL, answered_at TEXT, answer_latency_ms INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS presence_pings_target ON presence_pings(target_id, created_at);
 
                 CREATE TABLE IF NOT EXISTS thoughts (
                     user_id TEXT NOT NULL,
@@ -2126,6 +2147,70 @@ class RJLoveApplication:
         with self.database.connect() as db:return [r[0] for r in db.execute("SELECT id FROM records WHERE deleted_at IS NOT NULL")]
     def thought_history(self,limit=200,offset=0):
         with self.database.connect() as db:return [dict(r) for r in db.execute("SELECT * FROM thought_events ORDER BY received_at DESC,id DESC LIMIT ? OFFSET ?",(limit,offset))]
+    @staticmethod
+    def validate_telemetry(value):
+        """10.0: optional nerd data. Only known keys with small scalar values are stored."""
+        if value is None:return None
+        if not isinstance(value,dict) or len(value)>40:raise APIError(400,"invalid_telemetry","Telemetrie ungültig.")
+        clean={}
+        for key,item in value.items():
+            if key not in TELEMETRY_KEYS:continue
+            if item is None or isinstance(item,bool):clean[key]=item
+            elif isinstance(item,(int,float)):
+                if not math.isfinite(item) or abs(item)>1e9:raise APIError(400,"invalid_telemetry","Telemetriewert ungültig.")
+                clean[key]=item
+            elif isinstance(item,str):clean[key]=safe_text(item,80)
+            else:raise APIError(400,"invalid_telemetry","Telemetriewert ungültig.")
+        return clean or None
+
+    def record_presence_report(self,db,user_id,source,merged,has_location,telemetry,ping_id,now):
+        telemetry=telemetry or {}
+        latency=telemetry.get("last_upload_latency_ms")
+        db.execute("INSERT INTO presence_reports VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(
+            str(uuid.uuid4()),user_id,source,merged.get("app_state") or "background",
+            merged.get("battery_level") if isinstance(merged.get("battery_level"),int) else None,
+            merged.get("battery_state"),1 if merged.get("low_power_mode") else 0,telemetry.get("thermal_state"),
+            merged.get("network_type"),1 if has_location else 0,
+            merged.get("horizontal_accuracy") if has_location and isinstance(merged.get("horizontal_accuracy"),(int,float)) else None,
+            int(latency) if isinstance(latency,(int,float)) and not isinstance(latency,bool) else None,ping_id,now))
+        if ping_id:
+            row=db.execute("SELECT created_at FROM presence_pings WHERE id=? AND target_id=? AND answered_at IS NULL",(ping_id,user_id)).fetchone()
+            if row:
+                created=parse_iso(row["created_at"]);answered=parse_iso(now)
+                ms=int((answered-created).total_seconds()*1000) if created and answered else None
+                db.execute("UPDATE presence_pings SET status='answered',reason=?,answered_at=?,answer_latency_ms=? WHERE id=?",
+                           ("Das iPhone hat geantwortet"+(f" ({ms/1000:.1f} s)." if ms is not None else "."),now,ms,ping_id))
+        cutoff=(utc_now()-dt.timedelta(days=PRESENCE_REPORT_RETENTION_DAYS)).isoformat().replace("+00:00","Z")
+        db.execute("DELETE FROM presence_reports WHERE user_id=? AND created_at<?",(user_id,cutoff))
+
+    def presence_telemetry(self,user_id):
+        ids=[user_id]+self.partner_ids(user_id)
+        since=(utc_now()-dt.timedelta(hours=24)).isoformat().replace("+00:00","Z")
+        users=[]
+        with self.database.connect() as db:
+            for uid in ids:
+                row=db.execute("SELECT payload,updated_at FROM presence WHERE user_id=?",(uid,)).fetchone()
+                presence=(json.loads(row["payload"])|{"updated_at":row["updated_at"]}) if row else None
+                if presence and uid!=user_id and presence.get("location_sharing") is False:
+                    for key in ("latitude","longitude","altitude","speed","course"):presence.pop(key,None)
+                reports=[dict(r) for r in db.execute("SELECT source,app_state,battery_level,battery_state,low_power_mode,thermal_state,network_type,has_location,horizontal_accuracy,upload_latency_ms,created_at FROM presence_reports WHERE user_id=? AND created_at>=? ORDER BY created_at DESC LIMIT 400",(uid,since))]
+                for r in reports:r["low_power_mode"]=bool(r["low_power_mode"]);r["has_location"]=bool(r["has_location"])
+                by_source={}
+                for r in reports:by_source[r["source"]]=by_source.get(r["source"],0)+1
+                stamps=sorted(t for t in (parse_iso(r["created_at"]) for r in reports) if t)
+                gaps=sorted((b-a).total_seconds() for a,b in zip(stamps,stamps[1:]))
+                activity=db.execute("SELECT * FROM app_activity WHERE user_id=?",(uid,)).fetchone()
+                devices=db.execute("SELECT COUNT(*) FROM devices WHERE user_id=?",(uid,)).fetchone()[0]
+                user=self.user_by_id(uid) or {"display_name":uid}
+                users.append({"id":uid,"display_name":user.get("display_name",uid),"me":uid==user_id,"presence":presence,
+                              "reports":reports,"push_devices":devices,"activity":dict(activity) if activity else None,
+                              "stats":{"reports_24h":len(reports),"by_source":by_source,
+                                       "median_gap_s":gaps[len(gaps)//2] if gaps else None,
+                                       "longest_gap_s":gaps[-1] if gaps else None}})
+            pings=[dict(r) for r in db.execute("SELECT * FROM presence_pings WHERE requester_id=? OR target_id=? ORDER BY created_at DESC LIMIT 12",(user_id,user_id))]
+        return {"server_time":iso_now(),"server_version":APP_VERSION,"apns_enabled":self.apns.enabled,
+                "ping_cooldown_s":PRESENCE_PING_COOLDOWN_SECONDS,"users":users,"pings":pings}
+
     def record_activity(self,user_id,mode,source="",db=None):
         owns=db is None
         connection=db or self.database.connect()
@@ -3702,6 +3787,9 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
             if path == "/v1/preferences":
                 self.send_json(200, self.app.preferences(self.current_user()))
                 return
+            if path == "/v1/presence/telemetry":
+                self.send_json(200, self.app.presence_telemetry(self.current_user()))
+                return
             if path == "/v1/background":
                 user_id = self.current_user()
                 self.send_json(200, self.app.background_snapshot(user_id))
@@ -3820,6 +3908,10 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/presence/location":
                 self._presence_location(user_id);return
+            if path == "/v1/presence/heartbeat":
+                self._presence_heartbeat(user_id);return
+            if path == "/v1/presence/ping":
+                self._presence_ping(user_id);return
             if path == "/v1/walkie":
                 self._walkie_send(user_id);return
             if len(parts)==4 and parts[:2]==["v1","walkie"] and parts[3]=="played":
@@ -4336,35 +4428,122 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
         self.send_json(200,{"nudged_at":now})
 
     def _presence_location(self, user_id):
-        """Background location: merges position, battery and app state into the last full presence,
-        so a short background wake never erases Health or status values."""
+        """Background location (9.x clients): position is required."""
+        self._presence_merge(user_id, require_location=True)
+
+    def _presence_heartbeat(self, user_id):
+        """10.0: background heartbeat. Battery, telemetry and optionally a position, sent whenever iOS
+        grants the app execution time (location wake, silent push, BGTask, HealthKit, geofence …)."""
+        self._presence_merge(user_id, require_location=False)
+
+    def _presence_merge(self, user_id, require_location):
+        """Merges a small background update into the last full presence, so a short background wake
+        never erases Health or status values. Each field group carries its own transfer timestamp."""
         body=self.read_json()
-        allowed={"latitude","longitude","horizontal_accuracy","altitude","speed","course","location_timestamp","battery_level","battery_state","low_power_mode","app_state","motion"}
+        allowed={"latitude","longitude","horizontal_accuracy","altitude","speed","course","location_timestamp","battery_level","battery_state","low_power_mode","app_state","motion","network_type"}
         update={k:v for k,v in body.items() if k in allowed}
-        try:
-            latitude=float(update["latitude"]);longitude=float(update["longitude"])
-        except (KeyError,TypeError,ValueError):raise APIError(400,"invalid_location","Standortkoordinaten sind ungültig.")
-        if not (-90<=latitude<=90 and -180<=longitude<=180):raise APIError(400,"invalid_location","Standortkoordinaten liegen außerhalb des gültigen Bereichs.")
-        update["latitude"]=latitude;update["longitude"]=longitude
+        has_location="latitude" in update or "longitude" in update
+        if require_location or has_location:
+            try:
+                latitude=float(update["latitude"]);longitude=float(update["longitude"])
+            except (KeyError,TypeError,ValueError):raise APIError(400,"invalid_location","Standortkoordinaten sind ungültig.")
+            if not (-90<=latitude<=90 and -180<=longitude<=180):raise APIError(400,"invalid_location","Standortkoordinaten liegen außerhalb des gültigen Bereichs.")
+            update["latitude"]=latitude;update["longitude"]=longitude;has_location=True
         for key in ("horizontal_accuracy","altitude","speed","course"):
             if key in update and (isinstance(update[key],bool) or not isinstance(update[key],(int,float)) or not math.isfinite(update[key])):update.pop(key)
         if "location_timestamp" in update and parse_iso(update["location_timestamp"]) is None:update.pop("location_timestamp")
         if "battery_level" in update and (isinstance(update["battery_level"],bool) or not isinstance(update["battery_level"],int) or not 0<=update["battery_level"]<=100):update.pop("battery_level")
+        if "battery_state" in update and update["battery_state"] not in {"charging","full","unplugged","unknown"}:update.pop("battery_state")
+        if "low_power_mode" in update and not isinstance(update["low_power_mode"],bool):update.pop("low_power_mode")
+        if "network_type" in update and update["network_type"] not in {"wifi","cellular","ethernet","other","offline"}:update.pop("network_type")
         if update.get("app_state") not in {"foreground","background"}:update["app_state"]="background"
         if "motion" in update:update["motion"]=safe_text(str(update["motion"]),40)
+        telemetry=self.app.validate_telemetry(body.get("telemetry"))
+        source=safe_text(str(body.get("source") or ("Standort im Hintergrund" if has_location else "Hintergrund")),60) or "Hintergrund"
+        ping_id=body.get("ping_id") if isinstance(body.get("ping_id"),str) and len(body["ping_id"])<=64 else None
         now=iso_now()
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row=db.execute("SELECT payload FROM presence WHERE user_id=?",(user_id,)).fetchone()
-            merged=json.loads(row["payload"]) if row else {}
-            if merged.get("location_sharing") is False and row:
-                db.execute("COMMIT");self.send_json(200,{"updated_at":now,"ignored":True});return
-            merged.update(update);merged["location_sharing"]=True;merged["reported_at"]=now
-            self.app.record_activity(user_id,"background","Standort im Hintergrund",db=db)
+            previous=json.loads(row["payload"]) if row else {}
+            merged=dict(previous)
+            if previous.get("location_sharing") is False and row:
+                # Location sharing was switched off: keep battery/telemetry, drop any coordinates.
+                for key in ("latitude","longitude","horizontal_accuracy","altitude","speed","course","location_timestamp"):update.pop(key,None)
+                has_location=False
+            merged.update(update)
+            if has_location:merged["location_sharing"]=True;merged["location_reported_at"]=now
+            if "battery_level" in update or "battery_state" in update:merged["battery_reported_at"]=now
+            if telemetry:merged["telemetry"]=telemetry;merged["telemetry_reported_at"]=now
+            merged["report_source"]=source;merged["reported_at"]=now
+            merged["report_count"]=int(previous.get("report_count") or 0)+1
+            self.app.record_activity(user_id,"background",source,db=db)
             db.execute("INSERT INTO presence(user_id,payload,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at",(user_id,json.dumps(merged,ensure_ascii=False),now))
+            self.app.record_presence_report(db,user_id,source,merged,has_location,telemetry,ping_id,now)
             db.execute("COMMIT")
+        self._battery_events(user_id,previous,merged)
         self.app.push_live_updates()
-        self.send_json(200,{"updated_at":now})
+        self.send_json(200,{"updated_at":now,"report_source":source})
+
+    def _presence_ping(self, user_id):
+        """10.0: asks the partner's iPhone via a silent APNs push to report battery and location now."""
+        self.read_json()
+        partners=self.app.partner_ids(user_id)
+        if not partners:raise APIError(404,"no_partner","Kein Partnerkonto gefunden.")
+        target=partners[0];now=utc_now();ping_id=str(uuid.uuid4())
+        with self.app.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            last=db.execute("SELECT created_at FROM presence_pings WHERE requester_id=? ORDER BY created_at DESC LIMIT 1",(user_id,)).fetchone()
+            if last and parse_iso(last["created_at"]) and now-parse_iso(last["created_at"])<dt.timedelta(seconds=PRESENCE_PING_COOLDOWN_SECONDS):
+                db.execute("COMMIT")
+                raise APIError(429,"ping_too_soon",f"Gerade erst angepingt. Nach {PRESENCE_PING_COOLDOWN_SECONDS} Sekunden geht es wieder.")
+            devices=db.execute("SELECT * FROM devices WHERE user_id=?",(target,)).fetchall()
+            if not self.app.apns.enabled:status,reason="unavailable","APNs ist auf dem Server nicht eingerichtet (.p8-Schlüssel fehlt). Das iPhone meldet sich beim nächsten iOS-Hintergrundfenster."
+            elif not devices:status,reason="unavailable","Für dieses Konto ist kein iPhone für Push registriert."
+            else:status,reason="queued","Stiller Push wird an Apple übergeben."
+            db.execute("INSERT INTO presence_pings(id,requester_id,target_id,status,reason,created_at) VALUES(?,?,?,?,?,?)",(ping_id,user_id,target,status,reason,now.isoformat().replace("+00:00","Z")))
+            db.execute("DELETE FROM presence_pings WHERE created_at<?",((now-dt.timedelta(days=7)).isoformat().replace("+00:00","Z"),))
+            db.execute("COMMIT")
+        if status=="queued":
+            config=self.app.config["apns"]
+            def deliver():
+                results=[]
+                for device in devices:
+                    payload={"aps":{"content-available":1},"rj_presence_ping":ping_id,"rj_event_kind":"presence_ping"}
+                    code,why=self.app.apns.deliver(target,device["device_token"],device["environment"],payload,
+                        topic=config.get("bundle_id","eu.rjuhas.rjlove"),push_type="background",expiration=int(time.time())+180)
+                    results.append((code,why))
+                ok=any(code=="200" for code,_ in results)
+                text="Apple hat den stillen Push angenommen. iOS entscheidet, wann das iPhone aufwacht." if ok else "APNs: "+", ".join(f"HTTP {c or '?'} {w}" for c,w in results)
+                with self.app.database.connect() as db2:
+                    db2.execute("UPDATE presence_pings SET status=CASE WHEN status='answered' THEN status ELSE ? END,reason=CASE WHEN status='answered' THEN reason ELSE ? END WHERE id=?",("sent" if ok else "failed",text[:500],ping_id))
+            threading.Thread(target=deliver,daemon=True).start()
+        self.send_json(200,{"id":ping_id,"status":status,"reason":reason,"devices":len(devices)})
+
+    def _battery_events(self, user_id, previous, merged):
+        sender = self.app.user_by_id(user_id) or {"display_name": "Schatzi"}
+        old_battery = previous.get("battery_level")
+        new_battery = merged.get("battery_level")
+        threshold = int(self.app.config["notifications"].get("low_battery_threshold", 15))
+        if isinstance(new_battery, (int, float)) and (
+            not isinstance(old_battery, (int, float)) or old_battery > threshold
+        ) and new_battery <= threshold:
+            self.app.broadcast_event(
+                user_id, "battery_low", f"{sender['display_name']} braucht Strom",
+                f"Der Akku liegt nur noch bei {int(new_battery)} %.", {"battery_level": int(new_battery)},
+            )
+        old_state, new_state = previous.get("battery_state"), merged.get("battery_state")
+        if old_state and new_state and old_state != new_state:
+            if new_state in {"charging", "full"} and old_state not in {"charging", "full"} and self.app.config["notifications"].get("notify_when_charging_starts", True):
+                self.app.broadcast_event(
+                    user_id, "charging_started", f"{sender['display_name']} lädt jetzt",
+                    f"Akku: {int(new_battery)} %" if isinstance(new_battery, (int, float)) else "Das iPhone wurde angeschlossen.",
+                )
+            elif old_state in {"charging", "full"} and new_state not in {"charging", "full"} and self.app.config["notifications"].get("notify_when_charging_stops", True):
+                self.app.broadcast_event(
+                    user_id, "charging_stopped", f"{sender['display_name']} lädt nicht mehr",
+                    f"Akku: {int(new_battery)} %" if isinstance(new_battery, (int, float)) else "Das iPhone wurde vom Strom getrennt.",
+                )
 
     def _walkie_send(self,user_id):
         body=self.read_json()
@@ -4661,46 +4840,42 @@ class RJLoveRequestHandler(BaseHTTPRequestHandler):
                 payload.pop(key, None)
         if "app_state" in payload and (not isinstance(payload["app_state"],str) or payload["app_state"] not in {"foreground","background"}):
             raise APIError(400,"invalid_activity","Aktivitätsart ungültig.")
-        payload["reported_at"] = iso_now()
+        telemetry = self.app.validate_telemetry(body.get("telemetry"))
+        source = safe_text(str(body.get("source") or ("App im Vordergrund" if payload.get("app_state") == "foreground" else "Hintergrund")), 60) or "App"
+        ping_id = body.get("ping_id") if isinstance(body.get("ping_id"), str) and len(body["ping_id"]) <= 64 else None
+        location_keys = ("latitude", "longitude", "horizontal_accuracy", "altitude", "speed", "course", "location_timestamp")
 
         with self.app.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             previous_row = db.execute("SELECT payload FROM presence WHERE user_id=?", (user_id,)).fetchone()
             previous = json.loads(previous_row["payload"]) if previous_row else {}
             merged = payload
-            if payload.get("app_state")=="foreground":self.app.record_activity(user_id,"foreground",db=db)
-            elif payload.get("app_state")=="background":self.app.record_activity(user_id,"background","Standort-Update",db=db)
             now = iso_now()
+            merged["reported_at"] = now
+            has_location = "latitude" in payload
+            if has_location:
+                merged["location_reported_at"] = now
+            elif payload.get("location_sharing") is not False and "latitude" in previous:
+                # 10.0: a full upload without a fresh fix keeps the last known position and its age.
+                for key in location_keys + ("location_reported_at",):
+                    if key in previous: merged[key] = previous[key]
+            if "battery_level" in payload or "battery_state" in payload: merged["battery_reported_at"] = now
+            elif previous.get("battery_reported_at"): merged["battery_reported_at"] = previous["battery_reported_at"]
+            if "steps" in payload or "health_metrics" in payload or "sleep_minutes" in payload: merged["health_reported_at"] = now
+            if telemetry: merged["telemetry"] = telemetry; merged["telemetry_reported_at"] = now
+            merged["report_source"] = source
+            merged["report_count"] = int(previous.get("report_count") or 0) + 1
+            if payload.get("app_state")=="foreground":self.app.record_activity(user_id,"foreground",db=db)
+            elif payload.get("app_state")=="background":self.app.record_activity(user_id,"background",source,db=db)
             db.execute(
                 "INSERT INTO presence(user_id,payload,updated_at) VALUES(?,?,?) "
                 "ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at",
                 (user_id, json.dumps(merged, ensure_ascii=False), now),
             )
+            self.app.record_presence_report(db, user_id, source, merged, has_location, telemetry, ping_id, now)
             db.execute("COMMIT")
 
-        sender = self.app.user_by_id(user_id) or {"display_name": "Schatzi"}
-        old_battery = previous.get("battery_level")
-        new_battery = merged.get("battery_level")
-        threshold = int(self.app.config["notifications"].get("low_battery_threshold", 15))
-        if isinstance(new_battery, (int, float)) and (
-            not isinstance(old_battery, (int, float)) or old_battery > threshold
-        ) and new_battery <= threshold:
-            self.app.broadcast_event(
-                user_id, "battery_low", f"{sender['display_name']} braucht Strom",
-                f"Der Akku liegt nur noch bei {int(new_battery)} %.", {"battery_level": int(new_battery)},
-            )
-        old_state, new_state = previous.get("battery_state"), merged.get("battery_state")
-        if old_state and old_state != new_state:
-            if new_state in {"charging", "full"} and self.app.config["notifications"].get("notify_when_charging_starts", True):
-                self.app.broadcast_event(
-                    user_id, "charging_started", f"{sender['display_name']} lädt jetzt",
-                    f"Akku: {int(new_battery)} %" if isinstance(new_battery, (int, float)) else "Das iPhone wurde angeschlossen.",
-                )
-            elif old_state in {"charging", "full"} and self.app.config["notifications"].get("notify_when_charging_stops", True):
-                self.app.broadcast_event(
-                    user_id, "charging_stopped", f"{sender['display_name']} lädt nicht mehr",
-                    f"Akku: {int(new_battery)} %" if isinstance(new_battery, (int, float)) else "Das iPhone wurde vom Strom getrennt.",
-                )
+        self._battery_events(user_id, previous, merged)
         self.app.push_live_updates()
         self.send_json(HTTPStatus.OK, {"updated_at": now})
 

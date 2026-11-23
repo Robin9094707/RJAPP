@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var showingStatusEditor = false
     @State private var heartBursts = 0
     @State private var showingHealth = false
+    @State private var showingTelemetry = false
     @State private var showingNearby = false
     @State private var editingHome = false
     @State private var revealed = false
@@ -41,6 +42,11 @@ struct HomeView: View {
         .sheet(isPresented: $showingWakeComposer) { WakeComposerView() }
         .sheet(isPresented: $showingStatusEditor) { StatusEditorSheet() }
         .sheet(isPresented: $showingHealth) { NavigationStack { HealthDashboardView() } }
+        .sheet(isPresented: $showingTelemetry) {
+            NavigationStack {
+                LiveTelemetryView().toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { showingTelemetry = false } } }
+            }.presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showingNearby) { NavigationStack { NearbyView() } }
         .refreshable { await appState.syncNow(showErrors: false) }
         .onAppear { revealed = true }
@@ -281,13 +287,39 @@ struct HomeView: View {
                 BatteryBadge(level: appState.partner?.presence?.batteryLevel, state: appState.partner?.presence?.batteryState)
             }
             .padding(12).background(homeTint.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            if let date = appState.partner?.presence?.updatedAt?.rjDate {
-                Text("Zuletzt geteilt \(date.formatted(.relative(presentation: .named)))").font(.caption2).foregroundStyle(.tertiary)
+            if let presence = appState.partner?.presence {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    HStack(spacing: 6) {
+                        Image(systemName: "dot.radiowaves.left.and.right").font(.caption2.weight(.bold))
+                        Text(Self.transferText(presence, now: context.date)).font(.caption.monospacedDigit())
+                            .contentTransition(.numericText())
+                    }
+                    .foregroundStyle(Self.transferColor(presence, now: context.date))
+                }
             }
-            Button { appState.showingPartnerProfile = true } label: {
-                Label("Profil & Aktivität ansehen", systemImage: "person.text.rectangle").font(.subheadline.bold()).frame(maxWidth: .infinity)
-            }.buttonStyle(.bordered)
+            HStack(spacing: 10) {
+                Button { appState.showingPartnerProfile = true } label: {
+                    Label("Profil", systemImage: "person.text.rectangle").font(.subheadline.bold()).frame(maxWidth: .infinity)
+                }.buttonStyle(.bordered)
+                Button { showingTelemetry = true } label: {
+                    Label("Live-Daten", systemImage: "waveform.path.ecg.rectangle").font(.subheadline.bold()).frame(maxWidth: .infinity)
+                }.buttonStyle(.bordered).accessibilityIdentifier("rj-open-live-telemetry")
+            }
         }.loveCard()
+    }
+
+    /// "Akku übertragen vor 42 s · über Live-Herzschlag"
+    static func transferText(_ presence: PresencePayload, now: Date) -> String {
+        guard let date = (presence.batteryReportedAt ?? presence.updatedAt)?.rjDate else { return "Noch keine Übertragung" }
+        let age = max(0, Int(now.timeIntervalSince(date)))
+        let ago = age < 60 ? "\(age) s" : age < 3600 ? "\(age / 60) min" : age < 86_400 ? "\(age / 3600) h \((age % 3600) / 60) min" : date.formatted(date: .abbreviated, time: .shortened)
+        let prefix = age < 86_400 ? "Akku übertragen vor " : "Akku übertragen am "
+        return prefix + ago + (presence.reportSource.map { " · über " + $0 } ?? "")
+    }
+    static func transferColor(_ presence: PresencePayload, now: Date) -> Color {
+        guard let date = (presence.batteryReportedAt ?? presence.updatedAt)?.rjDate else { return .secondary }
+        let age = now.timeIntervalSince(date)
+        return age < 300 ? .green : age < 1800 ? .orange : .secondary
     }
 
     private func milestoneCard(_ record: SharedRecord) -> some View {

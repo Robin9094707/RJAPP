@@ -13,6 +13,9 @@ final class DeviceStatusService: ObservableObject {
     @Published private(set) var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
     @Published private(set) var networkType = "offline"
     @Published private(set) var wifiName: String?
+    /// 10.0: hotspot/cellular data (expensive) and Low Data Mode (constrained).
+    @Published private(set) var networkExpensive = false
+    @Published private(set) var networkConstrained = false
     @Published private(set) var motion = "Unbekannt"
     @Published private(set) var motionAuthorization = CMMotionActivityManager.authorizationStatus()
 
@@ -58,8 +61,12 @@ final class DeviceStatusService: ObservableObject {
             else if path.usesInterfaceType(.cellular) { type = "cellular" }
             else if path.usesInterfaceType(.wiredEthernet) { type = "ethernet" }
             else { type = "other" }
+            let expensive = path.isExpensive
+            let constrained = path.isConstrained
             Task { @MainActor in
                 guard let self else { return }
+                self.networkExpensive = expensive
+                self.networkConstrained = constrained
                 let changed = self.networkType != type
                 self.networkType = type
                 if type == "wifi" { self.refreshWiFiName() } else { self.wifiName = nil }

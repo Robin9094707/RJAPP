@@ -1,11 +1,11 @@
 # RJ Love installieren und aktualisieren
 
-**Aktuell:** App **9.0.1 (Build 901)** mit Python-Server **9.0.0** und Protokoll **5**.
+**Aktuell:** App **10.0.0 (Build 1000)** mit Python-Server **10.0.0** und Protokoll **5**.
 
 ## Bestehende Installation aktualisieren
 
-1. **App 9.0.0 → 9.0.1:** Die Python-Serverdatei bleibt unverändert. Die neue **unsigned IPA** auf beiden iPhones jeweils mit dem eigenen Zertifikat signieren und installieren.
-2. **Server älter als 9.0.0:** Server stoppen, `rjapp_config.json` und den Datenordner sichern. Nur `Backend/rj_love_server.py` auf 9.0.0 aktualisieren und wieder starten. Vorhandene Konten, Passwörter, Datenbank, Datenpfade und Serveradresse beibehalten.
+1. **9.x → 10.0.0:** Zuerst den Server: `rjapp_config.json` und Datenordner sichern, nur `Backend/rj_love_server.py` auf 10.0.0 ersetzen, neu starten. Danach die neue **unsigned IPA** auf beiden iPhones jeweils mit dem eigenen Zertifikat signieren und über die bestehende App installieren.
+2. **Server älter als 10.0.0:** Server stoppen, `rjapp_config.json` und den Datenordner sichern. Nur `Backend/rj_love_server.py` auf 10.0.0 aktualisieren und wieder starten. Vorhandene Konten, Passwörter, Datenbank, Datenpfade und Serveradresse beibehalten.
 3. Bei einer Aktualisierung **auf derselben App-Installation** Bundle-ID und Signierungsidentität möglichst nicht ändern. Ein Team- oder Bundle-ID-Wechsel kann iOS-Keychain-Zugriff und lokale Daten verändern; ein Wechsel kann eine separate App erzeugen.
 4. Die Widget-Erweiterung ist ein eigenes iOS-Target. Haupt-App und Extension jeweils mit **passenden App-IDs, Provisioning-Profilen und identischer erlaubter App Group** signieren.
 5. Nach Installation **RJ Love → Widgets verbinden → Widget-Daten und Anzeige aktualisieren** auf beiden Geräten ausführen. Für Hintergrundupdates iOS-Berechtigungen und Hintergrundaktualisierung prüfen. Den Zeitpunkt bestimmt weiterhin iOS.
@@ -19,7 +19,7 @@
 
 Die gleiche **unsigned IPA** enthält den Code für beide Gruppen; er wählt zur Laufzeit nur einen durch die Signierung erlaubten Container. **Die Widget-Erweiterung benötigt trotzdem ein eigenes, korrektes Extension-Profil**, das in den beiden bereitgestellten Zertifikats-ZIPs nicht enthalten ist. Eine ID-Eingabe innerhalb der App kann keine iOS-Berechtigungen freischalten. Keine privaten Zertifikate, `.p12`-Dateien oder Passwörter ins GitHub-Repository hochladen.
 
-[Änderungen in 9.0.1](RELEASE-9.0.1.md) · [GitHub Actions](https://github.com/Robin9094707/RJAPP/actions).
+[Änderungen in 10.0.0](RELEASE-10.0.0.md) · [GitHub Actions](https://github.com/Robin9094707/RJAPP/actions).
 
 ## Neue Installation
 

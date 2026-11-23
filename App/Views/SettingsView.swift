@@ -157,6 +157,11 @@ struct ProfileSettingsDetailView: View {
 
             Section("Diagnose") {
                 NavigationLink {
+                    LiveTelemetryView()
+                } label: {
+                    Label("Live-Daten & Hintergrund-Engine", systemImage: "waveform.path.ecg.rectangle")
+                }
+                NavigationLink {
                     DebugConsoleView()
                 } label: {
                     Label("Debug-Konsole", systemImage: "terminal.fill")
